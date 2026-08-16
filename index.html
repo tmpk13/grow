@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>grow - pixel plant sampler and growth lab</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230a0d12'/%3E%3Crect x='7' y='7' width='2' height='7' fill='%238a6644'/%3E%3Crect x='4' y='3' width='8' height='4' fill='%237fd1a0'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>grow</h1>
+      <p class="subtitle">pixel art plant sampling boxes, shading curve and growth simulation</p>
+      <div class="topbar-actions">
+        <span id="save-note" class="save-note"></span>
+        <button id="btn-new" class="btn" type="button">New</button>
+        <button id="btn-export" class="btn" type="button">Export</button>
+        <label class="btn" for="file-import">Import</label>
+        <input id="file-import" type="file" accept="application/json" hidden />
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel">
+        <nav class="tabs" id="tabs"></nav>
+        <div class="panel-body" id="panel-body"></div>
+      </aside>
+
+      <section class="stage">
+        <div class="stage-toolbar" id="stage-toolbar"></div>
+        <div class="stage-canvas-wrap">
+          <canvas id="world-canvas"></canvas>
+        </div>
+        <div class="statusbar" id="statusbar"></div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

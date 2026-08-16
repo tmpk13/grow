@@ -1,0 +1,15 @@
+{
+  "name": "grow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pixel art plant sampling boxes, shading curve editor and growth simulation",
+  "scripts": {
+    "dev": "bun run serve.js",
+    "start": "bun run serve.js",
+    "check": "bun run tools/smoke.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}
