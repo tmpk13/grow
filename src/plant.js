@@ -61,36 +61,46 @@ function angleDiff(target, current) {
 }
 
 export class Plant {
-  constructor({ id, species, limits, col, world, rng }) {
+  constructor({ id, species, limits, col, row, world, rng }) {
     this.id = id;
     this.species = species;
     this.limits = limits;
     this.col = col;
+    this.row = row;
     this.layer = null; // assigned by the sim
     this.rng = rng;
     this.seed = rng.seed();
     this.age = 0;
     this.alive = true;
     this.budget = 0;
+    this.depthShade = 0; // atmospheric lift for far rows, set by the sim
     this.growthRate = rng.range(species.growth.rateMin, species.growth.rateMax);
 
     const cellPx = world.cellPx;
     this.cellPx = cellPx;
+    this.depthRatio = world.depthRatio || 1;
     const maxRadiusPx = limits.maxRadiusCells * cellPx + cellPx / 2;
     this.w = Math.ceil(maxRadiusPx * 2 + SPRITE_PAD * 2);
-    this.h = Math.ceil(limits.maxHeightPx + SPRITE_PAD * 2);
     this.ox = Math.floor(this.w / 2);
-    this.oy = this.h - SPRITE_PAD;
     this.maxRadiusPx = maxRadiusPx;
+    if (species.sizeClass === 'ground') {
+      // A mat lies flat on the ground plane, so its sprite is a foreshortened
+      // disc centered on the anchor instead of a shape standing on it.
+      this.maxRadiusYPx = Math.max(1, maxRadiusPx * this.depthRatio);
+      this.h = Math.ceil(this.maxRadiusYPx * 2 + limits.maxHeightPx + SPRITE_PAD * 2);
+      this.oy = Math.round(SPRITE_PAD + this.maxRadiusYPx);
+    } else {
+      this.maxRadiusYPx = 0;
+      this.h = Math.ceil(limits.maxHeightPx + SPRITE_PAD * 2);
+      this.oy = this.h - SPRITE_PAD;
+    }
 
     this.segments = [];
     this.leaves = [];
     this.tips = [];
     this.grantedRadiusCells = 0;
-    this.grantedHeightPx = cellPx;
     this.cells = [];
     this.confinedSide = false;
-    this.confinedTop = false;
     this.radiusPx = 0;
     this.heightPx = 0;
 
@@ -163,7 +173,7 @@ export class Plant {
     if (this.radiusPx >= this.maxRadiusPx) return;
     const next = this.radiusPx + 1;
     const cells = Math.ceil(next / this.cellPx);
-    if (cells > this.grantedRadiusCells && !this.requestSpace(ctx, cells, this.grantedHeightPx)) {
+    if (cells > this.grantedRadiusCells && !this.requestSpace(ctx, cells)) {
       this.confinedSide = true;
       return;
     }
@@ -198,26 +208,17 @@ export class Plant {
     let nx = tip.x + Math.cos(tip.angle) * step;
     let ny = tip.y + Math.sin(tip.angle) * step;
 
-    // Sideways growth needs grid space; when the world will not grant it the
-    // tip is steered back inward instead of stopping dead.
+    // Spreading wider needs ground cells; when the world will not grant them
+    // the tip is steered back inward instead of stopping dead, so a crowded
+    // plant grows tall and narrow.
     const wantRadius = Math.abs(nx - this.ox);
     if (wantRadius > this.grantedRadiusCells * this.cellPx + this.cellPx / 2) {
       const cells = Math.min(this.limits.maxRadiusCells, Math.ceil(wantRadius / this.cellPx));
-      if (cells > this.grantedRadiusCells && !this.requestSpace(ctx, cells, this.grantedHeightPx)) {
+      if (cells > this.grantedRadiusCells && !this.requestSpace(ctx, cells)) {
         this.confinedSide = true;
         tip.angle += angleDiff(-Math.PI / 2, tip.angle) * 0.6;
         nx = tip.x + Math.cos(tip.angle) * step;
         ny = tip.y + Math.sin(tip.angle) * step;
-      }
-    }
-
-    const wantHeight = this.oy - Math.min(ny, tip.y);
-    if (wantHeight > this.grantedHeightPx) {
-      const target = Math.min(this.limits.maxHeightPx, Math.ceil(wantHeight / this.cellPx) * this.cellPx);
-      if (!this.requestSpace(ctx, this.grantedRadiusCells, target)) {
-        this.confinedTop = true;
-        this.endTip(tip);
-        return;
       }
     }
 
@@ -263,12 +264,12 @@ export class Plant {
     }
   }
 
-  // Vines look for a woody neighbor and coil up it; with nothing to climb they
-  // creep sideways along the ground instead.
+  // Vines look for a woody neighbor anywhere in the surrounding area and coil
+  // up it; with nothing to climb they creep sideways along the ground instead.
   steerClimb(tip, ctx, f) {
     if (!tip.support && ctx && ctx.world) {
       const search = Math.min(f.climbSearch, this.limits.maxRadiusCells);
-      const found = ctx.world.findSupport(this.col, search, ctx.supportLayers);
+      const found = ctx.world.findSupport(this.col, this.row, search, ctx.supportLayers);
       if (found && found.owner !== this.id) tip.support = found;
     }
     if (!tip.support) {
@@ -277,6 +278,8 @@ export class Plant {
       return false;
     }
     tip.phase += f.wrapPitch;
+    // Supports are found anywhere in the area but climbed on screen, so only
+    // the horizontal offset steers the tip; the depth offset is left alone.
     const targetX = this.ox + (tip.support.col - this.col) * this.cellPx;
     const pull = clamp((targetX - tip.x) * 0.05, -0.7, 0.7);
     const sway = Math.sin(tip.phase) * toRad(f.wrapAmp);
@@ -347,19 +350,15 @@ export class Plant {
     this.heightPx = Math.max(this.heightPx, this.oy - (ly - r));
   }
 
-  // Asks the sim for a larger footprint. Returns false when a neighbor of the
-  // same size class already owns one of the cells.
-  requestSpace(ctx, radiusCells, heightPx) {
+  // Asks the sim for a larger footprint on the ground plane. Returns false
+  // when a neighbor of the same size class already owns one of the cells.
+  requestSpace(ctx, radiusCells) {
     if (!ctx || !ctx.requestSpace) {
       this.grantedRadiusCells = Math.max(this.grantedRadiusCells, radiusCells);
-      this.grantedHeightPx = Math.max(this.grantedHeightPx, heightPx);
       return true;
     }
-    const ok = ctx.requestSpace(this, radiusCells, heightPx);
-    if (ok) {
-      this.grantedRadiusCells = Math.max(this.grantedRadiusCells, radiusCells);
-      this.grantedHeightPx = Math.max(this.grantedHeightPx, heightPx);
-    }
+    const ok = ctx.requestSpace(this, radiusCells);
+    if (ok) this.grantedRadiusCells = Math.max(this.grantedRadiusCells, radiusCells);
     return ok;
   }
 
@@ -416,19 +415,35 @@ export class Plant {
     }
   }
 
-  stampGroundMound() {
-    const { mask, w } = this;
-    const r = Math.max(1, this.radiusPx);
-    const maxH = Math.max(1, this.heightPx);
-    for (let dx = -r; dx <= r; dx++) {
-      const x = Math.round(this.ox + dx);
-      if (x < 0 || x >= w) continue;
-      const falloff = Math.sqrt(Math.max(0, 1 - (dx / r) * (dx / r)));
-      const noise = 0.55 + 0.45 * hash2(x, 0, this.seed);
-      const colH = Math.round(maxH * falloff * noise);
-      for (let k = 0; k < colH; k++) {
-        const y = this.oy - k;
-        if (y < 0) break;
+  // A mat is a ragged disc lying on the ground plane, squashed by the depth
+  // ratio, plus a short lip along its front edge so it reads as raised.
+  stampGroundPatch() {
+    const { mask, w, h } = this;
+    const rx = Math.max(1, this.radiusPx);
+    const ry = Math.max(1, rx * this.depthRatio);
+    const lip = Math.max(0, Math.round(this.heightPx * 0.5));
+    const x0 = Math.max(0, Math.floor(this.ox - rx - 1));
+    const x1 = Math.min(w - 1, Math.ceil(this.ox + rx + 1));
+    const y0 = Math.max(0, Math.floor(this.oy - ry - 1));
+    const y1 = Math.min(h - 1, Math.ceil(this.oy + ry + 1));
+    const bottom = new Int32Array(w).fill(-1);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = (x + 0.5 - this.ox) / rx;
+        const dy = (y + 0.5 - this.oy) / ry;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        const wobble = (hash2(x, y, this.seed) - 0.5) * 0.4;
+        if (d > 1 + wobble) continue;
+        mask[y * w + x] = MAT.GROUND;
+        if (y > bottom[x]) bottom[x] = y;
+      }
+    }
+    for (let x = x0; x <= x1; x++) {
+      if (bottom[x] < 0) continue;
+      const thick = Math.round(lip * (0.6 + 0.4 * hash2(x, 1, this.seed)));
+      for (let k = 1; k <= thick; k++) {
+        const y = bottom[x] + k;
+        if (y >= h) break;
         mask[y * w + x] = MAT.GROUND;
       }
     }
@@ -470,7 +485,7 @@ export class Plant {
     this.sprite.fill(0);
 
     if (this.species.sizeClass === 'ground') {
-      this.stampGroundMound();
+      this.stampGroundPatch();
     } else {
       for (const seg of this.segments) this.stampSegment(seg);
       for (const leaf of this.leaves) this.stampLeaf(leaf);
@@ -525,7 +540,7 @@ export class Plant {
           const span = comp.y1 - comp.y0;
           const vert = span > 0 ? (y - comp.y0) / span : 0;
           let t = shadeValue(nd, vert, shading);
-          t += bias[i] / 100;
+          t += bias[i] / 100 + this.depthShade;
           if (jitter > 0) t += (hash2(x, y, this.seed) - 0.5) * 2 * jitter;
           const q = quantize(clamp01(t), tones);
           const ramp = ramps[mask[i]];

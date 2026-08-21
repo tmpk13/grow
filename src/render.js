@@ -91,38 +91,44 @@ export class Viewport {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.off, this.panX, this.panY, world.pxW * this.zoom, world.pxH * this.zoom);
 
+    if (sim.overlay) sim.overlay(ctx, this);
     if (this.showOccupancy) this.drawOccupancy(ctx, world);
     if (this.showGrid) this.drawGrid(ctx, world);
     ctx.restore();
   }
 
+  // The ground plane is axis aligned but foreshortened, so cells are drawn as
+  // rectangles cellPx wide by depthPx tall, offset below the sky band.
   drawGrid(ctx, world) {
-    const step = world.cellPx * this.zoom;
-    if (step < 3) return;
+    const stepX = world.cellPx * this.zoom;
+    const stepY = world.depthPx * this.zoom;
+    if (Math.min(stepX, stepY) < 2) return;
+    const top = this.panY + world.skyPx * this.zoom;
     ctx.strokeStyle = 'rgba(255,255,255,0.10)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let x = 0; x <= world.cols; x++) {
-      const px = Math.round(this.panX + x * step) + 0.5;
-      ctx.moveTo(px, this.panY);
-      ctx.lineTo(px, this.panY + world.pxH * this.zoom);
+      const px = Math.round(this.panX + x * stepX) + 0.5;
+      ctx.moveTo(px, top);
+      ctx.lineTo(px, top + world.groundPx * this.zoom);
     }
     for (let y = 0; y <= world.rows; y++) {
-      const py = Math.round(this.panY + y * step) + 0.5;
+      const py = Math.round(top + y * stepY) + 0.5;
       ctx.moveTo(this.panX, py);
       ctx.lineTo(this.panX + world.pxW * this.zoom, py);
     }
     ctx.stroke();
     ctx.strokeStyle = 'rgba(255,180,90,0.55)';
     ctx.beginPath();
-    const sy = Math.round(this.panY + world.soilRow * step) + 0.5;
-    ctx.moveTo(this.panX, sy);
-    ctx.lineTo(this.panX + world.pxW * this.zoom, sy);
+    ctx.moveTo(this.panX, Math.round(top) + 0.5);
+    ctx.lineTo(this.panX + world.pxW * this.zoom, Math.round(top) + 0.5);
     ctx.stroke();
   }
 
   drawOccupancy(ctx, world) {
-    const step = world.cellPx * this.zoom;
+    const stepX = world.cellPx * this.zoom;
+    const stepY = world.depthPx * this.zoom;
+    const top = this.panY + world.skyPx * this.zoom;
     for (let cy = 0; cy < world.rows; cy++) {
       for (let cx = 0; cx < world.cols; cx++) {
         const mask = world.occupancyAt(cx, cy);
@@ -130,12 +136,13 @@ export class Viewport {
         for (let l = 0; l < LAYER_COUNT; l++) {
           if (!(mask & (1 << l))) continue;
           ctx.fillStyle = LAYER_COLORS[l % LAYER_COLORS.length];
-          const inset = (step / (LAYER_COUNT + 1)) * l;
+          const insetX = (stepX / (LAYER_COUNT + 1)) * l;
+          const insetY = (stepY / (LAYER_COUNT + 1)) * l;
           ctx.fillRect(
-            this.panX + cx * step + inset * 0.5,
-            this.panY + cy * step + inset * 0.5,
-            Math.max(1, step - inset),
-            Math.max(1, step - inset),
+            this.panX + cx * stepX + insetX * 0.5,
+            top + cy * stepY + insetY * 0.5,
+            Math.max(1, stepX - insetX),
+            Math.max(1, stepY - insetY),
           );
         }
       }

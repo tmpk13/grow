@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pixel art plant sampling boxes, shading curve editor and growth simulation",
+  "description": "Pixel art plant lab and a procedural settlement that has to gather what it builds",
   "scripts": {
     "dev": "bun run serve.js",
     "start": "bun run serve.js",
-    "check": "bun run tools/smoke.js"
+    "check": "bun run tools/smoke.js",
+    "check:civ": "bun run tools/civsmoke.js 60",
+    "check:ui": "bun run tools/uicheck.js"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"

@@ -27,6 +27,13 @@ export const ROLES = [
   { id: 'leaf', label: 'Leaf texture', hue: 118, sat: 0.42, l0: 0.14, l1: 0.56 },
   { id: 'leafEdge', label: 'Leaf edges', hue: 82, sat: 0.5, l0: 0.2, l1: 0.66 },
   { id: 'stem', label: 'Stem to leaf', hue: 74, sat: 0.38, l0: 0.16, l1: 0.5 },
+  { id: 'stone', label: 'Stone', hue: 210, sat: 0.06, l0: 0.18, l1: 0.58 },
+  { id: 'timber', label: 'Timber wall', hue: 30, sat: 0.3, l0: 0.16, l1: 0.52 },
+  { id: 'plank', label: 'Sawn plank', hue: 38, sat: 0.34, l0: 0.22, l1: 0.66 },
+  { id: 'thatch', label: 'Thatch roof', hue: 46, sat: 0.42, l0: 0.2, l1: 0.62 },
+  { id: 'brick', label: 'Brick', hue: 14, sat: 0.44, l0: 0.18, l1: 0.56 },
+  { id: 'metal', label: 'Metal', hue: 205, sat: 0.1, l0: 0.24, l1: 0.74 },
+  { id: 'cloth', label: 'Cloth', hue: 330, sat: 0.26, l0: 0.24, l1: 0.68 },
 ];
 
 export const ROLE_LABELS = Object.fromEntries(ROLES.map((r) => [r.id, r.label]));
@@ -119,6 +126,38 @@ export function createMaterials() {
 
 // Copies each sampler's own art into its atlas region, so switching to single
 // grid mode starts from what the separate boxes already show.
+// A project saved before a role existed has no sampler for it. Rather than
+// leaving that material unpainted, the missing boxes are appended with their
+// default art and the shared atlas is grown to fit their bands.
+export function ensureRoleSamplers(materials) {
+  const bandH = 3;
+  const have = new Set(materials.samplers.map((s) => s.role));
+  const missing = ROLES.filter((r) => !have.has(r.id));
+  if (missing.length === 0) return materials;
+  const neededH = ROLES.length * bandH;
+  if (materials.atlas.h < neededH) {
+    const px = new Uint32Array(materials.atlas.w * neededH);
+    px.set(materials.atlas.px.subarray(0, Math.min(materials.atlas.px.length, px.length)));
+    materials.atlas = { w: materials.atlas.w, h: neededH, px };
+  }
+  for (const role of missing) {
+    const index = ROLES.findIndex((r) => r.id === role.id);
+    const s = createSampler({
+      id: `mat-${role.id}`,
+      name: role.label,
+      role: role.id,
+      w: 16,
+      h: 6,
+      region: { x: 0, y: index * bandH, w: materials.atlas.w, h: bandH },
+    });
+    fillDefaultArt(s, role, index * 31);
+    materials.samplers.push(s);
+  }
+  materials.version++;
+  invalidateSamplerCache();
+  return materials;
+}
+
 export function paintAtlasFromSamplers(materials) {
   const { atlas } = materials;
   atlas.px.fill(EMPTY_COLOR);
@@ -245,7 +284,7 @@ export function deserializeMaterials(data) {
     version: 1,
   };
   invalidateSamplerCache();
-  return materials;
+  return ensureRoleSamplers(materials);
 }
 
 function encodePixels(px) {

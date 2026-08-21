@@ -494,3 +494,260 @@ input[type="checkbox"] {
   white-space: nowrap;
   overflow-x: auto;
 }
+
+/* modes */
+
+.modes {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.4rem 0.4rem 0;
+  flex: 0 0 auto;
+}
+
+.mode {
+  flex: 1 1 auto;
+  padding: 0.35rem 0.5rem;
+  background: #0f151e;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  letter-spacing: 0.04em;
+}
+
+.mode.active {
+  color: #08131c;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* settlement panels */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.25rem;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  background: #0f151e;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+.stat-key {
+  color: var(--text-dim);
+}
+
+.stat-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.roster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.roster-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1.4fr) minmax(5rem, 1fr) minmax(5rem, 1fr) 2.5rem 2.5rem;
+  align-items: center;
+  gap: 0.3rem;
+  background: #0f151e;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.72rem;
+}
+
+.roster-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roster-job,
+.roster-task {
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar {
+  display: block;
+  height: 0.45rem;
+  background: #0a0f16;
+  border: 1px solid var(--line);
+  border-radius: 0.2rem;
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.bar-fill.hunger {
+  background: #cbd06a;
+}
+
+.bar-fill.health {
+  background: #7fd1a0;
+}
+
+.bar-fill.build {
+  background: var(--accent-warm);
+}
+
+.bar-fill.research {
+  background: #7fb4ff;
+}
+
+.catalog,
+.tech-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cat-row,
+.tech-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: #0f151e;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.4rem;
+}
+
+.cat-row.locked,
+.tech-row.locked {
+  opacity: 0.55;
+}
+
+.tech-row.known {
+  border-color: rgba(127, 209, 160, 0.4);
+}
+
+.tech-row.target {
+  border-color: var(--accent-warm);
+}
+
+.cat-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cat-name {
+  font-size: 0.8rem;
+  flex: 1 1 auto;
+}
+
+.cat-count {
+  color: var(--accent-warm);
+  font-size: 0.72rem;
+}
+
+.cat-cost {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+.cat-meta,
+.cat-note {
+  color: #6d7c92;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
+.cat-lock {
+  color: var(--danger);
+  font-size: 0.7rem;
+}
+
+.sub-head {
+  margin: 0.3rem 0 0;
+  font-size: 0.76rem;
+  color: var(--accent-warm);
+}
+
+.stock-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.stock-row {
+  display: grid;
+  grid-template-columns: 0.8rem minmax(4rem, 1.4fr) repeat(5, minmax(2.4rem, 1fr));
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.stock-row.head {
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.15rem;
+}
+
+.stock-name {
+  font-family: inherit;
+}
+
+.stock-num {
+  text-align: right;
+}
+
+.stock-num.dim {
+  color: var(--text-dim);
+}
+
+.stock-num.up {
+  color: var(--accent);
+}
+
+.stock-num.down {
+  color: var(--danger);
+}
+
+.swatch-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.swatch-dot.ghost {
+  border-color: transparent;
+  background: none;
+}
+
+.event-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+
+.event {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

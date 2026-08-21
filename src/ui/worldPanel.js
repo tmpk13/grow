@@ -1,6 +1,6 @@
 // World panel: grid size, per size class ceilings and simulation settings.
 
-import { button, clear, colorField, el, numberField, section, selectField } from './controls.js';
+import { boolField, button, clear, colorField, el, numberField, section, selectField } from './controls.js';
 import { SIZE_CLASSES } from '../species.js';
 
 export function buildWorldPanel(root, app) {
@@ -21,11 +21,31 @@ export function buildWorldPanel(root, app) {
     });
 
   root.appendChild(
-    section('Grid', [
-      worldNum('Columns', 'cols', 8, 400, 1),
-      worldNum('Rows', 'rows', 8, 300, 1),
-      worldNum('Cell size (px)', 'cellPx', 2, 32, 1, 'pixels per grid cell'),
-      worldNum('Soil row', 'soilRow', 1, 299, 1, 'first row of soil; plants root on it'),
+    section('Area grid', [
+      worldNum('Columns (x)', 'cols', 8, 400, 1, 'cells across the area'),
+      worldNum('Rows (depth)', 'rows', 2, 200, 1, 'cells from the far edge to the near edge'),
+      worldNum('Cell width (px)', 'cellPx', 2, 32, 1),
+      worldNum('Cell depth (px)', 'depthPx', 1, 32, 1,
+        'screen height of one row; below the cell width it foreshortens the ground'),
+      worldNum('Sky height (px)', 'skyPx', 0, 600, 2, 'room above the far row for tall plants'),
+      numberField('Distance haze', {
+        value: state.world.depthFade,
+        min: 0,
+        max: 0.5,
+        step: 0.01,
+        hint: 'tone lift applied to far rows, in ramp steps',
+        onInput: (v) => {
+          state.world.depthFade = v;
+          app.worldChanged();
+        },
+      }),
+      boolField('Ground shadows', {
+        value: state.world.shadows !== false,
+        onInput: (v) => {
+          state.world.shadows = v;
+          app.repaintBackground();
+        },
+      }),
       colorField('Sky top', {
         value: state.world.skyTop,
         onInput: (v) => {

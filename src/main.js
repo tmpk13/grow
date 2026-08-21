@@ -1,7 +1,13 @@
-// Application shell: tabs, the growth test window and the frame loop.
+// Application shell: the two modes, their tabs, the stage toolbars and the
+// frame loop.
+//
+// The plant lab and the settlement are two views onto the same project: the
+// species and sampling boxes authored in the lab are what grows on the
+// settlement map and what its buildings are drawn from.
 
 import { createState, deserializeState, loadLocal, saveLocal, serializeState } from './state.js';
 import { Sim } from './sim.js';
+import { Settlement } from './civ/settlement.js';
 import { Viewport } from './render.js';
 import { invalidateSamplerCache } from './sampler.js';
 import { button, clear, el } from './ui/controls.js';
@@ -9,13 +15,36 @@ import { buildMaterialsPanel } from './ui/materialsPanel.js';
 import { buildShadingPanel } from './ui/shadingPanel.js';
 import { buildSpeciesPanel } from './ui/speciesPanel.js';
 import { buildWorldPanel } from './ui/worldPanel.js';
+import { buildLandPanel } from './ui/landPanel.js';
+import { buildPeoplePanel } from './ui/peoplePanel.js';
+import { buildBuildPanel } from './ui/buildPanel.js';
+import { buildEconomyPanel } from './ui/economyPanel.js';
+import { buildTechPanel } from './ui/techPanel.js';
+import { PROFESSIONS } from './civ/people.js';
 import { clamp } from './util.js';
 
-const TABS = [
-  { id: 'materials', label: 'Materials', build: buildMaterialsPanel },
-  { id: 'shading', label: 'Shading', build: buildShadingPanel },
-  { id: 'species', label: 'Species', build: buildSpeciesPanel },
-  { id: 'world', label: 'World', build: buildWorldPanel },
+const MODES = [
+  {
+    id: 'lab',
+    label: 'Plant lab',
+    tabs: [
+      { id: 'materials', label: 'Materials', build: buildMaterialsPanel },
+      { id: 'shading', label: 'Shading', build: buildShadingPanel },
+      { id: 'species', label: 'Species', build: buildSpeciesPanel },
+      { id: 'world', label: 'World', build: buildWorldPanel },
+    ],
+  },
+  {
+    id: 'settlement',
+    label: 'Settlement',
+    tabs: [
+      { id: 'land', label: 'Land', build: buildLandPanel },
+      { id: 'people', label: 'People', build: buildPeoplePanel },
+      { id: 'build', label: 'Build', build: buildBuildPanel },
+      { id: 'economy', label: 'Economy', build: buildEconomyPanel },
+      { id: 'tech', label: 'Tech', build: buildTechPanel },
+    ],
+  },
 ];
 
 const state = loadLocal() || createState();
@@ -24,13 +53,21 @@ const canvas = document.getElementById('world-canvas');
 const viewport = new Viewport(canvas);
 
 let currentPanel = null;
+let settlement = null;
 let saveTimer = 0;
+let mode = 'lab';
 
 const app = {
   state,
   sim,
   viewport,
   env: sim.env,
+  get civ() {
+    return settlement;
+  },
+  get mode() {
+    return mode;
+  },
   ui: {
     tab: 'materials',
     selectedSamplerId: state.materials.samplers[0]?.id,
@@ -47,15 +84,21 @@ const app = {
     invalidateSamplerCache();
     sim.env.invalidate();
     sim.markAllDirty();
+    if (settlement) {
+      settlement.invalidateSprites();
+      settlement.markAllDirty();
+    }
     app.requestSave();
   },
   shadingChanged() {
     sim.markAllDirty();
+    if (settlement) settlement.markAllDirty();
     app.requestSave();
   },
   speciesChanged() {
     sim.env.invalidate();
     sim.markAllDirty();
+    if (settlement) settlement.markAllDirty();
     if (currentPanel && currentPanel.redraw) currentPanel.redraw();
     app.requestSave();
   },
@@ -72,6 +115,28 @@ const app = {
     sim.reset(state.seed);
     viewport.fit(sim.world);
   },
+  // ---- settlement ----
+  civRepaint() {
+    if (!settlement) return;
+    settlement.invalidateSprites();
+    app.requestSave();
+  },
+  civRestart() {
+    if (!settlement) return;
+    app.setNote('growing the wilderness...');
+    // Yielding first lets the note paint before the warmup blocks the thread.
+    setTimeout(() => {
+      settlement.reset(state.civ.seed);
+      settlement.bootstrap();
+      viewport.fit(settlement.world);
+      app.setNote(`${settlement.name} founded`);
+      if (currentPanel && currentPanel.redraw) currentPanel.redraw();
+      app.requestSave();
+    }, 20);
+  },
+  setNote(text) {
+    setSaveNote(text);
+  },
   requestSave() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
@@ -84,30 +149,23 @@ const app = {
   },
 };
 
-// ---- tabs ----------------------------------------------------------------
-
-const tabsNode = document.getElementById('tabs');
-const panelBody = document.getElementById('panel-body');
-
-function showTab(id) {
-  app.ui.tab = id;
-  clear(tabsNode);
-  for (const tab of TABS) {
-    tabsNode.appendChild(
-      el('button', {
-        class: `tab${tab.id === id ? ' active' : ''}`,
-        type: 'button',
-        text: tab.label,
-        onclick: () => showTab(tab.id),
-      }),
-    );
-  }
-  const def = TABS.find((t) => t.id === id) || TABS[0];
-  currentPanel = def.build(panelBody, app);
+function activeMode() {
+  return MODES.find((m) => m.id === mode) || MODES[0];
 }
 
-// ---- stage toolbar -------------------------------------------------------
+function activeSim() {
+  return mode === 'settlement' && settlement ? settlement : sim;
+}
 
+function activeSimConfig() {
+  return mode === 'settlement' ? state.civ.sim : state.sim;
+}
+
+// ---- modes and tabs ------------------------------------------------------
+
+const modesNode = document.getElementById('modes');
+const tabsNode = document.getElementById('tabs');
+const panelBody = document.getElementById('panel-body');
 const toolbar = document.getElementById('stage-toolbar');
 const status = document.getElementById('statusbar');
 const saveNote = document.getElementById('save-note');
@@ -116,63 +174,146 @@ function setSaveNote(text) {
   if (saveNote) saveNote.textContent = text;
 }
 
-const playBtn = button('Play', () => {
-  state.sim.running = !state.sim.running;
-  playBtn.textContent = state.sim.running ? 'Pause' : 'Play';
-  app.requestSave();
-});
-playBtn.textContent = state.sim.running ? 'Pause' : 'Play';
+function showMode(id) {
+  mode = id;
+  const def = activeMode();
+  clear(modesNode);
+  for (const m of MODES) {
+    modesNode.appendChild(
+      el('button', {
+        class: `mode${m.id === id ? ' active' : ''}`,
+        type: 'button',
+        text: m.label,
+        onclick: () => showMode(m.id),
+      }),
+    );
+  }
+  if (id === 'settlement' && !settlement) {
+    setSaveNote('growing the wilderness...');
+    settlement = new Settlement(state);
+    // Same trick as a restart: paint the note, then run the warmup.
+    setTimeout(() => {
+      settlement.bootstrap();
+      viewport.fit(settlement.world);
+      setSaveNote(`${settlement.name} founded`);
+      if (currentPanel && currentPanel.redraw) currentPanel.redraw();
+    }, 20);
+  }
+  buildToolbar();
+  showTab(def.tabs[0].id);
+  viewport.fit(activeSim().world);
+}
 
-const speedInput = el('input', { type: 'range', min: 0.25, max: 32, step: 0.25, value: state.sim.speed });
-const speedLabel = el('span', { class: 'readout', text: `${state.sim.speed}x` });
-speedInput.addEventListener('input', () => {
-  state.sim.speed = Number(speedInput.value);
-  speedLabel.textContent = `${state.sim.speed}x`;
-  app.requestSave();
-});
+function showTab(id) {
+  const def = activeMode();
+  const tab = def.tabs.find((t) => t.id === id) || def.tabs[0];
+  app.ui.tab = tab.id;
+  clear(tabsNode);
+  for (const t of def.tabs) {
+    tabsNode.appendChild(
+      el('button', {
+        class: `tab${t.id === tab.id ? ' active' : ''}`,
+        type: 'button',
+        text: t.label,
+        onclick: () => showTab(t.id),
+      }),
+    );
+  }
+  currentPanel = tab.build(panelBody, app);
+}
 
-const zoomInput = el('input', { type: 'range', min: 0.5, max: 16, step: 0.25, value: viewport.zoom });
-const zoomLabel = el('span', { class: 'readout', text: `${viewport.zoom.toFixed(2)}x` });
-zoomInput.addEventListener('input', () => {
-  const rect = canvas.getBoundingClientRect();
-  const target = Number(zoomInput.value);
-  viewport.zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, target / viewport.zoom);
-  zoomLabel.textContent = `${viewport.zoom.toFixed(2)}x`;
-});
+// ---- stage toolbar -------------------------------------------------------
 
-const gridToggle = el('input', { type: 'checkbox' });
-gridToggle.addEventListener('change', () => {
-  viewport.showGrid = gridToggle.checked;
-});
-const occToggle = el('input', { type: 'checkbox' });
-occToggle.addEventListener('change', () => {
-  viewport.showOccupancy = occToggle.checked;
-});
+function buildToolbar() {
+  clear(toolbar);
+  const cfg = activeSimConfig();
 
-toolbar.appendChild(
-  el('div', { class: 'toolbar-row' }, [
+  const playBtn = button('Play', () => {
+    cfg.running = !cfg.running;
+    playBtn.textContent = cfg.running ? 'Pause' : 'Play';
+    app.requestSave();
+  });
+  playBtn.textContent = cfg.running ? 'Pause' : 'Play';
+  toolbar.playBtn = playBtn;
+
+  const speedInput = el('input', { type: 'range', min: 0.25, max: 32, step: 0.25, value: cfg.speed });
+  const speedLabel = el('span', { class: 'readout', text: `${cfg.speed}x` });
+  speedInput.addEventListener('input', () => {
+    cfg.speed = Number(speedInput.value);
+    speedLabel.textContent = `${cfg.speed}x`;
+    app.requestSave();
+  });
+
+  const zoomInput = el('input', { type: 'range', min: 0.5, max: 16, step: 0.25, value: viewport.zoom });
+  const zoomLabel = el('span', { class: 'readout', text: `${viewport.zoom.toFixed(2)}x` });
+  zoomInput.addEventListener('input', () => {
+    const rect = canvas.getBoundingClientRect();
+    const target = Number(zoomInput.value);
+    viewport.zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, target / viewport.zoom);
+    zoomLabel.textContent = `${viewport.zoom.toFixed(2)}x`;
+  });
+  zoomSync = () => {
+    zoomInput.value = clamp(viewport.zoom, 0.5, 16);
+    zoomLabel.textContent = `${viewport.zoom.toFixed(2)}x`;
+  };
+
+  const gridToggle = el('input', { type: 'checkbox' });
+  gridToggle.checked = viewport.showGrid;
+  gridToggle.addEventListener('change', () => {
+    viewport.showGrid = gridToggle.checked;
+  });
+  const occToggle = el('input', { type: 'checkbox' });
+  occToggle.checked = viewport.showOccupancy;
+  occToggle.addEventListener('change', () => {
+    viewport.showOccupancy = occToggle.checked;
+  });
+
+  const controls = [
     playBtn,
-    button('Step', () => sim.step(1 / state.sim.tickHz)),
-    button('Restart', () => app.restart()),
+    button('Step', () => activeSim().step(1 / cfg.tickHz)),
+  ];
+  if (mode === 'settlement') {
+    controls.push(button('New settlers', () => app.civRestart()));
+    controls.push(
+      button('New land', () => {
+        state.civ.seed = (Math.random() * 1e9) | 0;
+        app.civRestart();
+        app.rebuildPanel();
+      }),
+    );
+  } else {
+    controls.push(button('Restart', () => app.restart()));
+  }
+  controls.push(
     el('label', { class: 'inline' }, [el('span', { text: 'Speed' }), speedInput, speedLabel]),
     el('label', { class: 'inline' }, [el('span', { text: 'Zoom' }), zoomInput, zoomLabel]),
     button('Fit', () => {
-      viewport.fit(sim.world);
-      zoomInput.value = viewport.zoom;
-      zoomLabel.textContent = `${viewport.zoom.toFixed(2)}x`;
+      viewport.fit(activeSim().world);
+      zoomSync();
     }),
     el('label', { class: 'inline' }, [el('span', { text: 'Grid' }), gridToggle]),
     el('label', { class: 'inline' }, [el('span', { text: 'Occupancy' }), occToggle]),
-  ]),
-);
+  );
+  if (mode === 'settlement') {
+    const labelToggle = el('input', { type: 'checkbox' });
+    labelToggle.checked = !!state.civ.view.labels;
+    labelToggle.addEventListener('change', () => {
+      state.civ.view.labels = labelToggle.checked;
+      app.requestSave();
+    });
+    controls.push(el('label', { class: 'inline' }, [el('span', { text: 'Labels' }), labelToggle]));
+  }
+  toolbar.appendChild(el('div', { class: 'toolbar-row' }, controls));
+}
+
+let zoomSync = () => {};
 
 // ---- canvas interaction --------------------------------------------------
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   viewport.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
-  zoomInput.value = clamp(viewport.zoom, 0.5, 16);
-  zoomLabel.textContent = `${viewport.zoom.toFixed(2)}x`;
+  zoomSync();
 }, { passive: false });
 
 let dragging = false;
@@ -200,11 +341,14 @@ window.addEventListener('keydown', (e) => {
   if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
   if (e.code === 'Space') {
     e.preventDefault();
-    playBtn.click();
+    if (toolbar.playBtn) toolbar.playBtn.click();
   } else if (e.key === '.') {
-    sim.step(1 / state.sim.tickHz);
+    activeSim().step(1 / activeSimConfig().tickHz);
   } else if (e.key === 'f') {
-    viewport.fit(sim.world);
+    viewport.fit(activeSim().world);
+    zoomSync();
+  } else if (e.key === 'm') {
+    showMode(mode === 'lab' ? 'settlement' : 'lab');
   }
 });
 
@@ -216,10 +360,11 @@ document.getElementById('btn-new').addEventListener('click', () => {
   invalidateSamplerCache();
   sim.env.invalidate();
   sim.reset(state.seed);
+  settlement = null;
   viewport.fit(sim.world);
   app.ui.selectedSamplerId = state.materials.samplers[0].id;
   app.ui.selectedSpeciesId = state.species[0].id;
-  app.rebuildPanel();
+  showMode('lab');
   app.requestSave();
 });
 
@@ -243,10 +388,11 @@ importInput.addEventListener('change', async () => {
     Object.assign(state, next);
     sim.env.invalidate();
     sim.reset(state.seed);
+    settlement = null;
     viewport.fit(sim.world);
     app.ui.selectedSamplerId = state.materials.samplers[0].id;
     app.ui.selectedSpeciesId = state.species[0].id;
-    app.rebuildPanel();
+    showMode('lab');
     setSaveNote(`imported ${file.name}`);
     app.requestSave();
   } catch (err) {
@@ -266,26 +412,34 @@ function frame(ts) {
   last = ts;
   fps = fps * 0.9 + (1 / Math.max(1e-3, dtReal)) * 0.1;
 
-  if (state.sim.running) {
-    const stepDt = 1 / state.sim.tickHz;
-    accumulator += dtReal * state.sim.speed;
+  const active = activeSim();
+  const cfg = activeSimConfig();
+  if (cfg.running && (mode !== 'settlement' || (settlement && settlement.ready))) {
+    const stepDt = 1 / cfg.tickHz;
+    accumulator += dtReal * cfg.speed;
     let steps = 0;
     while (accumulator >= stepDt && steps < 400) {
-      sim.step(stepDt);
+      active.step(stepDt);
       accumulator -= stepDt;
       steps++;
     }
     if (accumulator > 2) accumulator = 0;
+  } else {
+    accumulator = 0;
   }
 
-  sim.processRasterQueue(state.sim.rasterBudget);
-  viewport.draw(sim);
+  active.processRasterQueue(cfg.rasterBudget);
+  viewport.draw(active);
   if (currentPanel && currentPanel.tick) currentPanel.tick(dtReal);
   updateStatus();
   requestAnimationFrame(frame);
 }
 
 function updateStatus() {
+  if (mode === 'settlement') {
+    status.textContent = settlement && settlement.ready ? settlementStatus() : 'growing the wilderness...';
+    return;
+  }
   const s = sim.stats();
   const parts = [
     `tick ${s.ticks}`,
@@ -300,6 +454,29 @@ function updateStatus() {
   status.textContent = parts.join('   ');
 }
 
+function settlementStatus() {
+  const s = settlement.stats();
+  const clock = `${String(Math.floor(s.dayFraction * 24)).padStart(2, '0')}:${String(
+    Math.floor((s.dayFraction * 24 * 60) % 60),
+  ).padStart(2, '0')}`;
+  const jobs = Object.entries(s.professions)
+    .filter(([id]) => id !== 'child')
+    .map(([id, n]) => `${PROFESSIONS[id] || id} ${n}`)
+    .join(' ');
+  return [
+    settlement.name,
+    `day ${s.day} ${clock}`,
+    `people ${s.population} (${s.children} children)`,
+    `beds ${s.housing}`,
+    `built ${s.buildings}${s.sites ? ` +${s.sites}` : ''}`,
+    `food ${Math.round(settlement.stock.food || 0)}`,
+    `coin ${Math.round(s.coin)}`,
+    `tech ${s.known}/${s.techs}`,
+    jobs,
+    `${fps.toFixed(0)} fps`,
+  ].join('   ');
+}
+
 // ---- boot ----------------------------------------------------------------
 
 const resizeObserver = new ResizeObserver(() => {
@@ -307,6 +484,6 @@ const resizeObserver = new ResizeObserver(() => {
 });
 resizeObserver.observe(canvas.parentElement);
 
-showTab('materials');
+showMode('lab');
 viewport.fit(sim.world);
 requestAnimationFrame(frame);

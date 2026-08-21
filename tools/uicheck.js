@@ -1,6 +1,6 @@
-// Loads the tool in a headless browser, clicks through every tab, and reports
-// any console error or uncaught exception. Writes screenshots next to the
-// output path given as the first argument.
+// Loads the tool in a headless browser, clicks through both modes and every
+// tab in them, and reports any console error or uncaught exception. Writes
+// screenshots next to the output path given as the first argument.
 //
 //   bun run tools/uicheck.js /tmp/shots
 
@@ -10,7 +10,9 @@ import { mkdirSync } from 'node:fs';
 const outDir = process.argv[2] || '/tmp/grow-shots';
 mkdirSync(outDir, { recursive: true });
 
-const PORT = 5199;
+// A fresh port per run, so a server left behind by an earlier run cannot serve
+// stale files to this one.
+const PORT = 5200 + Math.floor(Math.random() * 300);
 const server = Bun.spawn(['bun', 'run', 'serve.js'], {
   cwd: new URL('..', import.meta.url).pathname,
   env: { ...process.env, PORT: String(PORT) },
@@ -33,6 +35,13 @@ page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
 
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
 await page.waitForTimeout(400);
+if ((await page.locator('.tab').count()) === 0) {
+  console.error('the app did not boot: no tabs rendered');
+  for (const p of problems) console.error(`  ${p}`);
+  await browser.close();
+  server.kill();
+  process.exit(1);
+}
 
 // Run the simulation for a few seconds at speed so the stage has content.
 const playBtn = page.locator('.toolbar-row .btn').first();
@@ -84,7 +93,37 @@ await page.waitForTimeout(1500);
 await page.screenshot({ path: `${outDir}/08-resized.png` });
 
 const stats = await page.evaluate(() => document.getElementById('statusbar').textContent);
-console.log(`status: ${stats}`);
+console.log(`lab status: ${stats}`);
+
+// Settlement mode: founding the settlement runs the wilderness warmup, which
+// takes a moment, so give it room before touching the panels.
+await page.click('.mode:text-is("Settlement")');
+await page.waitForTimeout(9000);
+await page.screenshot({ path: `${outDir}/09-settlement.png` });
+for (const tab of ['People', 'Build', 'Economy', 'Tech']) {
+  await page.click(`.tab:text-is("${tab}")`);
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: `${outDir}/10-${tab.toLowerCase()}.png` });
+}
+await page.click('.tab:text-is("Build")');
+await page.locator('.cat-row:not(.locked) .btn:text-is("Build")').first().click();
+await page.evaluate(() => {
+  const slider = document.querySelectorAll('.toolbar-row input[type=range]')[0];
+  slider.value = '16';
+  slider.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await page.waitForTimeout(6000);
+await page.screenshot({ path: `${outDir}/11-settlement-run.png` });
+const civStats = await page.evaluate(() => document.getElementById('statusbar').textContent);
+console.log(`settlement status: ${civStats}`);
+if (!/people \d+/.test(civStats)) problems.push('settlement status line has no population');
+
+// Back to the lab and in again: both sims have to survive the switch.
+await page.click('.mode:text-is("Plant lab")');
+await page.waitForTimeout(1200);
+await page.click('.mode:text-is("Settlement")');
+await page.waitForTimeout(2000);
+await page.screenshot({ path: `${outDir}/12-settlement-return.png` });
 
 await browser.close();
 server.kill();
