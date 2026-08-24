@@ -114,6 +114,10 @@ dist
 
 node_modules/
 NOTES.md
+
+# rust build output
+rust/target/
+pkg/
 *.ppm
 *.png
 !docs/**/*.png

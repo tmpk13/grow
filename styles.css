@@ -415,6 +415,11 @@ input[type="checkbox"] {
   opacity: 0.45;
 }
 
+.chip.dim {
+  color: var(--text-dim);
+  cursor: default;
+}
+
 .class-block {
   border-top: 1px solid var(--line);
   padding-top: 0.4rem;
@@ -560,7 +565,9 @@ input[type="checkbox"] {
 
 .roster-row {
   display: grid;
-  grid-template-columns: minmax(6rem, 1.4fr) minmax(5rem, 1fr) minmax(5rem, 1fr) 2.5rem 2.5rem;
+  grid-template-columns:
+    minmax(6rem, 1.4fr) minmax(5rem, 1fr) minmax(5rem, 1.2fr)
+    minmax(2.5rem, auto) 2.5rem 2.5rem;
   align-items: center;
   gap: 0.3rem;
   background: #0f151e;
@@ -570,10 +577,33 @@ input[type="checkbox"] {
   font-size: 0.72rem;
 }
 
+.roster-row.active {
+  border-color: var(--accent);
+}
+
+.roster-row.dead {
+  opacity: 0.5;
+}
+
 .roster-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* A name in the register opens that settler's record. */
+.roster-name.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.roster-name.link:hover {
+  color: var(--accent);
 }
 
 .roster-job,
@@ -582,6 +612,40 @@ input[type="checkbox"] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.roster-coin {
+  color: var(--accent-warm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
+}
+
+/* One settler's record: who they are, how they are and what has happened. */
+.person-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: #0d131b;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.person-card:empty {
+  display: none;
+}
+
+.person-bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.2rem 0.6rem;
+}
+
+.person-bars .field {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .bar {
@@ -613,6 +677,64 @@ input[type="checkbox"] {
 
 .bar-fill.research {
   background: #7fb4ff;
+}
+
+.bar-fill.fed {
+  background: #cbd06a;
+}
+
+.bar-fill.rested {
+  background: #9ba7f0;
+}
+
+.bar-fill.content {
+  background: #e2a4c8;
+}
+
+/* Who a settler knows, strongest feeling first either way. */
+.bonds {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.bond {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1.4fr) minmax(3.5rem, 4.5rem) 1fr;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+}
+
+.bond-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bond-tie {
+  color: var(--text-dim);
+}
+
+.bond-tie.friend {
+  color: #7fd1a0;
+}
+
+.bond-tie.rival {
+  color: #e08a7a;
+}
+
+.bond-tie.married,
+.bond-tie.kin {
+  color: var(--accent-warm);
+}
+
+.bar-fill.friend {
+  background: #7fd1a0;
+}
+
+.bar-fill.rival {
+  background: #e08a7a;
 }
 
 .catalog,

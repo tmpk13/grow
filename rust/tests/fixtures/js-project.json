@@ -1,0 +1,766 @@
+{
+  "version": 3,
+  "seed": 4242,
+  "materials": {
+    "mode": "multi",
+    "atlas": {
+      "w": 24,
+      "h": 42,
+      "px": "28341dff28341dff28341dff394a2aff394a2aff394a2aff394a2aff394a2aff486037ff486037ff486037ff486037ff577545ff577545ff577545ff577545ff577545ff668a52ff668a52ff668a52ff668a52ff749f60ff749f60ff749f60ff28341dff28341dff28341dff394a2aff394a2aff394a2aff394a2aff394a2aff486037ff486037ff486037ff486037ff577545ff577545ff577545ff577545ff577545ff668a52ff668a52ff668a52ff668a52ff749f60ff749f60ff749f60ff28341dff28341dff394a2aff28341dff28341dff394a2aff486037ff486037ff394a2aff486037ff486037ff577545ff486037ff486037ff577545ff668a52ff668a52ff577545ff668a52ff668a52ff749f60ff668a52ff668a52ff749f60ff1e1410ff1e1410ff1e1410ff1e1410ff1e1410ff32231bff32231bff32231bff32231bff463327ff463327ff463327ff463327ff463327ff5a4333ff5a4333ff5a4333ff5a4333ff6e543fff6e543fff6e543fff6e543fff6e543fff81654bff1e1410ff1e1410ff1e1410ff32231bff32231bff32231bff32231bff32231bff463327ff463327ff463327ff463327ff5a4333ff5a4333ff5a4333ff5a4333ff5a4333ff6e543fff6e543fff6e543fff6e543fff81654bff81654bff81654bff1e1410ff1e1410ff1e1410ff32231bff32231bff32231bff32231bff32231bff463327ff463327ff463327ff463327ff5a4333ff5a4333ff5a4333ff5a4333ff5a4333ff6e543fff6e543fff6e543fff6e543fff81654bff81654bff81654bff302018ff302018ff302018ff302018ff302018ff483224ff483224ff483224ff483224ff604531ff604531ff604531ff604531ff604531ff77583eff77583eff77583eff77583eff8f6c4cff8f6c4cff8f6c4cff8f6c4cff8f6c4cffa68159ff302018ff302018ff483224ff302018ff302018ff483224ff604531ff604531ff483224ff604531ff604531ff77583eff604531ff604531ff77583eff8f6c4cff8f6c4cff77583eff8f6c4cff8f6c4cffa68159ff8f6c4cff8f6c4cffa68159ff302018ff302018ff302018ff483224ff483224ff483224ff483224ff483224ff604531ff604531ff604531ff604531ff77583eff77583eff77583eff77583eff77583eff8f6c4cff8f6c4cff8f6c4cff8f6c4cffa68159ffa68159ffa68159ff35281dff35281dff35281dff4e3c2bff4e3c2bff4e3c2bff4e3c2bff4e3c2bff665039ff665039ff665039ff665039ff7e6647ff7e6647ff7e6647ff7e6647ff7e6647ff967c56ff967c56ff967c56ff967c56ffa9916bffa9916bffa9916bff35281dff35281dff35281dff4e3c2bff4e3c2bff4e3c2bff4e3c2bff4e3c2bff665039ff665039ff665039ff665039ff7e6647ff7e6647ff7e6647ff7e6647ff7e6647ff967c56ff967c56ff967c56ff967c56ffa9916bffa9916bffa9916bff35281dff35281dff4e3c2bff35281dff35281dff4e3c2bff665039ff665039ff4e3c2bff665039ff665039ff7e6647ff665039ff665039ff7e6647ff967c56ff967c56ff7e6647ff967c56ff967c56ffa9916bff967c56ff967c56ffa9916bff183315ff183315ff183315ff183315ff183315ff265122ff265122ff265122ff265122ff326e2fff326e2fff326e2fff326e2fff326e2fff3e8b3dff3e8b3dff3e8b3dff3e8b3dff4ba74dff4ba74dff4ba74dff4ba74dff4ba74dff65b869ff183315ff183315ff183315ff265122ff265122ff265122ff265122ff265122ff326e2fff326e2fff326e2fff326e2fff3e8b3dff3e8b3dff3e8b3dff3e8b3dff3e8b3dff4ba74dff4ba74dff4ba74dff4ba74dff65b869ff65b869ff65b869ff183315ff183315ff183315ff265122ff265122ff265122ff265122ff265122ff326e2fff326e2fff326e2fff326e2fff3e8b3dff3e8b3dff3e8b3dff3e8b3dff3e8b3dff4ba74dff4ba74dff4ba74dff4ba74dff65b869ff65b869ff65b869ff3e4d19ff3e4d19ff3e4d19ff3e4d19ff3e4d19ff586f26ff586f26ff586f26ff586f26ff709133ff709133ff709133ff709133ff709133ff87b241ff87b241ff87b241ff87b241ff99c35fff99c35fff99c35fff99c35fff99c35fffacce82ff3e4d19ff3e4d19ff586f26ff3e4d19ff3e4d19ff586f26ff709133ff709133ff586f26ff709133ff709133ff87b241ff709133ff709133ff87b241ff99c35fff99c35fff87b241ff99c35fff99c35fffacce82ff99c35fff99c35fffacce82ff3e4d19ff3e4d19ff3e4d19ff586f26ff586f26ff586f26ff586f26ff586f26ff709133ff709133ff709133ff709133ff87b241ff87b241ff87b241ff87b241ff87b241ff99c35fff99c35fff99c35fff99c35fffacce82ffacce82ffacce82ff343819ff343819ff343819ff485025ff485025ff485025ff485025ff485025ff5b6730ff5b6730ff5b6730ff5b6730ff6d7e3cff6d7e3cff6d7e3cff6d7e3cff6d7e3cff7f9448ff7f9448ff7f9448ff7f9448ff8faa55ff8faa55ff8faa55ff343819ff343819ff343819ff485025ff485025ff485025ff485025ff485025ff5b6730ff5b6730ff5b6730ff5b6730ff6d7e3cff6d7e3cff6d7e3cff6d7e3cff6d7e3cff7f9448ff7f9448ff7f9448ff7f9448ff8faa55ff8faa55ff8faa55ff343819ff343819ff485025ff343819ff343819ff485025ff5b6730ff5b6730ff485025ff5b6730ff5b6730ff6d7e3cff5b6730ff5b6730ff6d7e3cff7f9448ff7f9448ff6d7e3cff7f9448ff7f9448ff8faa55ff7f9448ff7f9448ff8faa55ff2b2e31ff2b2e31ff2b2e31ff2b2e31ff2b2e31ff3e4346ff3e4346ff3e4346ff3e4346ff52575cff52575cff52575cff52575cff52575cff656b71ff656b71ff656b71ff656b71ff797f86ff797f86ff797f86ff797f86ff797f86ff8e939aff2b2e31ff2b2e31ff2b2e31ff3e4346ff3e4346ff3e4346ff3e4346ff3e4346ff52575cff52575cff52575cff52575cff656b71ff656b71ff656b71ff656b71ff656b71ff797f86ff797f86ff797f86ff797f86ff8e939aff8e939aff8e939aff2b2e31ff2b2e31ff2b2e31ff3e4346ff3e4346ff3e4346ff3e4346ff3e4346ff52575cff52575cff52575cff52575cff656b71ff656b71ff656b71ff656b71ff656b71ff797f86ff797f86ff797f86ff797f86ff8e939aff8e939aff8e939aff35271dff35271dff35271dff35271dff35271dff4c392aff4c392aff4c392aff4c392aff644d37ff644d37ff644d37ff644d37ff644d37ff7b6145ff7b6145ff7b6145ff7b6145ff917553ff917553ff917553ff917553ff917553ffa58a64ff35271dff35271dff4c392aff35271dff35271dff4c392aff644d37ff644d37ff4c392aff644d37ff644d37ff7b6145ff644d37ff644d37ff7b6145ff917553ff917553ff7b6145ff917553ff917553ffa58a64ff917553ff917553ffa58a64ff35271dff35271dff35271dff4c392aff4c392aff4c392aff4c392aff4c392aff644d37ff644d37ff644d37ff644d37ff7b6145ff7b6145ff7b6145ff7b6145ff7b6145ff917553ff917553ff917553ff917553ffa58a64ffa58a64ffa58a64ff4b3a25ff4b3a25ff4b3a25ff695334ff695334ff695334ff695334ff695334ff866d44ff866d44ff866d44ff866d44ffa28754ffa28754ffa28754ffa28754ffa28754ffb39e70ffb39e70ffb39e70ffb39e70ffc2b48effc2b48effc2b48eff4b3a25ff4b3a25ff4b3a25ff695334ff695334ff695334ff695334ff695334ff866d44ff866d44ff866d44ff866d44ffa28754ffa28754ffa28754ffa28754ffa28754ffb39e70ffb39e70ffb39e70ffb39e70ffc2b48effc2b48effc2b48eff4b3a25ff4b3a25ff695334ff4b3a25ff4b3a25ff695334ff866d44ff866d44ff695334ff866d44ff866d44ffa28754ff866d44ff866d44ffa28754ffb39e70ffb39e70ffa28754ffb39e70ffb39e70ffc2b48effb39e70ffb39e70ffc2b48eff483b1eff483b1eff483b1eff483b1eff483b1eff66552bff66552bff66552bff66552bff837138ff837138ff837138ff837138ff837138ffa08d46ffa08d46ffa08d46ffa08d46ffb6a55cffb6a55cffb6a55cffb6a55cffb6a55cffc2b77aff483b1eff483b1eff483b1eff66552bff66552bff66552bff66552bff66552bff837138ff837138ff837138ff837138ffa08d46ffa08d46ffa08d46ffa08d46ffa08d46ffb6a55cffb6a55cffb6a55cffb6a55cffc2b77affc2b77affc2b77aff483b1eff483b1eff483b1eff66552bff66552bff66552bff66552bff66552bff837138ff837138ff837138ff837138ffa08d46ffa08d46ffa08d46ffa08d46ffa08d46ffb6a55cffb6a55cffb6a55cffb6a55cffc2b77affc2b77affc2b77aff42201aff42201aff42201aff42201aff42201aff5d3025ff5d3025ff5d3025ff5d3025ff784131ff784131ff784131ff784131ff784131ff93533eff93533eff93533eff93533effad664affad664affad664affad664affad664affba7f63ff42201aff42201aff5d3025ff42201aff42201aff5d3025ff784131ff784131ff5d3025ff784131ff784131ff93533eff784131ff784131ff93533effad664affad664aff93533effad664affad664affba7f63ffad664affad664affba7f63ff42201aff42201aff42201aff5d3025ff5d3025ff5d3025ff5d3025ff5d3025ff784131ff784131ff784131ff784131ff93533eff93533eff93533eff93533eff93533effad664affad664affad664affad664affba7f63ffba7f63ffba7f63ff373f43ff373f43ff373f43ff4e595fff4e595fff4e595fff4e595fff4e595fff66727bff66727bff66727bff66727bff7f8b95ff7f8b95ff7f8b95ff7f8b95ff7f8b95ff9ba4abff9ba4abff9ba4abff9ba4abffb7bdc3ffb7bdc3ffb7bdc3ff373f43ff373f43ff373f43ff4e595fff4e595fff4e595fff4e595fff4e595fff66727bff66727bff66727bff66727bff7f8b95ff7f8b95ff7f8b95ff7f8b95ff7f8b95ff9ba4abff9ba4abff9ba4abff9ba4abffb7bdc3ffb7bdc3ffb7bdc3ff373f43ff373f43ff4e595fff373f43ff373f43ff4e595fff66727bff66727bff4e595fff66727bff66727bff7f8b95ff66727bff66727bff7f8b95ff9ba4abff9ba4abff7f8b95ff9ba4abff9ba4abffb7bdc3ff9ba4abff9ba4abffb7bdc3ff4d2d40ff4d2d40ff4d2d40ff4d2d40ff4d2d40ff693e56ff693e56ff693e56ff693e56ff84506bff84506bff84506bff84506bff84506bff9f6280ff9f6280ff9f6280ff9f6280ffaf7f95ffaf7f95ffaf7f95ffaf7f95ffaf7f95ffc09baaff4d2d40ff4d2d40ff4d2d40ff693e56ff693e56ff693e56ff693e56ff693e56ff84506bff84506bff84506bff84506bff9f6280ff9f6280ff9f6280ff9f6280ff9f6280ffaf7f95ffaf7f95ffaf7f95ffaf7f95ffc09baaffc09baaffc09baaff4d2d40ff4d2d40ff4d2d40ff693e56ff693e56ff693e56ff693e56ff693e56ff84506bff84506bff84506bff84506bff9f6280ff9f6280ff9f6280ff9f6280ff9f6280ffaf7f95ffaf7f95ffaf7f95ffaf7f95ffc09baaffc09baaffc09baaff"
+    },
+    "samplers": [
+      {
+        "id": "mat-ground",
+        "name": "Ground cover",
+        "role": "ground",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 0,
+          "w": 24,
+          "h": 3
+        },
+        "px": "332211ff28341dff394a2aff394a2aff394a2aff486037ff486037ff486037ff577545ff577545ff577545ff668a52ff668a52ff668a52ff749f60ff749f60ff28341dff394a2aff28341dff394a2aff486037ff394a2aff486037ff577545ff486037ff577545ff668a52ff577545ff668a52ff749f60ff668a52ff749f60ff28341dff28341dff394a2aff394a2aff394a2aff486037ff486037ff486037ff577545ff577545ff577545ff668a52ff668a52ff668a52ff749f60ff749f60ff28341dff28341dff394a2aff394a2aff394a2aff486037ff486037ff486037ff577545ff577545ff577545ff668a52ff668a52ff668a52ff749f60ff749f60ff28341dff394a2aff28341dff394a2aff486037ff394a2aff486037ff577545ff486037ff577545ff668a52ff577545ff668a52ff749f60ff668a52ff749f60ff394a2aff28341dff394a2aff486037ff394a2aff486037ff577545ff486037ff577545ff668a52ff577545ff668a52ff749f60ff668a52ff749f60ff749f60ff"
+      },
+      {
+        "id": "mat-soil",
+        "name": "Soil",
+        "role": "soil",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 3,
+          "w": 24,
+          "h": 3
+        },
+        "px": "1e1410ff1e1410ff1e1410ff32231bff32231bff32231bff463327ff463327ff463327ff5a4333ff5a4333ff5a4333ff6e543fff6e543fff6e543fff81654bff1e1410ff1e1410ff32231bff32231bff32231bff463327ff463327ff463327ff5a4333ff5a4333ff5a4333ff6e543fff6e543fff6e543fff81654bff81654bff1e1410ff1e1410ff32231bff32231bff32231bff463327ff463327ff463327ff5a4333ff5a4333ff5a4333ff6e543fff6e543fff6e543fff81654bff81654bff1e1410ff32231bff1e1410ff32231bff463327ff32231bff463327ff5a4333ff463327ff5a4333ff6e543fff5a4333ff6e543fff81654bff6e543fff81654bff1e1410ff1e1410ff32231bff32231bff32231bff463327ff463327ff463327ff5a4333ff5a4333ff5a4333ff6e543fff6e543fff6e543fff81654bff81654bff1e1410ff32231bff32231bff32231bff463327ff463327ff463327ff5a4333ff5a4333ff5a4333ff6e543fff6e543fff6e543fff81654bff81654bff81654bff"
+      },
+      {
+        "id": "mat-trunk",
+        "name": "Tree base / trunk",
+        "role": "trunk",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 6,
+          "w": 24,
+          "h": 3
+        },
+        "px": "302018ff302018ff302018ff483224ff483224ff483224ff604531ff604531ff604531ff77583eff77583eff77583eff8f6c4cff8f6c4cff8f6c4cffa68159ff302018ff302018ff483224ff483224ff483224ff604531ff604531ff604531ff77583eff77583eff77583eff8f6c4cff8f6c4cff8f6c4cffa68159ffa68159ff302018ff483224ff302018ff483224ff604531ff483224ff604531ff77583eff604531ff77583eff8f6c4cff77583eff8f6c4cffa68159ff8f6c4cffa68159ff302018ff302018ff483224ff483224ff483224ff604531ff604531ff604531ff77583eff77583eff77583eff8f6c4cff8f6c4cff8f6c4cffa68159ffa68159ff302018ff302018ff483224ff483224ff483224ff604531ff604531ff604531ff77583eff77583eff77583eff8f6c4cff8f6c4cff8f6c4cffa68159ffa68159ff302018ff483224ff483224ff483224ff604531ff604531ff604531ff77583eff77583eff77583eff8f6c4cff8f6c4cff8f6c4cffa68159ffa68159ffa68159ff"
+      },
+      {
+        "id": "mat-branch",
+        "name": "Branches",
+        "role": "branch",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 9,
+          "w": 24,
+          "h": 3
+        },
+        "px": "35281dff35281dff4e3c2bff4e3c2bff4e3c2bff665039ff665039ff665039ff7e6647ff7e6647ff7e6647ff967c56ff967c56ff967c56ffa9916bffa9916bff35281dff4e3c2bff35281dff4e3c2bff665039ff4e3c2bff665039ff7e6647ff665039ff7e6647ff967c56ff7e6647ff967c56ffa9916bff967c56ffa9916bff35281dff35281dff4e3c2bff4e3c2bff4e3c2bff665039ff665039ff665039ff7e6647ff7e6647ff7e6647ff967c56ff967c56ff967c56ffa9916bffa9916bff35281dff35281dff4e3c2bff4e3c2bff4e3c2bff665039ff665039ff665039ff7e6647ff7e6647ff7e6647ff967c56ff967c56ff967c56ffa9916bffa9916bff35281dff4e3c2bff35281dff4e3c2bff665039ff4e3c2bff665039ff7e6647ff665039ff7e6647ff967c56ff7e6647ff967c56ffa9916bff967c56ffa9916bff4e3c2bff35281dff4e3c2bff665039ff4e3c2bff665039ff7e6647ff665039ff7e6647ff967c56ff7e6647ff967c56ffa9916bff967c56ffa9916bffa9916bff"
+      },
+      {
+        "id": "mat-leaf",
+        "name": "Leaf texture",
+        "role": "leaf",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 12,
+          "w": 24,
+          "h": 3
+        },
+        "px": "183315ff183315ff183315ff265122ff265122ff265122ff326e2fff326e2fff326e2fff3e8b3dff3e8b3dff3e8b3dff4ba74dff4ba74dff4ba74dff65b869ff183315ff183315ff265122ff265122ff265122ff326e2fff326e2fff326e2fff3e8b3dff3e8b3dff3e8b3dff4ba74dff4ba74dff4ba74dff65b869ff65b869ff183315ff183315ff265122ff265122ff265122ff326e2fff326e2fff326e2fff3e8b3dff3e8b3dff3e8b3dff4ba74dff4ba74dff4ba74dff65b869ff65b869ff183315ff265122ff183315ff265122ff326e2fff265122ff326e2fff3e8b3dff326e2fff3e8b3dff4ba74dff3e8b3dff4ba74dff65b869ff4ba74dff65b869ff183315ff183315ff265122ff265122ff265122ff326e2fff326e2fff326e2fff3e8b3dff3e8b3dff3e8b3dff4ba74dff4ba74dff4ba74dff65b869ff65b869ff183315ff265122ff265122ff265122ff326e2fff326e2fff326e2fff3e8b3dff3e8b3dff3e8b3dff4ba74dff4ba74dff4ba74dff65b869ff65b869ff65b869ff"
+      },
+      {
+        "id": "mat-leafEdge",
+        "name": "Leaf edges",
+        "role": "leafEdge",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 15,
+          "w": 24,
+          "h": 3
+        },
+        "px": "3e4d19ff3e4d19ff3e4d19ff586f26ff586f26ff586f26ff709133ff709133ff709133ff87b241ff87b241ff87b241ff99c35fff99c35fff99c35fffacce82ff3e4d19ff3e4d19ff586f26ff586f26ff586f26ff709133ff709133ff709133ff87b241ff87b241ff87b241ff99c35fff99c35fff99c35fffacce82ffacce82ff3e4d19ff586f26ff3e4d19ff586f26ff709133ff586f26ff709133ff87b241ff709133ff87b241ff99c35fff87b241ff99c35fffacce82ff99c35fffacce82ff3e4d19ff3e4d19ff586f26ff586f26ff586f26ff709133ff709133ff709133ff87b241ff87b241ff87b241ff99c35fff99c35fff99c35fffacce82ffacce82ff3e4d19ff3e4d19ff586f26ff586f26ff586f26ff709133ff709133ff709133ff87b241ff87b241ff87b241ff99c35fff99c35fff99c35fffacce82ffacce82ff3e4d19ff586f26ff586f26ff586f26ff709133ff709133ff709133ff87b241ff87b241ff87b241ff99c35fff99c35fff99c35fffacce82ffacce82ffacce82ff"
+      },
+      {
+        "id": "mat-stem",
+        "name": "Stem to leaf",
+        "role": "stem",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 18,
+          "w": 24,
+          "h": 3
+        },
+        "px": "343819ff343819ff485025ff485025ff485025ff5b6730ff5b6730ff5b6730ff6d7e3cff6d7e3cff6d7e3cff7f9448ff7f9448ff7f9448ff8faa55ff8faa55ff343819ff485025ff343819ff485025ff5b6730ff485025ff5b6730ff6d7e3cff5b6730ff6d7e3cff7f9448ff6d7e3cff7f9448ff8faa55ff7f9448ff8faa55ff343819ff343819ff485025ff485025ff485025ff5b6730ff5b6730ff5b6730ff6d7e3cff6d7e3cff6d7e3cff7f9448ff7f9448ff7f9448ff8faa55ff8faa55ff343819ff343819ff485025ff485025ff485025ff5b6730ff5b6730ff5b6730ff6d7e3cff6d7e3cff6d7e3cff7f9448ff7f9448ff7f9448ff8faa55ff8faa55ff343819ff485025ff343819ff485025ff5b6730ff485025ff5b6730ff6d7e3cff5b6730ff6d7e3cff7f9448ff6d7e3cff7f9448ff8faa55ff7f9448ff8faa55ff485025ff343819ff485025ff5b6730ff485025ff5b6730ff6d7e3cff5b6730ff6d7e3cff7f9448ff6d7e3cff7f9448ff8faa55ff7f9448ff8faa55ff8faa55ff"
+      },
+      {
+        "id": "mat-stone",
+        "name": "Stone",
+        "role": "stone",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 21,
+          "w": 24,
+          "h": 3
+        },
+        "px": "2b2e31ff2b2e31ff2b2e31ff3e4346ff3e4346ff3e4346ff52575cff52575cff52575cff656b71ff656b71ff656b71ff797f86ff797f86ff797f86ff8e939aff2b2e31ff2b2e31ff3e4346ff3e4346ff3e4346ff52575cff52575cff52575cff656b71ff656b71ff656b71ff797f86ff797f86ff797f86ff8e939aff8e939aff2b2e31ff2b2e31ff3e4346ff3e4346ff3e4346ff52575cff52575cff52575cff656b71ff656b71ff656b71ff797f86ff797f86ff797f86ff8e939aff8e939aff2b2e31ff3e4346ff2b2e31ff3e4346ff52575cff3e4346ff52575cff656b71ff52575cff656b71ff797f86ff656b71ff797f86ff8e939aff797f86ff8e939aff2b2e31ff2b2e31ff3e4346ff3e4346ff3e4346ff52575cff52575cff52575cff656b71ff656b71ff656b71ff797f86ff797f86ff797f86ff8e939aff8e939aff2b2e31ff3e4346ff3e4346ff3e4346ff52575cff52575cff52575cff656b71ff656b71ff656b71ff797f86ff797f86ff797f86ff8e939aff8e939aff8e939aff"
+      },
+      {
+        "id": "mat-timber",
+        "name": "Timber wall",
+        "role": "timber",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 24,
+          "w": 24,
+          "h": 3
+        },
+        "px": "35271dff35271dff35271dff4c392aff4c392aff4c392aff644d37ff644d37ff644d37ff7b6145ff7b6145ff7b6145ff917553ff917553ff917553ffa58a64ff35271dff35271dff4c392aff4c392aff4c392aff644d37ff644d37ff644d37ff7b6145ff7b6145ff7b6145ff917553ff917553ff917553ffa58a64ffa58a64ff35271dff4c392aff35271dff4c392aff644d37ff4c392aff644d37ff7b6145ff644d37ff7b6145ff917553ff7b6145ff917553ffa58a64ff917553ffa58a64ff35271dff35271dff4c392aff4c392aff4c392aff644d37ff644d37ff644d37ff7b6145ff7b6145ff7b6145ff917553ff917553ff917553ffa58a64ffa58a64ff35271dff35271dff4c392aff4c392aff4c392aff644d37ff644d37ff644d37ff7b6145ff7b6145ff7b6145ff917553ff917553ff917553ffa58a64ffa58a64ff35271dff4c392aff4c392aff4c392aff644d37ff644d37ff644d37ff7b6145ff7b6145ff7b6145ff917553ff917553ff917553ffa58a64ffa58a64ffa58a64ff"
+      },
+      {
+        "id": "mat-plank",
+        "name": "Sawn plank",
+        "role": "plank",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 27,
+          "w": 24,
+          "h": 3
+        },
+        "px": "4b3a25ff4b3a25ff695334ff695334ff695334ff866d44ff866d44ff866d44ffa28754ffa28754ffa28754ffb39e70ffb39e70ffb39e70ffc2b48effc2b48eff4b3a25ff695334ff4b3a25ff695334ff866d44ff695334ff866d44ffa28754ff866d44ffa28754ffb39e70ffa28754ffb39e70ffc2b48effb39e70ffc2b48eff4b3a25ff4b3a25ff695334ff695334ff695334ff866d44ff866d44ff866d44ffa28754ffa28754ffa28754ffb39e70ffb39e70ffb39e70ffc2b48effc2b48eff4b3a25ff4b3a25ff695334ff695334ff695334ff866d44ff866d44ff866d44ffa28754ffa28754ffa28754ffb39e70ffb39e70ffb39e70ffc2b48effc2b48eff4b3a25ff695334ff4b3a25ff695334ff866d44ff695334ff866d44ffa28754ff866d44ffa28754ffb39e70ffa28754ffb39e70ffc2b48effb39e70ffc2b48eff695334ff4b3a25ff695334ff866d44ff695334ff866d44ffa28754ff866d44ffa28754ffb39e70ffa28754ffb39e70ffc2b48effb39e70ffc2b48effc2b48eff"
+      },
+      {
+        "id": "mat-thatch",
+        "name": "Thatch roof",
+        "role": "thatch",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 30,
+          "w": 24,
+          "h": 3
+        },
+        "px": "483b1eff483b1eff483b1eff66552bff66552bff66552bff837138ff837138ff837138ffa08d46ffa08d46ffa08d46ffb6a55cffb6a55cffb6a55cffc2b77aff483b1eff483b1eff66552bff66552bff66552bff837138ff837138ff837138ffa08d46ffa08d46ffa08d46ffb6a55cffb6a55cffb6a55cffc2b77affc2b77aff483b1eff483b1eff66552bff66552bff66552bff837138ff837138ff837138ffa08d46ffa08d46ffa08d46ffb6a55cffb6a55cffb6a55cffc2b77affc2b77aff483b1eff66552bff483b1eff66552bff837138ff66552bff837138ffa08d46ff837138ffa08d46ffb6a55cffa08d46ffb6a55cffc2b77affb6a55cffc2b77aff483b1eff483b1eff66552bff66552bff66552bff837138ff837138ff837138ffa08d46ffa08d46ffa08d46ffb6a55cffb6a55cffb6a55cffc2b77affc2b77aff483b1eff66552bff66552bff66552bff837138ff837138ff837138ffa08d46ffa08d46ffa08d46ffb6a55cffb6a55cffb6a55cffc2b77affc2b77affc2b77aff"
+      },
+      {
+        "id": "mat-brick",
+        "name": "Brick",
+        "role": "brick",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 33,
+          "w": 24,
+          "h": 3
+        },
+        "px": "42201aff42201aff42201aff5d3025ff5d3025ff5d3025ff784131ff784131ff784131ff93533eff93533eff93533effad664affad664affad664affba7f63ff42201aff42201aff5d3025ff5d3025ff5d3025ff784131ff784131ff784131ff93533eff93533eff93533effad664affad664affad664affba7f63ffba7f63ff42201aff5d3025ff42201aff5d3025ff784131ff5d3025ff784131ff93533eff784131ff93533effad664aff93533effad664affba7f63ffad664affba7f63ff42201aff42201aff5d3025ff5d3025ff5d3025ff784131ff784131ff784131ff93533eff93533eff93533effad664affad664affad664affba7f63ffba7f63ff42201aff42201aff5d3025ff5d3025ff5d3025ff784131ff784131ff784131ff93533eff93533eff93533effad664affad664affad664affba7f63ffba7f63ff42201aff5d3025ff5d3025ff5d3025ff784131ff784131ff784131ff93533eff93533eff93533effad664affad664affad664affba7f63ffba7f63ffba7f63ff"
+      },
+      {
+        "id": "mat-metal",
+        "name": "Metal",
+        "role": "metal",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 36,
+          "w": 24,
+          "h": 3
+        },
+        "px": "373f43ff373f43ff4e595fff4e595fff4e595fff66727bff66727bff66727bff7f8b95ff7f8b95ff7f8b95ff9ba4abff9ba4abff9ba4abffb7bdc3ffb7bdc3ff373f43ff4e595fff373f43ff4e595fff66727bff4e595fff66727bff7f8b95ff66727bff7f8b95ff9ba4abff7f8b95ff9ba4abffb7bdc3ff9ba4abffb7bdc3ff373f43ff373f43ff4e595fff4e595fff4e595fff66727bff66727bff66727bff7f8b95ff7f8b95ff7f8b95ff9ba4abff9ba4abff9ba4abffb7bdc3ffb7bdc3ff373f43ff373f43ff4e595fff4e595fff4e595fff66727bff66727bff66727bff7f8b95ff7f8b95ff7f8b95ff9ba4abff9ba4abff9ba4abffb7bdc3ffb7bdc3ff373f43ff4e595fff373f43ff4e595fff66727bff4e595fff66727bff7f8b95ff66727bff7f8b95ff9ba4abff7f8b95ff9ba4abffb7bdc3ff9ba4abffb7bdc3ff4e595fff373f43ff4e595fff66727bff4e595fff66727bff7f8b95ff66727bff7f8b95ff9ba4abff7f8b95ff9ba4abffb7bdc3ff9ba4abffb7bdc3ffb7bdc3ff"
+      },
+      {
+        "id": "mat-cloth",
+        "name": "Cloth",
+        "role": "cloth",
+        "w": 16,
+        "h": 6,
+        "region": {
+          "x": 0,
+          "y": 39,
+          "w": 24,
+          "h": 3
+        },
+        "px": "4d2d40ff4d2d40ff4d2d40ff693e56ff693e56ff693e56ff84506bff84506bff84506bff9f6280ff9f6280ff9f6280ffaf7f95ffaf7f95ffaf7f95ffc09baaff4d2d40ff4d2d40ff693e56ff693e56ff693e56ff84506bff84506bff84506bff9f6280ff9f6280ff9f6280ffaf7f95ffaf7f95ffaf7f95ffc09baaffc09baaff4d2d40ff4d2d40ff693e56ff693e56ff693e56ff84506bff84506bff84506bff9f6280ff9f6280ff9f6280ffaf7f95ffaf7f95ffaf7f95ffc09baaffc09baaff4d2d40ff693e56ff4d2d40ff693e56ff84506bff693e56ff84506bff9f6280ff84506bff9f6280ffaf7f95ff9f6280ffaf7f95ffc09baaffaf7f95ffc09baaff4d2d40ff4d2d40ff693e56ff693e56ff693e56ff84506bff84506bff84506bff9f6280ff9f6280ff9f6280ffaf7f95ffaf7f95ffaf7f95ffc09baaffc09baaff4d2d40ff693e56ff693e56ff693e56ff84506bff84506bff84506bff9f6280ff9f6280ff9f6280ffaf7f95ffaf7f95ffaf7f95ffc09baaffc09baaffc09baaff"
+      }
+    ]
+  },
+  "shading": {
+    "edge0": 0.12,
+    "edge1": 0.62,
+    "gamma": 1,
+    "mid": 0.55,
+    "centerDark": 0.42,
+    "topLight": 0.34,
+    "bottomDark": 0.3
+  },
+  "species": [
+    {
+      "id": "sp-moss",
+      "name": "Moss mat",
+      "enabled": true,
+      "sizeClass": "ground",
+      "slots": {
+        "trunk": "mat-trunk",
+        "branch": "mat-branch",
+        "leaf": "mat-leaf",
+        "leafEdge": "mat-leafEdge",
+        "stem": "mat-stem",
+        "ground": "mat-ground"
+      },
+      "spawn": {
+        "rate": 0.5,
+        "maxCount": 90,
+        "minSpacing": 1
+      },
+      "spread": {
+        "rate": 0.12,
+        "radiusMin": 1,
+        "radiusMax": 4
+      },
+      "growth": {
+        "rateMin": 0.5,
+        "rateMax": 1.1,
+        "stepMin": 1,
+        "stepMax": 2,
+        "maxAge": 3000
+      },
+      "form": {
+        "baseWidth": 4,
+        "taper": 0.9,
+        "minWidth": 1,
+        "branchChance": 0.7,
+        "branchInterval": 8,
+        "branchAngleMin": 16,
+        "branchAngleMax": 40,
+        "maxDepth": 4,
+        "wander": 10,
+        "phototropism": 0.3,
+        "gravity": 0.06,
+        "leafDepth": 2,
+        "leafSizeMin": 2,
+        "leafSizeMax": 4,
+        "leafDensity": 0.45,
+        "leafEdges": true,
+        "petiole": 2,
+        "wrap": false,
+        "wrapPitch": 0.22,
+        "wrapAmp": 26,
+        "climbSearch": 3
+      },
+      "limits": {
+        "maxRadiusCells": 3,
+        "maxHeightPx": 8,
+        "maxTips": 1
+      },
+      "shade": {
+        "coreWood": 3,
+        "coreLeaf": 3,
+        "tones": 4,
+        "jitter": 0.09,
+        "behindShade": 0.15,
+        "adaptiveCore": false
+      }
+    },
+    {
+      "id": "sp-grass",
+      "name": "Grass tuft",
+      "enabled": true,
+      "sizeClass": "herb",
+      "slots": {
+        "trunk": "mat-stem",
+        "branch": "mat-stem",
+        "leaf": "mat-leaf",
+        "leafEdge": "mat-leafEdge",
+        "stem": "mat-stem",
+        "ground": "mat-ground"
+      },
+      "spawn": {
+        "rate": 0.35,
+        "maxCount": 70,
+        "minSpacing": 1
+      },
+      "spread": {
+        "rate": 0.06,
+        "radiusMin": 1,
+        "radiusMax": 5
+      },
+      "growth": {
+        "rateMin": 1,
+        "rateMax": 2,
+        "stepMin": 2,
+        "stepMax": 4,
+        "maxAge": 700
+      },
+      "form": {
+        "baseWidth": 2,
+        "taper": 0.86,
+        "minWidth": 1,
+        "branchChance": 0.85,
+        "branchInterval": 3,
+        "branchAngleMin": 8,
+        "branchAngleMax": 34,
+        "maxDepth": 1,
+        "wander": 6,
+        "phototropism": 0.5,
+        "gravity": 0.16,
+        "leafDepth": 9,
+        "leafSizeMin": 1,
+        "leafSizeMax": 2,
+        "leafDensity": 0.05,
+        "leafEdges": true,
+        "petiole": 0,
+        "wrap": false,
+        "wrapPitch": 0.22,
+        "wrapAmp": 26,
+        "climbSearch": 3
+      },
+      "limits": {
+        "maxRadiusCells": 1,
+        "maxHeightPx": 24,
+        "maxTips": 10
+      },
+      "shade": {
+        "coreWood": 2,
+        "coreLeaf": 2,
+        "tones": 4,
+        "jitter": 0.06,
+        "behindShade": 0.15,
+        "adaptiveCore": false
+      }
+    },
+    {
+      "id": "sp-fern",
+      "name": "Fern bush",
+      "enabled": true,
+      "sizeClass": "shrub",
+      "slots": {
+        "trunk": "mat-trunk",
+        "branch": "mat-branch",
+        "leaf": "mat-leaf",
+        "leafEdge": "mat-leafEdge",
+        "stem": "mat-stem",
+        "ground": "mat-ground"
+      },
+      "spawn": {
+        "rate": 0.12,
+        "maxCount": 30,
+        "minSpacing": 2
+      },
+      "spread": {
+        "rate": 0.03,
+        "radiusMin": 2,
+        "radiusMax": 6
+      },
+      "growth": {
+        "rateMin": 0.8,
+        "rateMax": 1.6,
+        "stepMin": 2,
+        "stepMax": 4,
+        "maxAge": 1200
+      },
+      "form": {
+        "baseWidth": 3,
+        "taper": 0.9,
+        "minWidth": 1,
+        "branchChance": 0.8,
+        "branchInterval": 5,
+        "branchAngleMin": 22,
+        "branchAngleMax": 52,
+        "maxDepth": 3,
+        "wander": 12,
+        "phototropism": 0.28,
+        "gravity": 0.14,
+        "leafDepth": 2,
+        "leafSizeMin": 2,
+        "leafSizeMax": 3,
+        "leafDensity": 0.6,
+        "leafEdges": true,
+        "petiole": 1,
+        "wrap": false,
+        "wrapPitch": 0.22,
+        "wrapAmp": 26,
+        "climbSearch": 3
+      },
+      "limits": {
+        "maxRadiusCells": 2,
+        "maxHeightPx": 46,
+        "maxTips": 22
+      },
+      "shade": {
+        "coreWood": 4,
+        "coreLeaf": 2.5,
+        "tones": 5,
+        "jitter": 0.05,
+        "behindShade": 0.18,
+        "adaptiveCore": false
+      }
+    },
+    {
+      "id": "sp-oak",
+      "name": "Broadleaf tree",
+      "enabled": true,
+      "sizeClass": "tree",
+      "slots": {
+        "trunk": "mat-trunk",
+        "branch": "mat-branch",
+        "leaf": "mat-leaf",
+        "leafEdge": "mat-leafEdge",
+        "stem": "mat-stem",
+        "ground": "mat-ground"
+      },
+      "spawn": {
+        "rate": 0.05,
+        "maxCount": 12,
+        "minSpacing": 5
+      },
+      "spread": {
+        "rate": 0.012,
+        "radiusMin": 4,
+        "radiusMax": 12
+      },
+      "growth": {
+        "rateMin": 0.7,
+        "rateMax": 1.3,
+        "stepMin": 3,
+        "stepMax": 6,
+        "maxAge": 4000
+      },
+      "form": {
+        "baseWidth": 7,
+        "taper": 0.93,
+        "minWidth": 1,
+        "branchChance": 0.31,
+        "branchInterval": 11,
+        "branchAngleMin": 18,
+        "branchAngleMax": 44,
+        "maxDepth": 5,
+        "wander": 9,
+        "phototropism": 0.22,
+        "gravity": 0.05,
+        "leafDepth": 3,
+        "leafSizeMin": 3,
+        "leafSizeMax": 5,
+        "leafDensity": 0.5,
+        "leafEdges": true,
+        "petiole": 2,
+        "wrap": false,
+        "wrapPitch": 0.22,
+        "wrapAmp": 26,
+        "climbSearch": 3
+      },
+      "limits": {
+        "maxRadiusCells": 4,
+        "maxHeightPx": 130,
+        "maxTips": 40
+      },
+      "shade": {
+        "coreWood": 5,
+        "coreLeaf": 3,
+        "tones": 5,
+        "jitter": 0.05,
+        "behindShade": 0.2,
+        "adaptiveCore": false
+      }
+    },
+    {
+      "id": "sp-ivy",
+      "name": "Climbing ivy",
+      "enabled": true,
+      "sizeClass": "vine",
+      "slots": {
+        "trunk": "mat-trunk",
+        "branch": "mat-branch",
+        "leaf": "mat-leaf",
+        "leafEdge": "mat-leafEdge",
+        "stem": "mat-stem",
+        "ground": "mat-ground"
+      },
+      "spawn": {
+        "rate": 0.06,
+        "maxCount": 12,
+        "minSpacing": 3
+      },
+      "spread": {
+        "rate": 0.02,
+        "radiusMin": 2,
+        "radiusMax": 8
+      },
+      "growth": {
+        "rateMin": 1.1,
+        "rateMax": 2.2,
+        "stepMin": 2,
+        "stepMax": 3,
+        "maxAge": 2500
+      },
+      "form": {
+        "baseWidth": 2,
+        "taper": 0.98,
+        "minWidth": 1,
+        "branchChance": 0.35,
+        "branchInterval": 14,
+        "branchAngleMin": 30,
+        "branchAngleMax": 70,
+        "maxDepth": 3,
+        "wander": 14,
+        "phototropism": 0.12,
+        "gravity": 0.1,
+        "leafDepth": 0,
+        "leafSizeMin": 2,
+        "leafSizeMax": 3,
+        "leafDensity": 0.35,
+        "leafEdges": true,
+        "petiole": 1,
+        "wrap": true,
+        "wrapPitch": 0.24,
+        "wrapAmp": 30,
+        "climbSearch": 4
+      },
+      "limits": {
+        "maxRadiusCells": 3,
+        "maxHeightPx": 120,
+        "maxTips": 18
+      },
+      "shade": {
+        "coreWood": 2,
+        "coreLeaf": 2.5,
+        "tones": 5,
+        "jitter": 0.06,
+        "behindShade": 0.22,
+        "adaptiveCore": false
+      }
+    }
+  ],
+  "classLimits": {
+    "ground": {
+      "maxRadiusCells": 3,
+      "maxHeightPx": 10,
+      "minSpacing": 1,
+      "maxInstances": 160
+    },
+    "herb": {
+      "maxRadiusCells": 1,
+      "maxHeightPx": 26,
+      "minSpacing": 1,
+      "maxInstances": 120
+    },
+    "shrub": {
+      "maxRadiusCells": 2,
+      "maxHeightPx": 56,
+      "minSpacing": 2,
+      "maxInstances": 60
+    },
+    "tree": {
+      "maxRadiusCells": 5,
+      "maxHeightPx": 150,
+      "minSpacing": 4,
+      "maxInstances": 26
+    },
+    "vine": {
+      "maxRadiusCells": 3,
+      "maxHeightPx": 130,
+      "minSpacing": 3,
+      "maxInstances": 22
+    }
+  },
+  "world": {
+    "cols": 64,
+    "rows": 24,
+    "cellPx": 8,
+    "depthPx": 5,
+    "skyPx": 150,
+    "skyTop": "#101a26",
+    "skyBottom": "#33424a",
+    "soilSampler": "mat-soil",
+    "depthFade": 0.16,
+    "shadows": true
+  },
+  "sim": {
+    "speed": 1,
+    "running": true,
+    "rasterBudget": 12,
+    "tickHz": 20
+  },
+  "civ": {
+    "seed": 77104,
+    "world": {
+      "cols": 88,
+      "rows": 36,
+      "cellPx": 8,
+      "depthPx": 5,
+      "skyPx": 110,
+      "skyTop": "#101a26",
+      "skyBottom": "#33424a",
+      "soilSampler": "mat-soil",
+      "depthFade": 0.14,
+      "shadows": true
+    },
+    "terrain": {
+      "scale": 14,
+      "octaves": 4,
+      "persistence": 0.5,
+      "warp": 0.35,
+      "waterLevel": 0.32,
+      "sandBand": 0.04,
+      "rockLevel": 0.68,
+      "moistScale": 22,
+      "fertility": 0.6,
+      "warmup": 420,
+      "wildness": 3.7,
+      "deposits": {
+        "stone": {
+          "density": 0.9,
+          "clusterMin": 2,
+          "clusterMax": 6,
+          "amountMin": 90,
+          "amountMax": 260
+        },
+        "clay": {
+          "density": 0.7,
+          "clusterMin": 2,
+          "clusterMax": 5,
+          "amountMin": 70,
+          "amountMax": 200
+        },
+        "ore": {
+          "density": 0.35,
+          "clusterMin": 1,
+          "clusterMax": 4,
+          "amountMin": 60,
+          "amountMax": 180
+        }
+      }
+    },
+    "people": {
+      "startPopulation": 5,
+      "walkSpeed": 2.4,
+      "carryCapacity": 12,
+      "workRate": 1,
+      "dayLength": 120,
+      "workStart": 0.2,
+      "workEnd": 0.8,
+      "hungerRate": 0.008,
+      "eatAt": 0.55,
+      "mealSize": 2,
+      "tireRate": 0.006,
+      "sleepRate": 0.2,
+      "starveDamage": 0.006,
+      "healRate": 0.01,
+      "birthRate": 0.12,
+      "adultAge": 12,
+      "yearsPerDay": 0.45,
+      "lifespanMin": 62,
+      "lifespanMax": 92,
+      "fertileUntil": 46,
+      "sicknessRate": 0.008,
+      "laborerShare": 0.3,
+      "roadSpeedBonus": 0.35
+    },
+    "work": {
+      "harvestRate": 2.5,
+      "mineRate": 1.6,
+      "buildRate": 1.2,
+      "craftRate": 1,
+      "farmRate": 0.45,
+      "minHarvestMass": 1.5,
+      "clearYield": 0.5,
+      "pileLife": 4,
+      "restockShare": 1,
+      "planInterval": 0.5
+    },
+    "build": {
+      "costScale": 1,
+      "workScale": 1,
+      "autoBuild": true,
+      "maxSites": 3,
+      "spacing": 1,
+      "sprawl": 22,
+      "weights": {
+        "home": 1,
+        "store": 1,
+        "gather": 1,
+        "craft": 1,
+        "civic": 0.8
+      },
+      "housingSlack": 3,
+      "perType": {
+        "store": 12,
+        "gather": 4,
+        "craft": 8,
+        "civic": 14
+      }
+    },
+    "economy": {
+      "startCoin": 80,
+      "wage": 0.5,
+      "elasticity": 0.85,
+      "priceSmoothing": 0.25,
+      "stockPerPerson": 4,
+      "rawWeight": 1.6,
+      "madeWeight": 0.6,
+      "hoardLimit": 2.5,
+      "tradeInterval": 100,
+      "tradeVolume": 40,
+      "tradeMargin": 0.25,
+      "caravanCoin": 240,
+      "paysWages": true,
+      "historyLength": 320
+    },
+    "tech": {
+      "costScale": 1,
+      "researchPerScholar": 0.6,
+      "insightPerPerson": 0.006,
+      "autoResearch": true,
+      "needBias": 0.5
+    },
+    "start": {
+      "population": 5,
+      "supplies": {
+        "wood": 99,
+        "food": 24,
+        "fiber": 12,
+        "stone": 6
+      },
+      "storehouse": true
+    },
+    "sim": {
+      "speed": 1,
+      "running": true,
+      "tickHz": 20,
+      "rasterBudget": 12
+    },
+    "view": {
+      "dayNight": true,
+      "paths": true,
+      "deposits": true,
+      "people": true,
+      "labels": false,
+      "smoke": true,
+      "waterTop": "#2b4f63",
+      "waterDeep": "#16303f",
+      "pathColor": "#6b5a44"
+    }
+  }
+}

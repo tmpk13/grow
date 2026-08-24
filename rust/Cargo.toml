@@ -1,0 +1,68 @@
+[package]
+name = "grow"
+version = "0.1.0"
+edition = "2021"
+description = "Pixel art plant lab and a procedural settlement that has to gather what it builds"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.127"
+js-sys = "0.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3"
+features = [
+  "AddEventListenerOptions",
+  "Blob",
+  "BlobPropertyBag",
+  "CanvasRenderingContext2d",
+  "console",
+  "CssStyleDeclaration",
+  "Document",
+  "DomRect",
+  "Element",
+  "Event",
+  "EventTarget",
+  "File",
+  "FileList",
+  "FileReader",
+  "HtmlAnchorElement",
+  "HtmlButtonElement",
+  "HtmlCanvasElement",
+  "HtmlElement",
+  "HtmlInputElement",
+  "HtmlOptionElement",
+  "HtmlSelectElement",
+  "ImageData",
+  "KeyboardEvent",
+  "MouseEvent",
+  "Node",
+  "Performance",
+  "PointerEvent",
+  "ResizeObserver",
+  "Storage",
+  "Url",
+  "WheelEvent",
+  "Window",
+]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+# Tests cannot run under `panic = "abort"`, and the settlement tests simulate
+# days at a time, so they are too slow to be worth running unoptimized.
+[profile.reltest]
+inherits = "release"
+panic = "unwind"
+lto = false

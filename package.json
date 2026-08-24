@@ -5,10 +5,12 @@
   "type": "module",
   "description": "Pixel art plant lab and a procedural settlement that has to gather what it builds",
   "scripts": {
-    "dev": "bun run serve.js",
+    "build": "cd rust && cargo build --release --target wasm32-unknown-unknown --lib && wasm-bindgen target/wasm32-unknown-unknown/release/grow.wasm --out-dir ../pkg --target web --no-typescript",
+    "dev": "bun run build && bun run serve.js",
     "start": "bun run serve.js",
-    "check": "bun run tools/smoke.js",
-    "check:civ": "bun run tools/civsmoke.js 60",
+    "test": "cd rust && cargo test --profile reltest",
+    "check": "cd rust && cargo run --release --quiet --bin smoke --",
+    "check:civ": "cd rust && cargo run --release --quiet --bin civsmoke --",
     "check:ui": "bun run tools/uicheck.js"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
-// Static file server. ES modules cannot be loaded over file://, so the tool is
-// served over HTTP instead. Run with: bun run serve.js
+// Static file server. A WebAssembly module cannot be loaded over file://, so
+// the tool is served over HTTP instead. Run with: bun run serve.js
 import { existsSync, statSync } from 'node:fs';
 import { join, normalize, extname } from 'node:path';
 
@@ -12,6 +12,7 @@ const TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.wasm': 'application/wasm',
   '.png': 'image/png',
 };
 

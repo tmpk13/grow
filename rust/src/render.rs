@@ -1,0 +1,369 @@
+//! Canvas presentation: blits a world pixel buffer through a zoomable,
+//! pannable camera and draws the debug overlays on top.
+
+use wasm_bindgen::{Clamped, JsCast};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData};
+
+use crate::civ::civ_render::{building_labels, colony_labels};
+use crate::civ::settlement::{Rect, Settlement};
+use crate::plant::Plant;
+use crate::species::LAYER_COUNT;
+use crate::state::State;
+use crate::ui::{document, window};
+use crate::util::{clamp, hex_to_packed, unpack_rgba};
+use crate::world::World;
+
+const LAYER_COLORS: [&str; 5] = [
+    "rgba(120, 220, 140, 0.30)",
+    "rgba(230, 220, 110, 0.30)",
+    "rgba(120, 190, 240, 0.30)",
+    "rgba(240, 140, 120, 0.30)",
+    "rgba(200, 130, 240, 0.30)",
+];
+
+pub struct Viewport {
+    pub canvas: HtmlCanvasElement,
+    ctx: CanvasRenderingContext2d,
+    off: HtmlCanvasElement,
+    off_ctx: CanvasRenderingContext2d,
+    pub zoom: f64,
+    pub pan_x: f64,
+    pub pan_y: f64,
+    pub dpr: f64,
+    pub show_grid: bool,
+    pub show_occupancy: bool,
+    /// One visible region, repacked for upload. Kept here so a frame does not
+    /// allocate.
+    scratch: Vec<u32>,
+}
+
+fn context_of(canvas: &HtmlCanvasElement) -> CanvasRenderingContext2d {
+    canvas
+        .get_context("2d")
+        .expect("2d context")
+        .expect("2d context")
+        .dyn_into::<CanvasRenderingContext2d>()
+        .expect("2d context")
+}
+
+fn new_canvas() -> HtmlCanvasElement {
+    document()
+        .create_element("canvas")
+        .unwrap()
+        .dyn_into::<HtmlCanvasElement>()
+        .unwrap()
+}
+
+/// Pushes a packed pixel buffer into a canvas of the same size.
+fn put_buffer(ctx: &CanvasRenderingContext2d, buf: &[u32], w: i32, h: i32) {
+    // The buffer is already laid out as RGBA bytes for a little endian machine,
+    // which is what ImageData expects.
+    let bytes: &[u8] =
+        unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len() * 4) };
+    if let Ok(image) =
+        ImageData::new_with_u8_clamped_array_and_sh(Clamped(bytes), w as u32, h as u32)
+    {
+        let _ = ctx.put_image_data(&image, 0.0, 0.0);
+    }
+}
+
+impl Viewport {
+    pub fn new(canvas: HtmlCanvasElement) -> Self {
+        let ctx = context_of(&canvas);
+        let off = new_canvas();
+        let off_ctx = context_of(&off);
+        Viewport {
+            canvas,
+            ctx,
+            off,
+            off_ctx,
+            zoom: 2.0,
+            pan_x: 0.0,
+            pan_y: 0.0,
+            dpr: 1.0,
+            show_grid: false,
+            show_occupancy: false,
+            scratch: Vec::new(),
+        }
+    }
+
+    fn rect(&self) -> (f64, f64) {
+        let r = self.canvas.get_bounding_client_rect();
+        (r.width(), r.height())
+    }
+
+    pub fn resize(&mut self) {
+        let (rw, rh) = self.rect();
+        self.dpr = window().device_pixel_ratio();
+        let w = ((rw * self.dpr).round() as u32).max(1);
+        let h = ((rh * self.dpr).round() as u32).max(1);
+        if self.canvas.width() != w || self.canvas.height() != h {
+            self.canvas.set_width(w);
+            self.canvas.set_height(h);
+        }
+    }
+
+    pub fn fit(&mut self, world: &World) {
+        let (rw, rh) = self.rect();
+        if rw == 0.0 || rh == 0.0 {
+            return;
+        }
+        let zx = rw / world.px_w as f64;
+        let zy = rh / world.px_h as f64;
+        self.zoom = clamp(zx.min(zy), 0.25, 24.0);
+        self.pan_x = (rw - world.px_w as f64 * self.zoom) / 2.0;
+        self.pan_y = (rh - world.px_h as f64 * self.zoom) / 2.0;
+    }
+
+    pub fn zoom_at(&mut self, client_x: f64, client_y: f64, factor: f64) {
+        let r = self.canvas.get_bounding_client_rect();
+        let cx = client_x - r.left();
+        let cy = client_y - r.top();
+        let next = clamp(self.zoom * factor, 0.25, 32.0);
+        let k = next / self.zoom;
+        self.pan_x = cx - (cx - self.pan_x) * k;
+        self.pan_y = cy - (cy - self.pan_y) * k;
+        self.zoom = next;
+    }
+
+    pub fn pan(&mut self, dx: f64, dy: f64) {
+        self.pan_x += dx;
+        self.pan_y += dy;
+    }
+
+    /// The part of the world the canvas can currently show, in world pixels,
+    /// padded by a cell so nothing pops in at the edge. This is what the
+    /// settlement composites and what gets uploaded, so the cost of a frame
+    /// follows the size of the window rather than the size of the map.
+    pub fn visible_rect(&self, world: &World) -> Rect {
+        let (rw, rh) = self.rect();
+        if rw <= 0.0 || rh <= 0.0 || self.zoom <= 0.0 {
+            return Rect::whole(world);
+        }
+        let pad = (world.cell_px * 4) as f64;
+        let x0 = ((-self.pan_x / self.zoom) - pad).floor().max(0.0) as i32;
+        let y0 = ((-self.pan_y / self.zoom) - pad).floor().max(0.0) as i32;
+        let x1 = (((rw - self.pan_x) / self.zoom) + pad).ceil().min(world.px_w as f64) as i32;
+        let y1 = (((rh - self.pan_y) / self.zoom) + pad).ceil().min(world.px_h as f64) as i32;
+        Rect { x0: x0.min(world.px_w), y0: y0.min(world.px_h), x1: x1.max(0), y1: y1.max(0) }
+    }
+
+    /// The finished world buffer, scaled onto the canvas with no smoothing.
+    pub fn present(&mut self, world: &World, buf: &[u32]) {
+        let all = Rect::whole(world);
+        self.present_region(world, buf, all);
+    }
+
+    /// The same, uploading only one rectangle of the buffer. A map big enough
+    /// to be worth having has a buffer far too large to push to a canvas sixty
+    /// times a second; only what is on screen is ever copied.
+    pub fn present_region(&mut self, world: &World, buf: &[u32], rect: Rect) {
+        self.resize();
+        let ctx = &self.ctx;
+        ctx.save();
+        let _ = ctx.set_transform(self.dpr, 0.0, 0.0, self.dpr, 0.0, 0.0);
+        let (rw, rh) = self.rect();
+        ctx.clear_rect(0.0, 0.0, rw, rh);
+        ctx.set_fill_style_str("#05070a");
+        ctx.fill_rect(0.0, 0.0, rw, rh);
+        ctx.set_image_smoothing_enabled(false);
+        if rect.is_empty() {
+            return;
+        }
+        let (w, h) = (rect.x1 - rect.x0, rect.y1 - rect.y0);
+        if self.off.width() != w as u32 || self.off.height() != h as u32 {
+            self.off.set_width(w as u32);
+            self.off.set_height(h as u32);
+        }
+        // Rows are contiguous, so the region is repacked one row at a time.
+        self.scratch.resize((w * h) as usize, 0);
+        for y in 0..h {
+            let src = ((rect.y0 + y) * world.px_w + rect.x0) as usize;
+            let dst = (y * w) as usize;
+            self.scratch[dst..dst + w as usize].copy_from_slice(&buf[src..src + w as usize]);
+        }
+        put_buffer(&self.off_ctx, &self.scratch, w, h);
+        let _ = self.ctx.draw_image_with_html_canvas_element_and_dw_and_dh(
+            &self.off,
+            self.pan_x + rect.x0 as f64 * self.zoom,
+            self.pan_y + rect.y0 as f64 * self.zoom,
+            w as f64 * self.zoom,
+            h as f64 * self.zoom,
+        );
+    }
+
+    pub fn finish(&self) {
+        self.ctx.restore();
+    }
+
+    /// The ground plane is axis aligned but foreshortened, so cells are drawn
+    /// as rectangles cell_px wide by depth_px tall, offset below the sky band.
+    pub fn draw_grid(&self, world: &World) {
+        let step_x = world.cell_px as f64 * self.zoom;
+        let step_y = world.depth_px as f64 * self.zoom;
+        if step_x.min(step_y) < 2.0 {
+            return;
+        }
+        let ctx = &self.ctx;
+        let top = self.pan_y + world.sky_px as f64 * self.zoom;
+        ctx.set_stroke_style_str("rgba(255,255,255,0.10)");
+        ctx.set_line_width(1.0);
+        ctx.begin_path();
+        for x in 0..=world.cols {
+            let px = (self.pan_x + x as f64 * step_x).round() + 0.5;
+            ctx.move_to(px, top);
+            ctx.line_to(px, top + world.ground_px as f64 * self.zoom);
+        }
+        for y in 0..=world.rows {
+            let py = (top + y as f64 * step_y).round() + 0.5;
+            ctx.move_to(self.pan_x, py);
+            ctx.line_to(self.pan_x + world.px_w as f64 * self.zoom, py);
+        }
+        ctx.stroke();
+        ctx.set_stroke_style_str("rgba(255,180,90,0.55)");
+        ctx.begin_path();
+        ctx.move_to(self.pan_x, top.round() + 0.5);
+        ctx.line_to(self.pan_x + world.px_w as f64 * self.zoom, top.round() + 0.5);
+        ctx.stroke();
+    }
+
+    pub fn draw_occupancy(&self, world: &World) {
+        let step_x = world.cell_px as f64 * self.zoom;
+        let step_y = world.depth_px as f64 * self.zoom;
+        let top = self.pan_y + world.sky_px as f64 * self.zoom;
+        let ctx = &self.ctx;
+        for cy in 0..world.rows {
+            for cx in 0..world.cols {
+                let mask = world.occupancy_at(cx, cy);
+                if mask == 0 {
+                    continue;
+                }
+                for l in 0..LAYER_COUNT {
+                    if mask & (1 << l) == 0 {
+                        continue;
+                    }
+                    ctx.set_fill_style_str(LAYER_COLORS[l % LAYER_COLORS.len()]);
+                    let inset_x = (step_x / (LAYER_COUNT + 1) as f64) * l as f64;
+                    let inset_y = (step_y / (LAYER_COUNT + 1) as f64) * l as f64;
+                    ctx.fill_rect(
+                        self.pan_x + cx as f64 * step_x + inset_x * 0.5,
+                        top + cy as f64 * step_y + inset_y * 0.5,
+                        (step_x - inset_x).max(1.0),
+                        (step_y - inset_y).max(1.0),
+                    );
+                }
+            }
+        }
+    }
+
+    /// The night tint and the labels are drawn on the canvas rather than into
+    /// the pixel buffer: darkening 300k pixels per frame by hand is not worth
+    /// it when one translucent rectangle does the same job.
+    pub fn draw_civ_overlay(&self, sim: &Settlement, state: &State) {
+        let world = sim.world();
+        let w = world.px_w as f64 * self.zoom;
+        let h = world.px_h as f64 * self.zoom;
+        let ctx = &self.ctx;
+        if state.civ.view.day_night {
+            let light = sim.daylight(state);
+            if light < 0.95 {
+                let dark = (1.0 - light) * 0.55;
+                let tint = unpack_rgba(hex_to_packed(&state.civ.world.sky_top));
+                ctx.set_fill_style_str(&format!(
+                    "rgba({}, {}, {}, {:.3})",
+                    tint.r, tint.g, tint.b, dark
+                ));
+                ctx.fill_rect(self.pan_x, self.pan_y, w, h);
+            }
+        }
+        if !state.civ.view.labels {
+            return;
+        }
+        let size = (7.0 * self.zoom.min(3.0)).round().max(9.0);
+        ctx.set_font(&format!("{size}px ui-monospace, monospace"));
+        ctx.set_text_align("center");
+        ctx.set_fill_style_str("rgba(230, 236, 245, 0.85)");
+        ctx.set_stroke_style_str("rgba(6, 10, 16, 0.9)");
+        ctx.set_line_width(3.0);
+        for (x, y, text) in building_labels(sim) {
+            let sx = self.pan_x + x * self.zoom;
+            let sy = self.pan_y + y * self.zoom + 10.0;
+            let _ = ctx.stroke_text(&text, sx, sy);
+            let _ = ctx.fill_text(&text, sx, sy);
+        }
+    }
+
+    /// Town names over their centers. Drawn whenever there is more than one
+    /// town, whatever the label setting says, because at the zoom where a map
+    /// with several towns fits on screen this is the only thing telling them
+    /// apart.
+    pub fn draw_colony_labels(&self, sim: &Settlement) {
+        if sim.colonies.len() < 2 {
+            return;
+        }
+        let ctx = &self.ctx;
+        let size = (9.0 * self.zoom.clamp(0.6, 2.0)).round().max(11.0);
+        ctx.set_font(&format!("{size}px ui-monospace, monospace"));
+        ctx.set_text_align("center");
+        ctx.set_stroke_style_str("rgba(6, 10, 16, 0.9)");
+        ctx.set_line_width(3.5);
+        for (x, y, text, banner) in colony_labels(sim) {
+            let c = unpack_rgba(banner);
+            let sx = self.pan_x + x * self.zoom;
+            let sy = self.pan_y + y * self.zoom - 6.0;
+            let _ = ctx.stroke_text(&text, sx, sy);
+            ctx.set_fill_style_str(&format!("rgb({}, {}, {})", c.r, c.g, c.b));
+            let _ = ctx.fill_text(&text, sx, sy);
+        }
+    }
+}
+
+/// Draws a single plant sprite centered in a canvas: used by the species
+/// preview and by any place that needs to show one specimen.
+pub fn draw_plant_preview(canvas: &HtmlCanvasElement, plant: &Plant) {
+    let ctx = context_of(canvas);
+    let r = canvas.get_bounding_client_rect();
+    let (rw, rh) = (r.width(), r.height());
+    let dpr = window().device_pixel_ratio();
+    let w = ((rw * dpr).round() as u32).max(1);
+    let h = ((rh * dpr).round() as u32).max(1);
+    if canvas.width() != w || canvas.height() != h {
+        canvas.set_width(w);
+        canvas.set_height(h);
+    }
+    let _ = ctx.set_transform(dpr, 0.0, 0.0, dpr, 0.0, 0.0);
+    ctx.clear_rect(0.0, 0.0, rw, rh);
+    ctx.set_fill_style_str("#0b0f14");
+    ctx.fill_rect(0.0, 0.0, rw, rh);
+    if plant.bounds.is_empty() || rw == 0.0 {
+        return;
+    }
+
+    let off = new_canvas();
+    off.set_width(plant.w as u32);
+    off.set_height(plant.h as u32);
+    let octx = context_of(&off);
+    put_buffer(&octx, &plant.sprite, plant.w, plant.h);
+
+    // Framed on the whole sprite rather than the current silhouette, so the
+    // view does not rescale on every growth step.
+    let z = clamp(
+        (rw / plant.w as f64).min(rh / plant.h as f64).floor(),
+        1.0,
+        10.0,
+    );
+    let dx = ((rw - plant.w as f64 * z) / 2.0).round();
+    let dy = ((rh - plant.h as f64 * z) / 2.0).round();
+    ctx.set_image_smoothing_enabled(false);
+    let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+        &off,
+        0.0,
+        0.0,
+        plant.w as f64,
+        plant.h as f64,
+        dx,
+        dy,
+        plant.w as f64 * z,
+        plant.h as f64 * z,
+    );
+}

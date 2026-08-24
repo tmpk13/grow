@@ -39,6 +39,13 @@
       </section>
     </main>
 
-    <script type="module" src="./src/main.js"></script>
+    <script type="module">
+      // The whole application is Rust compiled to WebAssembly; this is the only
+      // script on the page, and it does nothing but hand control to it.
+      import init from './pkg/grow.js';
+      init().catch((err) => {
+        document.getElementById('statusbar').textContent = `failed to start: ${err}`;
+      });
+    </script>
   </body>
 </html>

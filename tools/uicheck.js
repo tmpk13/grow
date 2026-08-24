@@ -105,6 +105,22 @@ for (const tab of ['People', 'Build', 'Economy', 'Tech']) {
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${outDir}/10-${tab.toLowerCase()}.png` });
 }
+// The register: open a settler's record, resort the list, include the dead.
+// This is the one panel that rebuilds interactive rows on a timer, so it is
+// also the one that would leak a listener per row if the scopes were wrong.
+await page.click('.tab:text-is("People")');
+await page.waitForTimeout(600);
+await page.locator('.roster-name.link').first().click();
+await page.waitForTimeout(700);
+if ((await page.locator('.person-card .stat').count()) === 0) {
+  problems.push('clicking a settler did not open their record');
+}
+await page.screenshot({ path: `${outDir}/10b-person.png` });
+await page.click('.chip:text-is("Coin")');
+await page.click('.chip:text-is("Include the dead")');
+await page.waitForTimeout(700);
+await page.screenshot({ path: `${outDir}/10c-register.png` });
+
 await page.click('.tab:text-is("Build")');
 await page.locator('.cat-row:not(.locked) .btn:text-is("Build")').first().click();
 await page.evaluate(() => {
