@@ -1,13 +1,102 @@
-name: bun
+# Builds the WebAssembly bundle and publishes the page.
+#
+# `pkg/` is build output and is not in the repository, so the one file the page
+# imports is the one file a clone does not have. This is what puts it there:
+# the site is assembled here on every push rather than committed, which keeps
+# 1.6 MB of wasm out of the history without leaving the published page broken.
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and a newer push wins: the page only ever shows the
+# tip of main, so an older build finishing late has nothing to say.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
-  build-bun:
-    name: build
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
 
-      # run any `bun` or `bunx` command
-      - run: bun install
-      - run: bun index.ts
-      - run: bun run build
+      - name: Add the WebAssembly target
+        run: rustup target add wasm32-unknown-unknown
+
+      # The CLI has to match the crate exactly or the generated module is
+      # rejected for a schema mismatch, so the version is read from the lock
+      # file rather than written down twice.
+      - name: Read the pinned wasm-bindgen version
+        id: wb
+        run: |
+          version=$(awk '/^name = "wasm-bindgen"$/ { found = 1; next }
+                         found && /^version = / { gsub(/"/, "", $3); print $3; exit }' rust/Cargo.lock)
+          if [ -z "$version" ]; then
+            echo "no wasm-bindgen version in rust/Cargo.lock" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "building against wasm-bindgen $version"
+
+      - name: Cache the registry and the build directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: cargo-
+
+      - name: Cache the wasm-bindgen CLI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          key: wasm-bindgen-${{ steps.wb.outputs.version }}
+
+      - name: Install the wasm-bindgen CLI
+        run: |
+          have=$(wasm-bindgen --version 2>/dev/null | awk '{ print $2 }')
+          if [ "$have" != "${{ steps.wb.outputs.version }}" ]; then
+            cargo install wasm-bindgen-cli \
+              --version "${{ steps.wb.outputs.version }}" --locked
+          fi
+
+      - name: Build
+        working-directory: rust
+        run: |
+          cargo build --release --target wasm32-unknown-unknown --lib
+          wasm-bindgen target/wasm32-unknown-unknown/release/grow.wasm \
+            --out-dir ../pkg --target web --no-typescript
+
+      # Only what the page loads. The Rust tree, the tools and the pre-port
+      # JavaScript are not part of the site and are not published with it.
+      - name: Stage the site
+        run: |
+          mkdir -p site
+          cp index.html styles.css site/
+          cp -r pkg site/pkg
+          ls -la site site/pkg
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
