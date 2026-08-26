@@ -68,6 +68,10 @@ pub struct App {
     pub pending_civ_reset: bool,
     pub save_deadline: Option<f64>,
     pub fps: f64,
+    /// When the status line was last rewritten. Reading it costs a walk over
+    /// every settler and building, which is not worth doing once a frame for a
+    /// line of text nobody can read changing that fast.
+    pub status_at: f64,
     pub accumulator: f64,
     pub last_ts: f64,
 }
@@ -156,6 +160,17 @@ impl App {
         self.viewport.fit(&self.sim.world);
     }
 
+    /// A settler clip changed. The pixels every cached sprite was scaled from
+    /// are gone, so the cache is dropped and the revision moves on; the
+    /// settlement recomposites every frame, so nothing else has to be asked.
+    pub fn sprites_changed(&mut self) {
+        self.state.civ.sprites.touch();
+        if let Some(civ) = &mut self.settlement {
+            civ.invalidate_sprites();
+        }
+        self.request_save();
+    }
+
     pub fn civ_repaint(&mut self) {
         if let Some(civ) = &mut self.settlement {
             civ.invalidate_sprites();
@@ -226,6 +241,10 @@ struct TabDef {
     label: &'static str,
     build: Builder,
 }
+
+/// How often the status line is rewritten. Fast enough to read as live, slow
+/// enough that the walk over the settlement it costs does not land in a frame.
+const STATUS_INTERVAL_MS: f64 = 200.0;
 
 const LAB_TABS: &[TabDef] = &[
     TabDef { id: "materials", label: "Materials", build: ui::materials_panel::build },
@@ -321,6 +340,7 @@ pub fn start() -> Result<(), JsValue> {
         pending_civ_reset: false,
         save_deadline: None,
         fps: 60.0,
+        status_at: 0.0,
         accumulator: 0.0,
         last_ts: ui::now(),
     };
@@ -937,7 +957,10 @@ fn frame(h: &Handle, ts: f64) {
     if let Some(panel) = &mut sh.panel {
         panel.tick(&mut sh.app, dt_real);
     }
-    update_status(&sh.app);
+    if ts - sh.app.status_at >= STATUS_INTERVAL_MS {
+        sh.app.status_at = ts;
+        update_status(&sh.app);
+    }
 
     if sh.app.redraw_panel {
         sh.app.redraw_panel = false;
@@ -989,6 +1012,7 @@ fn draw(app: &mut App, budget: usize) {
             // sheds detail as the zoom pulls back.
             let world = civ.world().clone();
             civ.view = app.viewport.visible_rect(&world);
+            civ.px_step = app.viewport.sample_step();
             let detail = Detail::for_zoom(app.viewport.zoom, app.state.civ.view.detail_zoom);
             if detail != civ.detail {
                 // Contact shadows are baked into the cached ground and are one

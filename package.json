@@ -11,7 +11,9 @@
     "test": "cd rust && cargo test --profile reltest",
     "check": "cd rust && cargo run --release --quiet --bin smoke --",
     "check:civ": "cd rust && cargo run --release --quiet --bin civsmoke --",
-    "check:ui": "bun run tools/uicheck.js"
+    "check:ui": "bun run tools/uicheck.js",
+    "check:perf": "bun run tools/perfbench.js",
+    "check:render": "cd rust && cargo run --release --quiet --bin renderbench --"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"

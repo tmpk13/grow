@@ -20,6 +20,7 @@ pub mod materials_panel;
 pub mod people_panel;
 pub mod shading_panel;
 pub mod species_panel;
+pub mod sprite_drop;
 pub mod tech_panel;
 pub mod world_panel;
 

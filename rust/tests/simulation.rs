@@ -2,7 +2,9 @@
 //! These are the invariants the headless smoke binaries check on a long run,
 //! kept small enough to run on every `cargo test`.
 
-use grow::civ::settlement::Settlement;
+use grow::civ::civ_render::Detail;
+use grow::civ::settlement::{Rect, Settlement};
+use grow::civ::sprites::{motion_of, natural_cmp, Clip, Motion, PeopleSprites, MAX_FRAME_PX};
 use grow::civ::terrain::Cell;
 use grow::sim::Sim;
 use grow::species::SIZE_CLASSES;
@@ -424,4 +426,197 @@ fn a_stall_moves_coin_from_one_settler_to_another() {
         sim.people[shopper].coin < purse,
         "the buyer's purse never moved"
     );
+}
+
+/// Zoomed out the camera collapses a block of world pixels into one on screen,
+/// and everything below it stops painting the pixels that block will not show:
+/// the ground restore, the cached ground under it and the upload all step over
+/// the same grid. If those three ever disagreed about where the grid starts,
+/// the map would show rows of whatever the last frame happened to leave there,
+/// so this pins the one fact they share.
+#[test]
+fn a_stepped_frame_matches_a_whole_one_on_the_rows_it_keeps() {
+    let mut state = State::new();
+    state.civ.world.cols = 64;
+    state.civ.world.rows = 32;
+    state.civ.terrain.warmup = 60.0;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..(state.civ.people.day_length / dt) as usize {
+        sim.step(&state, dt);
+    }
+    sim.detail = Detail::Blocks;
+    sim.view = Rect::whole(sim.world());
+
+    // Poisoned first, so a row the stepped frame declines to paint keeps the
+    // poison and is caught. Without this the buffer already holds the right
+    // pixels from the frame before and skipping a row proves nothing.
+    let poison = 0xdead_beef;
+    sim.px_step = 1;
+    sim.ground_dirty = true;
+    sim.buffer.fill(poison);
+    sim.composite(&state);
+    let whole = sim.buffer.clone();
+    assert!(!whole.contains(&poison), "the whole frame left a row unpainted");
+
+    let px_w = sim.world().px_w as usize;
+    for step in [2, 4, 8] {
+        sim.px_step = step;
+        sim.buffer.fill(poison);
+        sim.composite(&state);
+        let mut y = 0;
+        while y < sim.world().px_h {
+            let row = y as usize * px_w;
+            assert_eq!(
+                &sim.buffer[row..row + px_w],
+                &whole[row..row + px_w],
+                "row {y} differs at step {step}"
+            );
+            y += step;
+        }
+    }
+}
+
+// ---- settler sprites -----------------------------------------------------
+
+fn strip(frames: i32, fw: i32, fh: i32) -> Clip {
+    // Every frame is filled with its own index, so a slice that reads the
+    // wrong column is obvious rather than merely wrong.
+    let w = fw * frames;
+    let mut px = vec![0u32; (w * fh) as usize];
+    for f in 0..frames {
+        for y in 0..fh {
+            for x in 0..fw {
+                px[(y * w + f * fw + x) as usize] = (f + 1) as u32;
+            }
+        }
+    }
+    Clip::from_strip(w, fh, px, frames, "test".into()).expect("clip")
+}
+
+#[test]
+fn a_strip_is_cut_into_as_many_frames_as_it_is_told() {
+    let mut clip = strip(6, 5, 9);
+    assert_eq!(clip.frame_count(), 6);
+    assert_eq!(clip.frame_w(), 5);
+    for f in 0..6 {
+        assert_eq!(clip.pixel(f, 0, 0), (f + 1) as u32, "frame {f} read wrong");
+        assert_eq!(clip.pixel(f, 4, 8), (f + 1) as u32);
+        // Nothing outside a frame belongs to it, whichever frame it is.
+        assert_eq!(clip.pixel(f, 5, 0), 0);
+    }
+    // The sheet is kept whole, so the same pixels re-cut at a new count.
+    clip.frames = 3;
+    assert_eq!(clip.frame_w(), 10);
+    assert_eq!(clip.pixel(1, 0, 0), 3);
+    assert_eq!(clip.pixel(1, 5, 0), 4);
+}
+
+#[test]
+fn one_image_per_frame_lines_up_at_the_feet() {
+    // Two frames of different sizes: the short one should stand on the floor of
+    // the box the tall one sets, not float at the top of it.
+    let short = (2, 2, vec![7u32; 4]);
+    let tall = (4, 6, vec![9u32; 24]);
+    let clip = Clip::from_frames(vec![short, tall], "pair".into()).expect("clip");
+    assert_eq!(clip.frame_count(), 2);
+    assert_eq!(clip.frame_w(), 4);
+    assert_eq!(clip.h, 6);
+    assert_eq!(clip.pixel(0, 1, 5), 7, "the short frame is off the floor");
+    assert_eq!(clip.pixel(0, 1, 0), 0, "the short frame was stretched");
+    assert_eq!(clip.pixel(1, 0, 0), 9);
+}
+
+#[test]
+fn an_oversized_drop_is_scaled_rather_than_refused() {
+    let over = MAX_FRAME_PX * 3;
+    let clip = Clip::from_strip(over * 2, over, vec![5u32; (over * 2 * over) as usize], 2, "big".into())
+        .expect("clip");
+    assert!(clip.frame_w() <= MAX_FRAME_PX, "frame {} too wide", clip.frame_w());
+    assert!(clip.h <= MAX_FRAME_PX, "sheet {} too tall", clip.h);
+    assert_eq!(clip.frame_count(), 2, "the frame count survived the scaling");
+    assert_eq!(clip.pixel(1, 0, 0), 5, "the art did not survive the scaling");
+}
+
+#[test]
+fn frames_advance_with_the_clock_or_with_the_ground() {
+    let mut clip = strip(4, 3, 3);
+    clip.fps = 8.0;
+    clip.stride = false;
+    assert_eq!(clip.frame_index(0.0, 0.0), 0);
+    assert_eq!(clip.frame_index(0.0, 0.125), 1);
+    assert_eq!(clip.frame_index(0.0, 0.5), 0, "the clip did not loop");
+    // Standing still with a clock clip still cycles; with a stride clip it does
+    // not move at all, which is the whole reason for the switch.
+    clip.stride = true;
+    assert_eq!(clip.frame_index(0.0, 99.0), 0);
+    assert_eq!(clip.frame_index(6.0, 0.0), 0, "one cell should be a whole loop");
+    assert_eq!(clip.frame_index(1.5, 0.0), 2);
+    // A frame count of one never asks for a second frame.
+    clip.frames = 1;
+    assert_eq!(clip.frame_index(123.0, 456.0), 0);
+}
+
+#[test]
+fn a_motion_with_no_art_borrows_from_a_related_one() {
+    let mut sprites = PeopleSprites::default();
+    assert!(sprites.resolve(Motion::Walk).is_none(), "nothing was dropped");
+    sprites.set(Motion::Walk, Some(strip(2, 4, 4)));
+    // Carrying and standing both fall back to the walk; nothing falls back to
+    // a slot that is still empty.
+    assert_eq!(sprites.resolve(Motion::Carry).map(|(m, _)| m), Some(Motion::Walk));
+    assert_eq!(sprites.resolve(Motion::Idle).map(|(m, _)| m), Some(Motion::Walk));
+    assert_eq!(sprites.resolve(Motion::Walk).map(|(m, _)| m), Some(Motion::Walk));
+    sprites.set(Motion::Carry, Some(strip(3, 4, 4)));
+    assert_eq!(sprites.resolve(Motion::Carry).map(|(m, _)| m), Some(Motion::Carry));
+    // The switch hides the art without giving it up.
+    sprites.enabled = false;
+    assert!(sprites.resolve(Motion::Carry).is_none());
+    assert!(sprites.any(), "the sheets are still there");
+}
+
+#[test]
+fn a_settler_reports_the_motion_they_are_in() {
+    let mut sim = Settlement::new(&State::new());
+    sim.bootstrap(&State::new());
+    let state = State::new();
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    // A whole day of a working town should show every settler in a motion that
+    // matches what the record says they are doing.
+    for _ in 0..(state.civ.people.day_length * state.civ.sim.tick_hz) as usize {
+        sim.step(&state, dt);
+        for (_, p) in sim.people.iter_indexed() {
+            let motion = motion_of(p);
+            match motion {
+                Motion::Sleep => assert!(p.sleeping),
+                Motion::Walk => assert!(!p.path.is_empty() && !p.carrying()),
+                Motion::Carry => assert!(!p.path.is_empty() && p.carrying()),
+                Motion::Work | Motion::Idle => assert!(p.path.is_empty() && !p.sleeping),
+            }
+        }
+    }
+}
+
+#[test]
+fn numbered_frames_sort_the_way_they_are_numbered() {
+    let mut names = vec!["walk10.png", "walk2.png", "walk1.png", "Walk3.png"];
+    names.sort_by(|a, b| natural_cmp(a, b));
+    assert_eq!(names, ["walk1.png", "walk2.png", "Walk3.png", "walk10.png"]);
+}
+
+#[test]
+fn a_project_carries_its_sprites_through_a_save() {
+    let mut state = State::new();
+    state.civ.sprites.set(Motion::Walk, Some(strip(4, 6, 8)));
+    state.civ.sprites.walk.as_mut().unwrap().height = 1.75;
+    let back = State::from_json(&state.to_json()).expect("reload");
+    let clip = back.civ.sprites.walk.as_ref().expect("the walk survived");
+    assert_eq!(clip.frame_count(), 4);
+    assert_eq!(clip.frame_w(), 6);
+    assert_eq!(clip.h, 8);
+    assert_eq!(clip.height, 1.75);
+    for f in 0..4 {
+        assert_eq!(clip.pixel(f, 0, 0), (f + 1) as u32, "frame {f} came back wrong");
+    }
 }

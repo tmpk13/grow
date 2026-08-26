@@ -227,6 +227,42 @@ rivals. The section under the register sets how often the sim looks at who is
 near whom, how close counts, how many people a settler carries, how fast a bond
 warms, and where the friendship and feud lines sit.
 
+**Settler sprites.** Settlers are drawn from a generated body by default: three
+pixels wide, a head, and a two frame walk. Drop images on the panel to replace
+it. There is a slot per motion - standing, walking, carrying, working, sleeping
+- and each keeps its own art, its own number of frames and its own playback.
+
+Drop one image and it is read as a strip: a sheet whose width is a whole number
+of its height is cut into that many square frames, and anything else arrives as
+one frame you then set the count on. Drop several and each becomes a frame, in
+the order their names sort, so `walk1.png walk2.png walk10.png` lands in that
+order rather than the browser's. Frames of different sizes are centered on a
+common box and stood on its floor, so they line up at the feet. Clicking a slot
+opens a file picker instead, for a keyboard.
+
+The sheet is kept whole rather than cut up, so the frame count stays editable
+afterwards: a strip read as four frames becomes six by typing six. Per slot you
+also set the drawn height in cells (width follows the shape of the frame), how
+far the art is lifted off the ground, whether it mirrors when facing left, and
+the rate.
+
+The rate is either frames per second or frames per cell walked. Tie a walk to
+steps and it never slides and never runs on the spot, because the same counter
+that made the generated settler take a step advances it; leave a sleep or an
+idle on the clock, where standing still should still breathe.
+
+A slot with nothing dropped on it borrows from a related one - carrying falls
+back to walking, working and sleeping to standing - so one walk sheet is enough
+to replace the settler everywhere. A slot with nothing behind it at all falls
+back to the generated body, and so does everything when the switch at the top of
+the section is off, which hides the art without giving it up.
+
+Frames are capped at 24, and one frame at 64 pixels a side; anything larger is
+scaled down on the way in rather than refused. Sheets are saved with the project
+like any other pixel buffer, so they travel through Export and Import and come
+back on a reload - but they are the one thing in a project big enough to fill
+the browser's storage, and the section says what they are costing.
+
 ### Build
 
 The planner's parameters (how many sites at once, spacing, sprawl, cost and
@@ -354,6 +390,13 @@ pixels; the furthest leaves the shape of the towns and the texture of the
 forest. The threshold is a slider in the Land panel, so it can be pushed either
 way.
 
+Zoomed out far enough that the whole map is on screen, the camera is drawing one
+screen pixel per block of world pixels and discarding the rest, so the frame
+stops producing them: the ground, the compositing and the upload all step over
+the same grid of one pixel in that block. Nothing visible changes - at half zoom
+the result is byte identical to uploading everything and letting the canvas
+shrink it - and the whole map at 512 by 256 costs about a fifth of what it did.
+
 ## Projects
 
 State auto saves to localStorage; **Export** writes a JSON project and
@@ -375,6 +418,8 @@ bun run check:civ   60 town.ppm            # 60 days of settlement, bookkeeping,
 bun run check:civ   60 town.ppm coarse     # the same, drawn at a zoomed out detail level
 GROW_SEED=909       bun run check:civ 200 town.ppm
 CHROMIUM_PATH=/path/to/chrome bun run check:ui /tmp/shots
+bun run check:perf  512 256               # frame time in a browser, zoom by zoom
+bun run check:render 60                   # the same drawing timed headless, phase by phase
 ```
 
 `civsmoke` founds a settlement, runs it for the given number of days and checks

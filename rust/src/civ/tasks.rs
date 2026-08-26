@@ -101,6 +101,20 @@ pub enum Task {
 }
 
 impl Task {
+    /// True while the settler is doing the work rather than walking to it.
+    /// Only the tasks that have somewhere to stand and something to do there
+    /// answer yes; an errand is over the moment the walk ends.
+    pub fn working(&self) -> bool {
+        match self {
+            Task::Harvest { phase, .. }
+            | Task::Mine { phase, .. }
+            | Task::Build { phase, .. }
+            | Task::Station { phase, .. }
+            | Task::Haul { phase, .. } => *phase == Phase::Working,
+            _ => false,
+        }
+    }
+
     pub fn label(&self) -> &'static str {
         match self {
             Task::Idle { .. } => "idle",

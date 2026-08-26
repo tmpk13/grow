@@ -57,7 +57,7 @@ pub const DEFAULT_TONES: i32 = 6;
 
 /// Pixel buffers travel through JSON as a run of RGBA hex quads, which is how
 /// the project file has always stored them.
-mod px_hex {
+pub mod px_hex {
     use super::{packed_to_rgba_hex, rgba_hex_to_packed};
     use serde::{Deserialize, Deserializer, Serializer};
 

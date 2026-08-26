@@ -14,6 +14,7 @@ pub mod planner;
 pub mod resources;
 pub mod settlement;
 pub mod social;
+pub mod sprites;
 pub mod tasks;
 pub mod tech;
 pub mod terrain;

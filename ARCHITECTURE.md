@@ -53,6 +53,7 @@ flowchart TD
     bldp["ui/build_panel.rs"]
     ecop["ui/economy_panel.rs"]
     tchp["ui/tech_panel.rs"]
+    sdrop["ui/sprite_drop.rs<br/>image drop zones, one per motion"]
   end
 
   subgraph core [Simulation core, no browser]
@@ -75,6 +76,7 @@ flowchart TD
     people["civ/people.rs<br/>record, needs, movement"]
     pdb["civ/people_db.rs<br/>the register of settlers"]
     social["civ/social.rs<br/>who has met whom, and what they made of it"]
+    csprites["civ/sprites.rs<br/>dropped settler clips, one per motion"]
     boats["civ/boats.rs<br/>hulls, cargoes, voyages"]
     path["civ/pathing.rs<br/>A* over land and water"]
     econ["civ/economy.rs<br/>prices, wages, caravans"]
@@ -104,6 +106,8 @@ flowchart TD
   wldp --> world
   lndp --> terrain
   pplp --> people
+  pplp --> sdrop
+  sdrop --> csprites
   bldp --> bdefs
   ecop --> econ
   tchp --> tech
@@ -124,6 +128,8 @@ flowchart TD
   sett --> pdb
   sett --> social
   social --> people
+  csprites --> people
+  civrender --> csprites
   sett --> boats
   sett --> path
   sett --> bdefs
@@ -226,6 +232,24 @@ classDiagram
     +world, terrain, people
     +work, build, economy
     +tech, start, sim, view
+    +PeopleSprites sprites
+  }
+
+  class PeopleSprites {
+    +bool enabled
+    +Option~Clip~ idle, walk, carry
+    +Option~Clip~ work, sleep
+    +u32 rev
+    +resolve() set()
+  }
+
+  class Clip {
+    +i32 w, h
+    +Vec~u32~ px
+    +i32 frames
+    +f64 fps, height, lift
+    +bool stride, flip
+    +frame_w() pixel() frame_index()
   }
 
   class Task {
@@ -252,6 +276,7 @@ classDiagram
     +PlantIndex plant_index
     +PathGrid paths, water_paths
     +Rect view
+    +i32 px_step
     +Detail detail
     +step() composite()
   }
@@ -331,6 +356,8 @@ classDiagram
   State *-- Materials
   State *-- Species
   State *-- CivConfig
+  CivConfig *-- PeopleSprites
+  PeopleSprites *-- Clip
   Materials *-- Sampler
   Sim *-- World
   Sim *-- Plant
@@ -400,6 +427,10 @@ sequenceDiagram
   S->>S: sort back to front, shadow then sprite per plant
   V->>V: blit scaled, draw grid and occupancy overlays
 ```
+
+The settlement runs the same loop, except that it is handed the visible
+rectangle and the sampling step before compositing, and composites every frame
+rather than only when something is marked dirty, because people move.
 
 ## Shading pass
 
@@ -877,9 +908,10 @@ flowchart TD
 
 ## Settlement drawing
 
-Nothing about a building or a settler is stored as art: both are generated from
-their own numbers and the sampling boxes, and cached by the values they were
-built from.
+Nothing about a building is stored as art: it is generated from its own numbers
+and the sampling boxes, and cached by the values it was built from. A settler is
+the same until somebody drops images on the people panel, at which point the
+generator steps aside for the art.
 
 ```mermaid
 flowchart TD
@@ -893,20 +925,82 @@ flowchart TD
   ramps["sampling box ramps<br/>timber, thatch, stone, brick, cloth"] --> bsprite
   bsprite --> frame
   pseed["person id hash"] --> psprite["skin, shirt, hair<br/>two frame walk cycle"]
-  psprite --> frame
+  psprite --> pick{"a clip dropped<br/>for this motion?"}
+  clip["civ/sprites.rs<br/>sheet, frame count, rate, height"] --> pick
+  pick -->|no| frame
+  pick -->|yes| frame
   frame --> night["night tint and labels<br/>drawn on the canvas, not the buffer"]
 ```
+
+## Settler animations
+
+A settler can be drawn from images instead of from the generator. Every motion
+the simulation can put somebody in has its own slot, its own frame count and its
+own playback, so a walk and a sleep are not forced to share a cadence.
+
+```mermaid
+flowchart TD
+  drop["images dropped on a motion"] --> how{"how many files?"}
+  how -->|one| strip["read as a strip:<br/>frames guessed from the shape,<br/>square frames unless told otherwise"]
+  how -->|several| each["one frame each, in the order<br/>their names sort, so walk2<br/>lands before walk10"]
+  each --> box["a common box, widest and tallest<br/>of them; every frame centered<br/>across it and stood on its floor"]
+  strip --> cap
+  box --> cap["scaled down only if a frame<br/>is over the size cap"]
+  cap --> sheet["one sheet, kept whole"]
+  sheet --> cut["frame width is sheet width over<br/>frame count, so the count stays<br/>editable after the drop"]
+  cut --> saved["saved with the project<br/>as RGBA hex, like every other<br/>pixel buffer"]
+```
+
+What a settler is doing folds down to one motion, and a motion with an empty
+slot borrows from a related one, so a single walk sheet stands in everywhere.
+
+```mermaid
+flowchart TD
+  p["a settler"] --> m{"what are they doing?"}
+  m -->|sleeping| sl["sleep"]
+  m -->|on a path, loaded| ca["carry"]
+  m -->|on a path| wa["walk"]
+  m -->|stood at a task mid-work| wo["work"]
+  m -->|otherwise| id["idle"]
+  ca -.->|nothing dropped| wa
+  wa -.->|nothing dropped| id
+  wo -.->|nothing dropped| id
+  sl -.->|nothing dropped| id
+  id -.->|nothing dropped| gen["the generated settler"]
+```
+
+Which frame shows is either the clock or the ground, per clip. A walk tied to
+the clock slides or runs on the spot; a walk tied to the ground covered never
+does, because the same counter that made the generated settler take a step is
+what advances it. Sprites are cached per motion, frame, facing and cell size
+rather than per person: the whole town shares one entry, and a change to any
+clip drops the cache.
 
 ## Drawing a map too big to draw
 
 A map worth having is a map most of which is off screen and the rest of which is
-too small to read. Two things keep the cost of a frame tied to the size of the
+too small to read. Three things keep the cost of a frame tied to the size of the
 window rather than the size of the map.
 
 **Only the visible band is touched.** The camera hands the settlement the
 rectangle of world pixels it can show. That band, and only that band, is copied
 out of the cached ground, composited into, and uploaded to the canvas. The rest
 of the buffer stays stale, because nothing is going to look at it.
+
+**Below one to one, only the pixels the screen will show are made.** The band
+answers where; this answers how densely inside it. At a zoom of a quarter the
+canvas draws one screen pixel per four by four block of world pixels and
+discards the rest, so the frame stops producing them.
+
+```mermaid
+flowchart TD
+  cam["camera zoom times device pixel ratio"] --> step["sample step:<br/>one below that, floor of its reciprocal"]
+  step --> grid["one grid, aligned to the world origin<br/>rather than to the view, so panning slides<br/>the image instead of changing<br/>which pixels survive"]
+  grid --> g["ensure_ground paints<br/>those rows only"]
+  g --> c["composite restores<br/>those rows only, and draws over them"]
+  c --> p["present_region gathers that pixel<br/>of each block and draws it<br/>back out at step times zoom"]
+  step --> inval["a change of step rebuilds the ground:<br/>zooming in wants the rows<br/>the last pass skipped"]
+```
 
 **Detail is shed in stages as the camera pulls back.**
 

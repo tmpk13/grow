@@ -13,6 +13,18 @@ use crate::ui::{document, window};
 use crate::util::{clamp, hex_to_packed, unpack_rgba};
 use crate::world::World;
 
+/// A sample never stands for more than this many world pixels each way: past
+/// it the map is a thumbnail and the saving is already spent.
+pub const MAX_SAMPLE_STEP: i32 = 8;
+
+fn round_up(v: i32, step: i32) -> i32 {
+    if step <= 1 {
+        v
+    } else {
+        ((v + step - 1) / step) * step
+    }
+}
+
 const LAYER_COLORS: [&str; 5] = [
     "rgba(120, 220, 140, 0.30)",
     "rgba(230, 220, 110, 0.30)",
@@ -58,6 +70,11 @@ fn new_canvas() -> HtmlCanvasElement {
 fn put_buffer(ctx: &CanvasRenderingContext2d, buf: &[u32], w: i32, h: i32) {
     // The buffer is already laid out as RGBA bytes for a little endian machine,
     // which is what ImageData expects.
+    //
+    // Wrapping the wasm heap in a view instead, to save the copy, is far
+    // slower: an ImageData backed by the whole heap buffer misses whatever
+    // fast path the canvas has for one it owns, and the upload goes from
+    // about a millisecond to a hundred.
     let bytes: &[u8] =
         unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len() * 4) };
     if let Ok(image) =
@@ -131,6 +148,27 @@ impl Viewport {
         self.pan_y += dy;
     }
 
+    /// How many world pixels one uploaded pixel stands for.
+    ///
+    /// Zoomed out past 1:1 the canvas throws away all but one pixel of every
+    /// block it draws, so producing the rest is work nobody sees. The region is
+    /// sampled on a grid of this step instead, and the step is a whole number
+    /// aligned to the origin rather than to the view, so panning slides the
+    /// image without changing which pixels survive.
+    pub fn sample_step(&self) -> i32 {
+        // The live ratio rather than the cached one: the settlement asks for
+        // the step before the frame resizes the canvas, and a step that
+        // disagreed with the upload's would leave it reading rows the
+        // compositing had skipped.
+        let dpr = window().device_pixel_ratio().max(0.5);
+        let scale = self.zoom * dpr;
+        if scale >= 1.0 {
+            1
+        } else {
+            clamp((1.0 / scale).floor(), 1.0, MAX_SAMPLE_STEP as f64) as i32
+        }
+    }
+
     /// The part of the world the canvas can currently show, in world pixels,
     /// padded by a cell so nothing pops in at the edge. This is what the
     /// settlement composites and what gets uploaded, so the cost of a frame
@@ -154,9 +192,11 @@ impl Viewport {
         self.present_region(world, buf, all);
     }
 
-    /// The same, uploading only one rectangle of the buffer. A map big enough
-    /// to be worth having has a buffer far too large to push to a canvas sixty
-    /// times a second; only what is on screen is ever copied.
+    /// The same, uploading only one rectangle of the buffer, and below one to
+    /// one only one pixel of each block the canvas would collapse. A map big
+    /// enough to be worth having has a buffer far too large to push to a canvas
+    /// sixty times a second, and zoomed out most of what would be pushed is
+    /// thrown away on arrival.
     pub fn present_region(&mut self, world: &World, buf: &[u32], rect: Rect) {
         self.resize();
         let ctx = &self.ctx;
@@ -170,25 +210,43 @@ impl Viewport {
         if rect.is_empty() {
             return;
         }
-        let (w, h) = (rect.x1 - rect.x0, rect.y1 - rect.y0);
+        // The sampling grid starts at the first multiple of the step inside the
+        // region, so a sample always stands for the block of world pixels that
+        // begins at it.
+        let step = self.sample_step();
+        let x0 = round_up(rect.x0, step);
+        let y0 = round_up(rect.y0, step);
+        if x0 >= rect.x1 || y0 >= rect.y1 {
+            return;
+        }
+        let w = (rect.x1 - x0 + step - 1) / step;
+        let h = (rect.y1 - y0 + step - 1) / step;
         if self.off.width() != w as u32 || self.off.height() != h as u32 {
             self.off.set_width(w as u32);
             self.off.set_height(h as u32);
         }
-        // Rows are contiguous, so the region is repacked one row at a time.
         self.scratch.resize((w * h) as usize, 0);
         for y in 0..h {
-            let src = ((rect.y0 + y) * world.px_w + rect.x0) as usize;
+            let src = ((y0 + y * step) * world.px_w) as usize;
             let dst = (y * w) as usize;
-            self.scratch[dst..dst + w as usize].copy_from_slice(&buf[src..src + w as usize]);
+            let out = &mut self.scratch[dst..dst + w as usize];
+            if step == 1 {
+                let src = src + x0 as usize;
+                out.copy_from_slice(&buf[src..src + w as usize]);
+            } else {
+                let row = &buf[src..];
+                for (i, px) in out.iter_mut().enumerate() {
+                    *px = row[x0 as usize + i * step as usize];
+                }
+            }
         }
         put_buffer(&self.off_ctx, &self.scratch, w, h);
         let _ = self.ctx.draw_image_with_html_canvas_element_and_dw_and_dh(
             &self.off,
-            self.pan_x + rect.x0 as f64 * self.zoom,
-            self.pan_y + rect.y0 as f64 * self.zoom,
-            w as f64 * self.zoom,
-            h as f64 * self.zoom,
+            self.pan_x + x0 as f64 * self.zoom,
+            self.pan_y + y0 as f64 * self.zoom,
+            (w * step) as f64 * self.zoom,
+            (h * step) as f64 * self.zoom,
         );
     }
 

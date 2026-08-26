@@ -13,6 +13,7 @@ use crate::civ::people::{PeopleConfig, Profession, PROFESSIONS};
 use crate::civ::resources::Res;
 use crate::civ::social::SocialConfig;
 use crate::civ::settlement::{standing, Settlement};
+use crate::ui::sprite_drop::sprites_section;
 use crate::ui::{
     app_bool, app_num, append, bar, clear, clear_scope, colony_picker, el, note, section, stat, NumOpts, Scope,
 };
@@ -106,6 +107,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     register.push(roster.clone());
     append(root, section("Register", register));
     append(root, section("Obituaries", vec![graves.clone()]));
+
+    append(root, sprites_section(app, h));
 
     let p = app.state.civ.people;
     append(root, section("Body and day", vec![

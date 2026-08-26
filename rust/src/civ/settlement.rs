@@ -21,7 +21,7 @@ use crate::civ::buildings::{
     building_by_id, home_rank, scaled_cost, scaled_work, upgrade_of, BuildingDef, Job, Structure,
     BUILDINGS,
 };
-use crate::civ::civ_render::{composite_settlement, Detail, SpriteCache};
+use crate::civ::civ_render::{composite_settlement, Detail, Item, SpriteCache};
 use crate::civ::colony::Colony;
 use crate::civ::economy::{run_caravan, stock_targets, update_prices, Sample};
 use crate::civ::names::{inn_name, place_name};
@@ -308,13 +308,21 @@ pub struct Settlement {
     pub ground: Vec<u32>,
     pub ground_dirty: bool,
     pub ground_age: u32,
+    /// The sampling step the cached ground was painted at. A finer camera needs
+    /// the rows this one skipped, so a change forces a rebuild.
+    pub ground_step: i32,
     pub buffer_dirty: bool,
     pub warmup_done: f64,
     pub ready: bool,
     pub terrain_version: u32,
     pub sprites: SpriteCache,
+    /// The draw list, kept across frames for its capacity alone.
+    pub(crate) items: Vec<(i32, i32, i32, Item)>,
     /// What the camera can see, in world pixels. Only this is composited.
     pub view: Rect,
+    /// How many world pixels the camera collapses into one on screen. Rows the
+    /// upload will not sample are left stale rather than repainted.
+    pub px_step: i32,
     /// How much of the drawing is worth doing at the current zoom.
     pub detail: Detail,
 }
@@ -362,13 +370,16 @@ impl Settlement {
             bg_key: String::new(),
             ground: Vec::new(),
             ground_dirty: true,
+            ground_step: 1,
             ground_age: 0,
             buffer_dirty: true,
             warmup_done: 0.0,
             ready: false,
             terrain_version: 0,
             sprites: SpriteCache::default(),
+            items: Vec::new(),
             view,
+            px_step: 1,
             detail: Detail::Full,
         };
         sett.reset(state, state.civ.seed);

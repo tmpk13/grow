@@ -1,13 +1,18 @@
 //! Drawing the settlement.
 //!
-//! Everything is generated: the ground is dithered out of the sampling box
-//! ramps, buildings are assembled from their own dimensions and material slots,
-//! and people are three pixels wide with a palette hashed from their id. No
-//! sprite is stored anywhere in the project, so changing a cell size or
-//! repainting a material box changes the whole town.
+//! Nearly everything is generated: the ground is dithered out of the sampling
+//! box ramps, buildings are assembled from their own dimensions and material
+//! slots, and people are three pixels wide with a palette hashed from their id.
+//! Nothing here is authored, so changing a cell size or repainting a material
+//! box changes the whole town.
+//!
+//! The one exception is a settler somebody has dropped images on. A clip stands
+//! in for the generated body for as long as it is there and for exactly the
+//! motion it was dropped on; everything else about the frame is unchanged.
 //!
 //! Sprites are cached by the values they are built from, which is why the cache
-//! key carries the materials version and the cell size.
+//! key carries the materials version and the cell size, and why a clip carries
+//! its revision.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -16,6 +21,7 @@ use crate::civ::boats::Boat;
 use crate::civ::buildings::{Grain, Structure};
 use crate::civ::people::Person;
 use crate::civ::settlement::{Building, Rect, Settlement};
+use crate::civ::sprites::{motion_of, Clip, Motion};
 use crate::civ::terrain::{Cell, FLOW_DIRS};
 use crate::sampler::{ramp_pick, Materials};
 use crate::sim::cast_shadow;
@@ -31,7 +37,7 @@ use crate::world::World;
 /// detail costs a frame and buys nothing, so the drawing sheds it in stages:
 /// first the flourishes, then the sprites, and finally everything but the shape
 /// of the town and the color of the ground.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum Detail {
     #[default]
     Full,
@@ -87,9 +93,58 @@ pub struct Sprite {
     pub oy: i32,
 }
 
+/// What a cached sprite was built from.
+///
+/// Every value the drawing would vary is in here, which is what makes a hit
+/// safe to reuse. It is a plain key rather than a formatted string because the
+/// lookup happens once per building and once per settler per frame, and a
+/// string would mean an allocation for each of them.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SpriteKey {
+    Building {
+        /// The catalog entry, by address: the definitions are `'static`, so two
+        /// buildings of a kind share one and no other kind can collide with it.
+        def: usize,
+        seed: u8,
+        stage: u8,
+        lit: bool,
+        detail: Detail,
+        cell_px: i32,
+        depth_px: i32,
+        materials: u32,
+    },
+    Person {
+        seed: u16,
+        frame: i32,
+        facing: i32,
+        body_w: i32,
+        body_h: i32,
+        adult: bool,
+    },
+    /// A frame of a dropped clip, scaled for the current cell size. Nothing
+    /// about the settler is in the key: every person on the same motion and
+    /// frame is drawn from the same pixels, so one entry serves the whole town.
+    PersonClip {
+        motion: u8,
+        frame: i32,
+        mirror: bool,
+        w: i32,
+        h: i32,
+        lift: i32,
+        rev: u32,
+    },
+    Boat {
+        seed: u8,
+        facing: i32,
+        hull_w: i32,
+        hull_h: i32,
+        banner: u32,
+    },
+}
+
 #[derive(Default)]
 pub struct SpriteCache {
-    map: HashMap<String, Rc<Sprite>>,
+    map: HashMap<SpriteKey, Rc<Sprite>>,
 }
 
 impl SpriteCache {
@@ -275,7 +330,7 @@ fn paint_deposits(sim: &Settlement, state: &State, buf: &mut [u32]) {
 
 /// Cells that get walked over often wear into a path. Drawn per frame over the
 /// cached ground rather than baked into it, because it keeps changing.
-fn paint_paths(sim: &Settlement, state: &State, buf: &mut [u32]) {
+fn paint_paths(sim: &Settlement, state: &State, buf: &mut [u32], step: i32) {
     if !state.civ.view.paths {
         return;
     }
@@ -294,7 +349,7 @@ fn paint_paths(sim: &Settlement, state: &State, buf: &mut [u32]) {
             let x0 = col * world.cell_px;
             let y0 = world.sky_px + row * world.depth_px;
             for y in y0..y0 + world.depth_px {
-                if y < 0 || y >= world.px_h {
+                if y < 0 || y >= world.px_h || y % step != 0 {
                     continue;
                 }
                 for x in x0..x0 + world.cell_px {
@@ -312,24 +367,28 @@ fn paint_paths(sim: &Settlement, state: &State, buf: &mut [u32]) {
 
 // ---- buildings -----------------------------------------------------------
 
-fn building_key(state: &State, world: &World, b: &Building, night: bool, detail: Detail) -> String {
-    let lit = if b.built && night { 1 } else { 0 };
+fn building_key(
+    state: &State,
+    world: &World,
+    b: &Building,
+    night: bool,
+    detail: Detail,
+) -> SpriteKey {
     let stage = if b.built {
         9
     } else {
         (((b.work_done / b.work.max(1.0)) * 8.0).floor() as i32).min(8)
     };
-    format!(
-        "b:{}:{}:{}:{}:{}:{}:{}:{}",
-        b.def.id,
-        b.seed & 255,
-        stage,
-        lit,
-        detail as i32,
-        world.cell_px,
-        world.depth_px,
-        state.materials.version
-    )
+    SpriteKey::Building {
+        def: b.def as *const _ as usize,
+        seed: (b.seed & 255) as u8,
+        stage: stage as u8,
+        lit: b.built && night,
+        detail,
+        cell_px: world.cell_px,
+        depth_px: world.depth_px,
+        materials: state.materials.version,
+    }
 }
 
 /// Everything standing on the map is generated from its own numbers and the
@@ -700,15 +759,14 @@ pub fn person_sprite(cache: &mut SpriteCache, world: &World, p: &Person, frame: 
     let body_h = ((world.cell_px as f64 * 0.85).round() as i32).max(4);
     let body_w = ((world.cell_px as f64 * 0.3).round() as i32).max(2);
     let adult = p.adult();
-    let key = format!(
-        "p:{}:{}:{}:{}:{}:{}",
-        p.seed & 1023,
+    let key = SpriteKey::Person {
+        seed: (p.seed & 1023) as u16,
         frame,
-        p.facing,
+        facing: p.facing,
         body_w,
         body_h,
-        adult as i32
-    );
+        adult,
+    };
     if let Some(hit) = cache.map.get(&key) {
         return hit.clone();
     }
@@ -758,6 +816,57 @@ pub fn person_sprite(cache: &mut SpriteCache, world: &World, p: &Person, frame: 
     sprite
 }
 
+/// One frame of a dropped clip, scaled to the map. Nearest sampling both ways,
+/// so art authored smaller than the cell keeps its edges instead of blurring
+/// into it, and art authored larger loses whole pixels rather than smearing.
+///
+/// The sprite is cached against the clip revision rather than against the
+/// pixels, which is what makes a hit cheap: the whole settlement shares one
+/// entry per motion, frame and facing.
+pub fn person_clip_sprite(
+    cache: &mut SpriteCache,
+    world: &World,
+    clip: &Clip,
+    motion: Motion,
+    frame: i32,
+    mirror: bool,
+    rev: u32,
+) -> Rc<Sprite> {
+    let fw = clip.frame_w();
+    let fh = clip.h.max(1);
+    let cell = world.cell_px.max(1);
+    // A clip drawn taller than a few cells is somebody's mistake, not a
+    // decision, and the blit is what would pay for it.
+    let h = ((cell as f64 * clip.height).round() as i32).clamp(1, cell * 8);
+    let w = (((fw as f64 * h as f64) / fh as f64).round() as i32).clamp(1, cell * 8);
+    let lift = (cell as f64 * clip.lift).round() as i32;
+    let key = SpriteKey::PersonClip {
+        motion: motion.index() as u8,
+        frame,
+        mirror,
+        w,
+        h,
+        lift,
+        rev,
+    };
+    if let Some(hit) = cache.map.get(&key) {
+        return hit.clone();
+    }
+
+    let mut px = vec![0u32; (w * h) as usize];
+    for y in 0..h {
+        let sy = ((y as i64 * fh as i64) / h as i64).min(fh as i64 - 1) as i32;
+        for x in 0..w {
+            let sx = ((x as i64 * fw as i64) / w as i64).min(fw as i64 - 1) as i32;
+            let sx = if mirror { fw - 1 - sx } else { sx };
+            px[(y * w + x) as usize] = clip.pixel(frame, sx, sy);
+        }
+    }
+    let sprite = Rc::new(Sprite { w, h, px, ox: w / 2, oy: h + lift });
+    cache.map.insert(key, sprite.clone());
+    sprite
+}
+
 /// The shirt, which is the one color that stands for a settler at any zoom.
 pub fn person_color(p: &Person) -> u32 {
     hsl(hash2(p.seed as i32, 7, 23) * 360.0, 0.35, 0.42)
@@ -797,14 +906,13 @@ pub fn boat_sprite(cache: &mut SpriteCache, world: &World, boat: &Boat, banner: 
     let hull_w = ((world.cell_px as f64 * 1.5).round() as i32).max(4);
     let hull_h = ((world.cell_px as f64 * 0.4).round() as i32).max(2);
     let mast_h = ((world.cell_px as f64 * 1.1).round() as i32).max(3);
-    let key = format!(
-        "boat:{}:{}:{}:{}:{}",
-        boat.seed & 255,
-        boat.facing,
+    let key = SpriteKey::Boat {
+        seed: (boat.seed & 255) as u8,
+        facing: boat.facing,
         hull_w,
         hull_h,
-        banner
-    );
+        banner,
+    };
     if let Some(hit) = cache.map.get(&key) {
         return hit.clone();
     }
@@ -978,6 +1086,13 @@ fn ensure_ground(sim: &mut Settlement, state: &State) {
         sim.ground = vec![0u32; len];
         sim.ground_dirty = true;
     }
+    // Only the rows the camera samples are ever read back out of the ground,
+    // so only those are painted. A camera that moves closer wants the rows this
+    // pass skipped, which is what makes a change of step a rebuild.
+    let step = sim.px_step.max(1);
+    if sim.ground_step != step {
+        sim.ground_dirty = true;
+    }
     // Footpaths wear in and fade slowly, so a periodic rebuild is enough to
     // keep them current without paying for them every frame.
     sim.ground_age += 1;
@@ -986,9 +1101,20 @@ fn ensure_ground(sim: &mut Settlement, state: &State) {
     }
     sim.ground_age = 0;
     sim.ground_dirty = false;
+    sim.ground_step = step;
     let mut ground = std::mem::take(&mut sim.ground);
-    ground.copy_from_slice(&sim.bg);
-    paint_paths(sim, state, &mut ground);
+    if step == 1 {
+        ground.copy_from_slice(&sim.bg);
+    } else {
+        let w = world_px.0 as usize;
+        let mut y = 0;
+        while y < world_px.1 {
+            let a = y as usize * w;
+            ground[a..a + w].copy_from_slice(&sim.bg[a..a + w]);
+            y += step;
+        }
+    }
+    paint_paths(sim, state, &mut ground, step);
     // Shadows are the single most expensive thing on the ground and the first
     // thing that stops being visible when the camera pulls back.
     if state.civ.world.shadows && sim.detail.sprites() {
@@ -1036,7 +1162,9 @@ fn building_shadow(world: &World, buf: &mut [u32], b: &Building) {
     }
 }
 
-enum Item {
+/// One thing to draw, and where in its own list it lives. Sorted by the row it
+/// stands on, so the map is painted back to front.
+pub(crate) enum Item {
     Plant(usize),
     Pile(usize),
     Building(usize),
@@ -1137,21 +1265,34 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
     }
     let detail = sim.detail;
     let px_w = sim.world().px_w as usize;
+    // Zoomed out the upload samples one row in `px_step`, and a row it will not
+    // sample is a row nothing can read: erasing last frame's drawing there buys
+    // nothing. The grid is aligned to the origin, which is where the upload
+    // starts its own, so the rows that survive here are exactly the rows that
+    // get read.
+    let step = sim.px_step.max(1);
     let mut buf = std::mem::take(&mut sim.buffer);
     // Only the visible band is refreshed. Everything outside it is stale and
     // never uploaded.
-    for y in view.y0..view.y1 {
+    let first = view.y0 + (step - view.y0 % step) % step;
+    let mut y = first;
+    while y < view.y1 {
         let row = y as usize * px_w;
         let a = row + view.x0 as usize;
         let b = row + view.x1 as usize;
         buf[a..b].copy_from_slice(&sim.ground[a..b]);
+        y += step;
     }
 
+    // Kept between frames: on a full map this is one entry per plant, and
+    // growing it from nothing every frame is the largest allocation the drawing
+    // makes.
+    let mut items = std::mem::take(&mut sim.items);
+    items.clear();
     let world = sim.world();
     let cell = world.cell_px;
     let depth = world.depth_px;
     let sky = world.sky_px;
-    let mut items: Vec<(i32, i32, i32, Item)> = Vec::new();
     for (i, plant) in sim.plant_sim.plants.iter().enumerate() {
         // A conservative box: the anchor plus the sprite's own extent.
         let ax = world.anchor_x(plant.col);
@@ -1264,9 +1405,27 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                     draw_person_dot(&mut buf, world, p, sx, sy, detail);
                     continue;
                 }
-                let frame = (p.bob.floor() as i64).rem_euclid(2) as i32;
-                let frame = if p.path.is_empty() { 0 } else { frame };
-                let sprite = person_sprite(&mut sprites, world, p, frame);
+                let motion = motion_of(p);
+                let sprite = match state.civ.sprites.resolve(motion) {
+                    Some((slot, clip)) => {
+                        let frame = clip.frame_index(p.bob, time);
+                        let mirror = clip.flip && p.facing < 0;
+                        person_clip_sprite(
+                            &mut sprites,
+                            world,
+                            clip,
+                            slot,
+                            frame,
+                            mirror,
+                            state.civ.sprites.rev,
+                        )
+                    }
+                    None => {
+                        let frame = (p.bob.floor() as i64).rem_euclid(2) as i32;
+                        let frame = if p.path.is_empty() { 0 } else { frame };
+                        person_sprite(&mut sprites, world, p, frame)
+                    }
+                };
                 blit(&mut buf, world, &sprite, sx, sy);
                 if p.carrying() && detail.flourishes() {
                     draw_carry(world, &mut buf, p, &sprite, sx, sy);
@@ -1290,6 +1449,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
     }
     sim.sprites = sprites;
     sim.buffer = buf;
+    sim.items = items;
     sim.buffer_dirty = false;
 }
 

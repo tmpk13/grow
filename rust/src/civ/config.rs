@@ -12,6 +12,7 @@ use crate::civ::economy::EconomyConfig;
 use crate::civ::people::PeopleConfig;
 use crate::civ::resources::{stock_map, Res, Stock, RES_COUNT};
 use crate::civ::social::SocialConfig;
+use crate::civ::sprites::PeopleSprites;
 use crate::civ::tech::TechConfig;
 use crate::civ::terrain::TerrainConfig;
 use crate::world::WorldConfig;
@@ -163,6 +164,9 @@ pub struct CivConfig {
     pub start: StartConfig,
     pub sim: SimSettings,
     pub view: ViewConfig,
+    /// Images dropped on the people panel to draw settlers with, one clip per
+    /// motion. Empty means everyone is drawn from the generator instead.
+    pub sprites: PeopleSprites,
     /// How many dead settlers stay on file. The register keeps a slot per
     /// person ever born; this is where a very long run stops growing.
     pub people_archive: usize,
@@ -184,6 +188,7 @@ impl Default for CivConfig {
             start: StartConfig::default(),
             sim: SimSettings::default(),
             view: ViewConfig::default(),
+            sprites: PeopleSprites::default(),
             people_archive: 400,
         }
     }
