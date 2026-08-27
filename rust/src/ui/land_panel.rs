@@ -3,11 +3,11 @@
 
 use web_sys::Element;
 
-use crate::app::{App, Handle, Panel};
+use crate::app::{App, Handle, Panel, Restart};
 use crate::civ::terrain::{DepositKind, DEPOSIT_KINDS};
 use crate::ui::{
-    app_bool, app_button, app_color, app_num, app_select, append, btn_row, clear, el, note,
-    sampler_options, section, stat, NumOpts,
+    app_bool, app_button, app_color, app_num, app_restart_num, app_select, append, btn_row, clear,
+    el, note, sampler_options, section, stat, NumOpts,
 };
 
 pub struct LandPanel {
@@ -19,19 +19,19 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let civ = &app.state.civ;
 
     let map = vec![
-        app_num(h, "Columns (x)", civ.world.cols as f64, NumOpts { min: 24.0, max: 512.0, step: 1.0 },
+        civ_num(h, "Columns (x)", civ.world.cols as f64, NumOpts { min: 24.0, max: 512.0, step: 1.0 },
             Some("cells across the map"),
-            |app, v| { app.state.civ.world.cols = v as i32; app.civ_restart(); }),
-        app_num(h, "Rows (depth)", civ.world.rows as f64, NumOpts { min: 12.0, max: 256.0, step: 1.0 }, None,
-            |app, v| { app.state.civ.world.rows = v as i32; app.civ_restart(); }),
-        app_num(h, "Cell width (px)", civ.world.cell_px as f64, NumOpts { min: 4.0, max: 24.0, step: 1.0 },
+            |app, v| app.state.civ.world.cols = v as i32),
+        civ_num(h, "Rows (depth)", civ.world.rows as f64, NumOpts { min: 12.0, max: 256.0, step: 1.0 }, None,
+            |app, v| app.state.civ.world.rows = v as i32),
+        civ_num(h, "Cell width (px)", civ.world.cell_px as f64, NumOpts { min: 4.0, max: 24.0, step: 1.0 },
             Some("everything drawn is sized from this"),
-            |app, v| { app.state.civ.world.cell_px = v as i32; app.civ_restart(); }),
-        app_num(h, "Cell depth (px)", civ.world.depth_px as f64, NumOpts { min: 2.0, max: 24.0, step: 1.0 },
+            |app, v| app.state.civ.world.cell_px = v as i32),
+        civ_num(h, "Cell depth (px)", civ.world.depth_px as f64, NumOpts { min: 2.0, max: 24.0, step: 1.0 },
             Some("lower values tilt the ground toward the viewer"),
-            |app, v| { app.state.civ.world.depth_px = v as i32; app.civ_restart(); }),
-        app_num(h, "Sky height (px)", civ.world.sky_px as f64, NumOpts { min: 20.0, max: 400.0, step: 2.0 }, None,
-            |app, v| { app.state.civ.world.sky_px = v as i32; app.civ_restart(); }),
+            |app, v| app.state.civ.world.depth_px = v as i32),
+        civ_num(h, "Sky height (px)", civ.world.sky_px as f64, NumOpts { min: 20.0, max: 400.0, step: 2.0 }, None,
+            |app, v| app.state.civ.world.sky_px = v as i32),
         app_num(h, "Seed", civ.seed as f64, NumOpts { min: 1.0, max: 999_999_999.0, step: 1.0 },
             Some("terrain, deposits, settlers and everything they do"),
             |app, v| { app.state.civ.seed = v as u32; app.request_save(); }),
@@ -43,9 +43,9 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             }),
             app_button(h, "Rebuild this land", |app| app.civ_restart()),
         ]),
-        note("Any change here regenerates the map and restarts the settlement. A large map costs \
-              memory for its pixel buffers and time for its wilderness warmup, but not frame rate: \
-              only what the camera can see is ever drawn."),
+        note("Anything starred here is waiting on Apply: the map is not rebuilt while a slider is \
+              being dragged. A large map costs memory for its pixel buffers and time for its \
+              wilderness warmup, but not frame rate: only what the camera can see is ever drawn."),
     ];
     append(root, section("Map", map));
 
@@ -162,6 +162,19 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     Box::new(panel)
 }
 
+/// A setting the map is generated from. Starred and left waiting rather than
+/// rebuilding the world under whoever is dragging it.
+fn civ_num(
+    h: &Handle,
+    label: &str,
+    value: f64,
+    opts: NumOpts,
+    hint: Option<&str>,
+    apply: fn(&mut App, f64),
+) -> Element {
+    app_restart_num(h, Restart::Civ, label, value, opts, hint, apply)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn terrain_num(
     h: &Handle,
@@ -173,9 +186,8 @@ fn terrain_num(
     hint: Option<&str>,
     apply: fn(&mut crate::civ::terrain::TerrainConfig, f64),
 ) -> Element {
-    app_num(h, label, value, NumOpts { min, max, step }, hint, move |app, v| {
+    app_restart_num(h, Restart::Civ, label, value, NumOpts { min, max, step }, hint, move |app, v| {
         apply(&mut app.state.civ.terrain, v);
-        app.civ_restart();
     })
 }
 
@@ -190,9 +202,8 @@ fn river_num(
     hint: Option<&str>,
     apply: fn(&mut crate::civ::terrain::RiverConfig, f64),
 ) -> Element {
-    app_num(h, label, value, NumOpts { min, max, step }, hint, move |app, v| {
+    app_restart_num(h, Restart::Civ, label, value, NumOpts { min, max, step }, hint, move |app, v| {
         apply(&mut app.state.civ.terrain.rivers, v);
-        app.civ_restart();
     })
 }
 
@@ -207,9 +218,8 @@ fn deposit_num(
     step: f64,
     apply: fn(&mut crate::civ::terrain::DepositConfig, f64),
 ) -> Element {
-    app_num(h, label, value, NumOpts { min, max, step }, None, move |app, v| {
+    app_restart_num(h, Restart::Civ, label, value, NumOpts { min, max, step }, None, move |app, v| {
         apply(app.state.civ.terrain.deposits.get_mut(kind), v);
-        app.civ_restart();
     })
 }
 

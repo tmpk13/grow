@@ -494,6 +494,19 @@ was drawn in, which is the whole point of keeping it separately, and a button
 for clearing a stuck page is not a reason to lose it; a kept sheet goes when it
 is deleted from the sprite editor's Sheet tab.
 
+### Waiting on a rebuild
+
+A setting the running world was built from - grid size, cell size, the terrain
+knobs, the deposits - does not rebuild anything as it moves. A slider that
+restarted a settlement at every value it passed through would be a slider
+nobody could hold. The setting is starred, a bar above the panel says how many
+are waiting, and **Apply** builds the world from them. **Discard** puts them
+back the way the running world has them.
+
+Leaving the panel with one waiting asks, with the three things it could mean:
+apply and go, discard and go, or stay here. Undoing a change back to what the
+running world was built from clears the star on its own.
+
 ### Dying back
 
 Nothing on the map blinks out. A plant past its **Max age** dries out over
@@ -614,7 +627,9 @@ not reading a single number.
 every tab, paints into a sampling box, draws on a sheet on the stage and stacks
 a layer on it, steps and plays the frames and sends the sheet to a settler
 motion, undoes and redoes both a layer and a panel field, resizes the world,
-queues a building, picks a settler up off the map and puts them down again,
+queues a building, changes a setting the world is built from and takes each of
+the three ways out of leaving it unapplied, picks a settler up off the map and
+puts them down again,
 searches the menus for a setting and follows the result to it, folds the menu
 away and back, goes fullscreen and leaves it again, checks the text scale
 reaches the root font size, and fails on any console error.

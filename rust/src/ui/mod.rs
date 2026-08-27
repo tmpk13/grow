@@ -30,6 +30,7 @@ pub mod species_panel;
 pub mod sprite_drop;
 pub mod sprite_store;
 pub mod tech_panel;
+pub mod restart_bar;
 pub mod view_menu;
 pub mod world_panel;
 
@@ -77,6 +78,8 @@ pub enum Scope {
     /// The view menu in the side panel, which outlives a tab change but is
     /// rebuilt whenever one of its own switches changes what the rest show.
     View,
+    /// The question the panel asks on the way out when a rebuild is waiting.
+    Dialog,
 }
 
 /// A listener, kept alive for as long as the node it is attached to.
@@ -88,6 +91,7 @@ thread_local! {
     static PANEL_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
     static LIST_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
     static VIEW_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
+    static DIALOG_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
 }
 
 fn with_bag<R>(scope: Scope, f: impl FnOnce(&mut Vec<Listener>) -> R) -> R {
@@ -97,6 +101,7 @@ fn with_bag<R>(scope: Scope, f: impl FnOnce(&mut Vec<Listener>) -> R) -> R {
         Scope::Panel => PANEL_BAG.with(|b| f(&mut b.borrow_mut())),
         Scope::List => LIST_BAG.with(|b| f(&mut b.borrow_mut())),
         Scope::View => VIEW_BAG.with(|b| f(&mut b.borrow_mut())),
+        Scope::Dialog => DIALOG_BAG.with(|b| f(&mut b.borrow_mut())),
     }
 }
 
@@ -634,6 +639,33 @@ pub fn app_num(
         sh.app.record(&key, true);
         apply(&mut sh.app, v);
     })
+}
+
+/// A number the running world was built from. Changing it does not rebuild
+/// anything: it is noted, starred in the panel and waits for Apply, because a
+/// slider that restarts a settlement at every value it passes through is a
+/// slider nobody can hold.
+#[allow(clippy::too_many_arguments)]
+pub fn app_restart_num(
+    h: &Handle,
+    which: crate::app::Restart,
+    label: &str,
+    value: f64,
+    opts: NumOpts,
+    hint: Option<&str>,
+    apply: impl Fn(&mut App, f64) + 'static,
+) -> Element {
+    let h2 = h.clone();
+    let key = label.to_string();
+    let field = number_field(label, value, opts, hint, move |v| {
+        let mut sh = h2.borrow_mut();
+        sh.app.record(&key, true);
+        apply(&mut sh.app, v);
+        sh.app.needs_restart(which, &key);
+        crate::ui::restart_bar::sync(&sh.app);
+    });
+    let _ = field.set_attribute("data-restart", "");
+    field
 }
 
 pub fn app_range(

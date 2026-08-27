@@ -58,6 +58,14 @@ impl Mode {
     }
 }
 
+/// Which running world a setting belongs to. A change to one of these is not
+/// acted on until it is applied, so the two have to be told apart.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Restart {
+    Lab = 0,
+    Civ = 1,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
     Pencil,
@@ -122,6 +130,12 @@ pub struct App {
     pub last_ts: f64,
     /// What the two pixel editors can put back.
     pub history: History,
+    /// Settings changed since the world they describe was built. Sorted, so
+    /// the bar lists them in the same order twice running.
+    pub pending: std::collections::BTreeSet<(Restart, String)>,
+    /// What each running world was built from, for telling a changed setting
+    /// from one that has been changed back.
+    built: [String; 2],
 }
 
 impl App {
@@ -226,6 +240,10 @@ impl App {
             self.civ_restart();
         }
         self.clamp_selection();
+        // A step back may have put a starred setting back the way the running
+        // world was built, in which case there is nothing waiting any more.
+        self.sync_pending();
+        ui::restart_bar::sync(self);
         self.rebuild_panel();
         self.request_save();
     }
@@ -295,6 +313,7 @@ impl App {
         self.sim.world_cfg = self.state.world.clone();
         self.sim.reset(self.state.seed);
         self.viewport.fit(&self.sim.world);
+        self.mark_built(Restart::Lab);
         self.request_save();
     }
 
@@ -341,6 +360,100 @@ impl App {
         self.set_note("growing the wilderness...");
         self.pending_civ_reset = true;
         self.pending_bootstrap = true;
+        self.mark_built(Restart::Civ);
+    }
+
+    /// Notes that a setting the running world was built from has moved. The
+    /// world is left alone: a slider that restarts a settlement on every value
+    /// it passes through is a slider nobody can use.
+    pub fn needs_restart(&mut self, which: Restart, label: &str) {
+        self.pending.insert((which, label.to_string()));
+        self.request_save();
+        self.sync_pending();
+    }
+
+    /// Drops what now matches the world that is running. Undoing a change is
+    /// the case that matters: the star it left behind would otherwise stand
+    /// for a difference that is no longer there.
+    pub fn sync_pending(&mut self) {
+        for which in [Restart::Lab, Restart::Civ] {
+            if self.restart_key(which) == self.built[which as usize] {
+                self.pending.retain(|(w, _)| *w != which);
+            }
+        }
+    }
+
+    /// Which settings are waiting, of the kind this mode would restart.
+    pub fn waiting(&self, which: Restart) -> Vec<&str> {
+        self.pending
+            .iter()
+            .filter(|(w, _)| *w == which)
+            .map(|(_, label)| label.as_str())
+            .collect()
+    }
+
+    pub fn restart_target(&self) -> Restart {
+        match self.mode {
+            Mode::Settlement => Restart::Civ,
+            _ => Restart::Lab,
+        }
+    }
+
+    /// Rebuilds whatever is waiting on it.
+    pub fn apply_restarts(&mut self) {
+        let kinds: Vec<Restart> = [Restart::Lab, Restart::Civ]
+            .into_iter()
+            .filter(|w| self.pending.iter().any(|(k, _)| k == w))
+            .collect();
+        self.pending.clear();
+        for which in kinds {
+            match which {
+                Restart::Lab => self.world_changed(),
+                Restart::Civ => self.civ_restart(),
+            }
+        }
+    }
+
+    /// Puts the settings back the way the running world was built with, which
+    /// is the other way out of a change nobody wants to sit through.
+    pub fn discard_restarts(&mut self) {
+        self.record("discard changes", false);
+        for which in [Restart::Lab, Restart::Civ] {
+            let built = self.built[which as usize].clone();
+            match which {
+                Restart::Lab => {
+                    if let Ok(w) = serde_json::from_str(&built) {
+                        self.state.world = w;
+                    }
+                }
+                Restart::Civ => {
+                    if let Ok((world, terrain)) = serde_json::from_str(&built) {
+                        self.state.civ.world = world;
+                        self.state.civ.terrain = terrain;
+                    }
+                }
+            }
+        }
+        self.pending.clear();
+        self.request_save();
+    }
+
+    /// What the running world was built from, so a later value can be told
+    /// apart from it. Only the settings a rebuild depends on: a sky color or a
+    /// label switch changes the picture without changing the world.
+    fn restart_key(&self, which: Restart) -> String {
+        let out = match which {
+            Restart::Lab => serde_json::to_string(&self.state.world),
+            Restart::Civ => {
+                serde_json::to_string(&(&self.state.civ.world, &self.state.civ.terrain))
+            }
+        };
+        out.unwrap_or_default()
+    }
+
+    pub fn mark_built(&mut self, which: Restart) {
+        self.built[which as usize] = self.restart_key(which);
+        self.pending.retain(|(w, _)| *w != which);
     }
 
     pub fn set_note(&self, text: &str) {
@@ -537,7 +650,7 @@ pub fn start() -> Result<(), JsValue> {
         shade_preview_core: 4.0,
     };
 
-    let app = App {
+    let mut app = App {
         state,
         sim,
         settlement: None,
@@ -557,12 +670,16 @@ pub fn start() -> Result<(), JsValue> {
         accumulator: 0.0,
         last_ts: ui::now(),
         history: History::default(),
+        pending: Default::default(),
+        built: Default::default(),
     };
+    app.built = [app.restart_key(Restart::Lab), app.restart_key(Restart::Civ)];
 
     let handle: Handle = Rc::new(RefCell::new(Shell { app, panel: None }));
 
     bind_view_actions(&handle);
     ui::view_menu::bind_fold();
+    ui::restart_bar::mount(&handle);
     ui::find_box::mount(&handle);
     bind_canvas(&handle, &canvas);
     bind_keys(&handle);
@@ -599,9 +716,14 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
             .attr("data-mode", id.id())
             .text(label)
             .on("click", Scope::Toolbar, move |_| {
-                let mut sh = h2.borrow_mut();
-                let sh = &mut *sh;
-                show_mode(sh, &h2, id);
+                ui::restart_bar::leaving(
+                    &h2,
+                    Rc::new(move |h: &Handle| {
+                        let mut sh = h.borrow_mut();
+                        let sh = &mut *sh;
+                        show_mode(sh, h, id);
+                    }),
+                );
             })
             .get();
         let _ = modes_node.append_child(&btn);
@@ -690,9 +812,14 @@ pub fn show_tab(sh: &mut Shell, h: &Handle, id: &'static str) {
             .attr("data-tab", t.id)
             .text(t.label)
             .on("click", Scope::Toolbar, move |_| {
-                let mut sh = h2.borrow_mut();
-                let sh = &mut *sh;
-                show_tab(sh, &h2, tid);
+                ui::restart_bar::leaving(
+                    &h2,
+                    Rc::new(move |h: &Handle| {
+                        let mut sh = h.borrow_mut();
+                        let sh = &mut *sh;
+                        show_tab(sh, h, tid);
+                    }),
+                );
             })
             .get();
         let _ = tabs_node.append_child(&btn);
@@ -708,6 +835,8 @@ pub fn show_tab(sh: &mut Shell, h: &Handle, id: &'static str) {
     clear_scope(Scope::List);
     sh.panel = Some((tab.build)(&body, &mut sh.app, h));
     sh.app.rebuild_panel = false;
+    // The panel was just rebuilt, so the stars in it have to be put back.
+    ui::restart_bar::sync(&sh.app);
 }
 
 // ---- stage toolbar -------------------------------------------------------

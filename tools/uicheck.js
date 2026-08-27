@@ -97,10 +97,60 @@ await page.click('#view-body [data-find="occupancy"]');
 await page.waitForTimeout(500);
 await page.screenshot({ path: `${outDir}/07-overlays.png` });
 
+// A setting the area is built from waits for Apply rather than rebuilding the
+// world under the slider. It is starred, the bar says so, and leaving the panel
+// with one waiting asks first.
 await page.click('.tab:text-is("World")');
-await page.locator('.group-body .num').first().fill('90');
-await page.locator('.group-body .num').first().dispatchEvent('input');
+await page.waitForTimeout(400);
+const cols = '#panel-body [data-find="columns-x"] input[type=number]';
+await page.fill(cols, '90');
+await page.dispatchEvent(cols, 'input');
+await page.waitForTimeout(400);
+if (await page.evaluate(() => document.getElementById('restart-bar').hasAttribute('hidden'))) {
+  problems.push('a setting the world is built from changed and nothing said a rebuild was waiting');
+}
+if (
+  !(await page.$eval('#panel-body [data-find="columns-x"]', (n) => n.classList.contains('waiting')))
+) {
+  problems.push('the changed setting is not starred');
+}
+await page.screenshot({ path: `${outDir}/08a-waiting.png` });
+
+// Leaving offers the three ways out, and staying is one of them.
+await page.click('.tab:text-is("Species")');
+await page.waitForTimeout(300);
+if (await page.evaluate(() => document.getElementById('confirm').hasAttribute('hidden'))) {
+  problems.push('leaving a panel with a rebuild waiting did not ask');
+}
+await page.screenshot({ path: `${outDir}/08b-confirm.png` });
+await page.click('#confirm [data-do="stay"]');
+await page.waitForTimeout(200);
+if ((await page.getAttribute('.tab.active', 'data-tab')) !== 'world') {
+  problems.push('staying put moved off the tab anyway');
+}
+
+// Discard puts the setting back the way the running world has it.
+await page.click('.tab:text-is("Species")');
+await page.waitForTimeout(200);
+await page.click('#confirm [data-do="discard"]');
+await page.waitForTimeout(500);
+if ((await page.getAttribute('.tab.active', 'data-tab')) !== 'species') {
+  problems.push('discarding did not move on');
+}
+await page.click('.tab:text-is("World")');
+await page.waitForTimeout(400);
+if ((await page.inputValue(cols)) === '90') problems.push('discard left the change in place');
+
+// Apply rebuilds and clears the bar.
+await page.fill(cols, '90');
+await page.dispatchEvent(cols, 'input');
+await page.waitForTimeout(300);
+await page.click('#restart-bar [data-do="apply"]');
 await page.waitForTimeout(1500);
+if (!(await page.evaluate(() => document.getElementById('restart-bar').hasAttribute('hidden')))) {
+  problems.push('applying left the bar up');
+}
+if ((await page.inputValue(cols)) !== '90') problems.push('applying did not keep the change');
 await page.screenshot({ path: `${outDir}/08-resized.png` });
 
 const stats = await page.evaluate(() => document.getElementById('statusbar').textContent);
@@ -171,7 +221,7 @@ await page.waitForTimeout(300);
 if ((await readout()) !== '2/2') problems.push('stepping back before the first frame did not wrap');
 await page.click('.toolbar-row .btn:text-is("Play")');
 await page.waitForTimeout(900);
-await page.screenshot({ path: `${outDir}/08b-sprites.png` });
+await page.screenshot({ path: `${outDir}/08d-sprites.png` });
 await page.click('.toolbar-row .btn:text-is("Pause")');
 
 // A plain panel field is a step too, which is the point of the undo rework.
@@ -193,7 +243,7 @@ if (rateAfter !== rateBefore) {
 }
 await page.click('.group:has-text("Use as settler art") .btn:text-is("Walking")');
 await page.waitForTimeout(400);
-await page.screenshot({ path: `${outDir}/08c-sheet.png` });
+await page.screenshot({ path: `${outDir}/08e-sheet.png` });
 
 // Keys: the tools answer to the keyboard, and say which key on a desktop.
 await page.click('.tab[data-tab="draw"]');

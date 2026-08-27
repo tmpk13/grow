@@ -15,14 +15,6 @@ What is left. What is done is in TODO_COMPLETE.md.
       motions have one per motion, with the drawn art scaled to the box the generator
       would have filled.
 
-- Undo
-    - (LLM) Anything added to `app.ui` rather than to the project must not go
-      through the `app_*` helpers, or it puts a step on the stack that restores
-      nothing. Worth a check that catches it rather than a rule to remember.
-
-- Settings that restart the sim automatically should be changes to have a apply button. A * next to un-applied settings.
-    - When switching menus without applying have a confirmation with 3 options.
-
 - Need button in sprite editor to download individual or zipped images, can select images to put in zip. 
 
 - Farms that grow food. (Need employees/workers. And water. Initally from buckets. Maybe proximity to water or irrigation with bridges over it.)

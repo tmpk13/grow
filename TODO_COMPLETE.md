@@ -3,6 +3,13 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Settings the running world is built from wait for Apply rather than rebuilding
+  under the slider. Each one is starred, a bar says how many are waiting, and
+  Discard puts them back. Leaving the panel with one waiting asks, with the
+  three things it could mean: apply and go, discard and go, stay here.
+- (LLM) A check that catches an undoable control that only changes `app.ui`. It
+  reads the panels, finds every `app_*` call, and fails on a closure that
+  records a step and then writes nowhere the snapshot could put back.
 - Sprite editor keybinds: B, E, G, P for the tools, X mirror, O onion, comma
   and full stop for frames, brackets for layers. The key is on the tool button
   itself and the rest are in a folded Keys list, both only where there is a

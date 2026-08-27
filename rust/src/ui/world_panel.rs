@@ -2,34 +2,47 @@
 
 use web_sys::Element;
 
-use crate::app::{App, Handle, Panel, StaticPanel};
+use crate::app::{App, Handle, Panel, Restart, StaticPanel};
 use crate::species::{SizeClass, SIZE_CLASSES};
 use crate::ui::{
-    app_bool, app_button, app_color, app_danger_button, app_num, app_select, append, btn_row, el,
-    note, sampler_options, section, NumOpts,
+    app_bool, app_button, app_color, app_danger_button, app_num, app_restart_num, app_select,
+    append, btn_row, el, note, sampler_options, section, NumOpts,
 };
+
+/// A setting the area is built from. Starred and left waiting rather than
+/// rebuilding the world under whoever is dragging it.
+fn lab_num(
+    h: &Handle,
+    label: &str,
+    value: f64,
+    opts: NumOpts,
+    hint: Option<&str>,
+    apply: fn(&mut App, f64),
+) -> Element {
+    app_restart_num(h, Restart::Lab, label, value, opts, hint, apply)
+}
 
 pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let w = &app.state.world;
 
     let grid = vec![
-        app_num(h, "Columns (x)", w.cols as f64, NumOpts { min: 8.0, max: 400.0, step: 1.0 },
+        lab_num(h, "Columns (x)", w.cols as f64, NumOpts { min: 8.0, max: 400.0, step: 1.0 },
             Some("cells across the area"),
-            |app, v| { app.state.world.cols = v as i32; app.world_changed(); }),
-        app_num(h, "Rows (depth)", w.rows as f64, NumOpts { min: 2.0, max: 200.0, step: 1.0 },
+            |app, v| app.state.world.cols = v as i32),
+        lab_num(h, "Rows (depth)", w.rows as f64, NumOpts { min: 2.0, max: 200.0, step: 1.0 },
             Some("cells from the far edge to the near edge"),
-            |app, v| { app.state.world.rows = v as i32; app.world_changed(); }),
-        app_num(h, "Cell width (px)", w.cell_px as f64, NumOpts { min: 2.0, max: 32.0, step: 1.0 }, None,
-            |app, v| { app.state.world.cell_px = v as i32; app.world_changed(); }),
-        app_num(h, "Cell depth (px)", w.depth_px as f64, NumOpts { min: 1.0, max: 32.0, step: 1.0 },
+            |app, v| app.state.world.rows = v as i32),
+        lab_num(h, "Cell width (px)", w.cell_px as f64, NumOpts { min: 2.0, max: 32.0, step: 1.0 }, None,
+            |app, v| app.state.world.cell_px = v as i32),
+        lab_num(h, "Cell depth (px)", w.depth_px as f64, NumOpts { min: 1.0, max: 32.0, step: 1.0 },
             Some("screen height of one row; below the cell width it foreshortens the ground"),
-            |app, v| { app.state.world.depth_px = v as i32; app.world_changed(); }),
-        app_num(h, "Sky height (px)", w.sky_px as f64, NumOpts { min: 0.0, max: 600.0, step: 2.0 },
+            |app, v| app.state.world.depth_px = v as i32),
+        lab_num(h, "Sky height (px)", w.sky_px as f64, NumOpts { min: 0.0, max: 600.0, step: 2.0 },
             Some("room above the far row for tall plants"),
-            |app, v| { app.state.world.sky_px = v as i32; app.world_changed(); }),
-        app_num(h, "Distance haze", w.depth_fade, NumOpts { min: 0.0, max: 0.5, step: 0.01 },
+            |app, v| app.state.world.sky_px = v as i32),
+        lab_num(h, "Distance haze", w.depth_fade, NumOpts { min: 0.0, max: 0.5, step: 0.01 },
             Some("tone lift applied to far rows, in ramp steps"),
-            |app, v| { app.state.world.depth_fade = v; app.world_changed(); }),
+            |app, v| app.state.world.depth_fade = v),
         app_bool(h, "Ground shadows", w.shadows, None,
             |app, v| { app.state.world.shadows = v; app.repaint_background(); }),
         app_color(h, "Sky top", &w.sky_top, None,
@@ -38,7 +51,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             |app, v| { app.state.world.sky_bottom = v.to_string(); app.repaint_background(); }),
         app_select(h, "Soil texture", &w.soil_sampler.clone(), &sampler_options(app), None,
             |app, v| { app.state.world.soil_sampler = v.to_string(); app.repaint_background(); }),
-        note("Changing grid size or cell size restarts the simulation."),
+        note("Grid and cell size are starred until Apply: the area is not rebuilt under a slider \
+              while it is being dragged."),
     ];
     append(root, section("Area grid", grid));
 

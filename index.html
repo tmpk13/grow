@@ -58,6 +58,11 @@
       <aside class="panel">
         <nav class="modes" id="modes"></nav>
         <nav class="tabs" id="tabs"></nav>
+        <div class="restart-bar" id="restart-bar" hidden>
+          <span class="restart-what" id="restart-what"></span>
+          <button class="btn accent" type="button" data-do="apply">Apply</button>
+          <button class="btn" type="button" data-do="discard">Discard</button>
+        </div>
         <details class="view-menu" id="view-menu" open>
           <summary>View</summary>
           <div class="view-body" id="view-body"></div>
@@ -76,6 +81,9 @@
         <div class="statusbar" id="statusbar"></div>
       </section>
     </main>
+
+    <!-- Asked only when leaving a panel with a rebuild waiting on it. -->
+    <div class="confirm" id="confirm" hidden></div>
 
     <script type="module">
       // The whole application is Rust compiled to WebAssembly; this is the only

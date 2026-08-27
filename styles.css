@@ -1426,3 +1426,73 @@ kbd.key {
   font-size: 0.72rem;
   text-align: center;
 }
+
+/* ---- a rebuild waiting --------------------------------------------------
+   A setting the running world was built from does not rebuild it as it is
+   dragged. It is starred here and waits. */
+
+.restart-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  border-bottom: var(--hairline) solid var(--line);
+  background: #2a2416;
+  font-size: 0.78rem;
+  flex: 0 0 auto;
+}
+
+.restart-bar[hidden] {
+  display: none;
+}
+
+.restart-what {
+  flex: 1 1 8rem;
+  color: var(--accent-warm);
+}
+
+.btn.accent {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The star on a field the running world does not have yet. */
+.field.waiting > .field-label::after {
+  content: " *";
+  color: var(--accent-warm);
+  font-weight: 700;
+}
+
+.confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap);
+  background: #05080cc0;
+}
+
+.confirm[hidden] {
+  display: none;
+}
+
+.confirm-body {
+  max-width: 26rem;
+  padding: 1rem;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  box-shadow: 0 1rem 2.5rem #0009;
+}
+
+.confirm-body h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.confirm-body .note {
+  margin: 0 0 0.8rem;
+}
