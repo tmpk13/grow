@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::plant::{Mat, Plant, RasterEnv, Ramps, Scratch};
 use crate::rng::Rng;
-use crate::sampler::{ramp_pick, Materials};
+use crate::sampler::{Bands, Materials};
 use crate::species::{effective_limits, SizeClass, Species};
 use crate::state::State;
 use crate::util::{clamp, clampi, hash2, hex_to_packed, mix_packed, pack_rgba};
@@ -23,7 +23,7 @@ pub struct Env {
 }
 
 fn empty_ramps() -> Ramps {
-    std::array::from_fn(|_| Rc::new(Vec::new()))
+    std::array::from_fn(|_| Rc::new(Bands::fallback(Vec::new())))
 }
 
 impl Env {
@@ -42,7 +42,7 @@ impl Env {
         }
         let mut ramps = empty_ramps();
         for mat in Mat::all() {
-            ramps[mat as usize] = materials.tone_lut(species.slot(mat));
+            ramps[mat as usize] = materials.bands(species.slot(mat));
         }
         self.cache.insert(species.id.clone(), ramps.clone());
         ramps
@@ -389,7 +389,7 @@ impl Sim {
         // The ground plane is dithered out of the soil ramp rather than tiled,
         // so the sampler art does not show up as stripes, and lifted toward the
         // light end of the ramp with distance so far rows read as further away.
-        let ramp = state.materials.tone_lut(&cfg.soil_sampler);
+        let ramp = state.materials.bands(&cfg.soil_sampler);
         let fallback = pack_rgba(52, 38, 28, 255);
         let fade = cfg.depth_fade;
         for y in w.sky_px..w.px_h {
@@ -404,7 +404,9 @@ impl Sim {
                 if !ramp.is_empty() {
                     let noise = (hash2(x, y, 7331) - 0.5) * 0.24;
                     let t = clamp(0.4 + far * fade * 2.0 + noise, 0.0, 1.0);
-                    c = ramp_pick(&ramp, t);
+                    // The back of the ground plane is the top of it as far as
+                    // the box is concerned, so a soil box reads back to front.
+                    c = ramp.pick(t, 1.0 - far);
                 }
                 buf[(y * w.px_w + x) as usize] = c;
             }
@@ -427,7 +429,10 @@ pub fn cast_shadow(world: &World, buf: &mut [u32], cx: i32, cy: i32, plant: &Pla
     let ry = (rx * world.depth_ratio).max(1.0);
     let x0 = ((cx as f64 - rx).floor() as i32).max(0);
     let x1 = ((cx as f64 + rx).ceil() as i32).min(world.px_w - 1);
-    let y0 = ((cy as f64 - ry).floor() as i32).max(0);
+    // A contact shadow lies on the ground, so it stops at the horizon however
+    // far back the thing casting it stands. Clamping to the buffer instead let
+    // a plant in the back row throw an ellipse up into the sky.
+    let y0 = ((cy as f64 - ry).floor() as i32).max(world.sky_px);
     let y1 = ((cy as f64 + ry).ceil() as i32).min(world.px_h - 1);
     for y in y0..=y1 {
         for x in x0..=x1 {

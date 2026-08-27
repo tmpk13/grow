@@ -16,8 +16,8 @@ use crate::civ::sprites::MOTIONS;
 use crate::ui::color_wheel::Brush;
 use crate::ui::paint::Surface;
 use crate::ui::{
-    app_button, app_danger_button, app_num, app_text, append, btn_row, button, clear, el, note,
-    on, row, section, window, NumOpts, Scope, Tap,
+    app_button, app_danger_button, app_num, app_text, append, btn_row, button, clear,
+    danger_button, el, note, on, row, section, window, NumOpts, Scope, Tap,
 };
 use crate::util::{packed_to_hex, EMPTY_COLOR};
 
@@ -182,6 +182,7 @@ pub fn build_sheet(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> 
     if selected(app).is_some() {
         append(root, use_section(app, h));
     }
+    append(root, store_section(app, h));
     Box::new(crate::app::StaticPanel)
 }
 
@@ -290,6 +291,11 @@ fn sheet_section(app: &App, h: &Handle) -> Element {
                 }
                 app.art_changed();
             }));
+        rows.push(btn_row(vec![app_button(h, "Download PNG", download_sheet)]));
+        rows.push(note(
+            "One image, every frame side by side at one pixel each, which is the shape a \
+             sheet is read back in.",
+        ));
         let bytes = app.state.art.bytes();
         if bytes >= 1024 {
             rows.push(note(&format!(
@@ -687,6 +693,188 @@ fn frame_strip(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasElement,
     }
     append(root, section("Frames", rows));
     thumbs
+}
+
+/// The selected sheet as a PNG: the strip, at one image pixel per art pixel,
+/// which is both the honest size for an asset and the shape a drop zone reads
+/// a sheet back in.
+fn download_sheet(app: &mut App) {
+    let sheet = match selected(app) {
+        Some(s) => s,
+        None => return,
+    };
+    let (w, h, px) = sheet.strip();
+    if w <= 0 || h <= 0 {
+        return;
+    }
+    let canvas = match crate::ui::document()
+        .create_element("canvas")
+        .ok()
+        .and_then(|c| c.dyn_into::<HtmlCanvasElement>().ok())
+    {
+        Some(c) => c,
+        None => return,
+    };
+    canvas.set_width(w as u32);
+    canvas.set_height(h as u32);
+    let ctx = match canvas
+        .get_context("2d")
+        .ok()
+        .flatten()
+        .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok())
+    {
+        Some(c) => c,
+        None => return,
+    };
+    // Straight into an ImageData: the buffer is already laid out as the RGBA
+    // bytes a canvas wants, and the empty pixels have to stay transparent
+    // rather than being painted over with a background.
+    let bytes: &[u8] =
+        unsafe { std::slice::from_raw_parts(px.as_ptr() as *const u8, px.len() * 4) };
+    let image = match web_sys::ImageData::new_with_u8_clamped_array_and_sh(
+        wasm_bindgen::Clamped(bytes),
+        w as u32,
+        h as u32,
+    ) {
+        Ok(i) => i,
+        Err(_) => return,
+    };
+    let _ = ctx.put_image_data(&image, 0.0, 0.0);
+    let name = crate::ui::file_name(&sheet.name, "png");
+    match canvas.to_data_url_with_type("image/png") {
+        Ok(url) => {
+            crate::ui::download(&url, &name);
+            app.set_note(&format!("saved {name}"));
+        }
+        Err(_) => app.set_note("the browser would not make a png of that"),
+    }
+}
+
+/// Sheets kept outside the project. The list is read from the store rather than
+/// held, because it is changed by more than this panel: every save adds to it,
+/// and a reset leaves it standing while everything else goes.
+fn store_section(app: &App, h: &Handle) -> Element {
+    let kept = crate::ui::sprite_store::load();
+    let mut rows = vec![note(
+        "Sheets are kept here as well as in the project, so they outlive the project they \
+         were drawn in. Reset all leaves this alone: a kept sheet only goes when it is \
+         deleted from here.",
+    )];
+
+    let prefs = crate::ui::prefs::Prefs::load();
+    let switch = crate::ui::input_el("checkbox");
+    switch.set_checked(prefs.keep_sprites);
+    {
+        let h2 = h.clone();
+        on(switch.unchecked_ref(), "change", Scope::Panel, move |e| {
+            let mut prefs = crate::ui::prefs::Prefs::load();
+            prefs.keep_sprites = crate::ui::checked_of(&e);
+            prefs.save();
+            let mut sh = h2.borrow_mut();
+            if prefs.keep_sprites {
+                crate::ui::sprite_store::keep(&sh.app.state.art);
+            }
+            sh.app.rebuild_panel();
+        });
+    }
+    rows.push(row(
+        "Keep a copy",
+        switch.unchecked_into(),
+        Some("every save copies the project's sheets in here"),
+    ));
+
+    let list = el("div").class("kept-list").get();
+    for sheet in &kept.sheets {
+        let id = sheet.id.clone();
+        let held = app.state.art.find(&id).is_some();
+        let restore = {
+            let h2 = h.clone();
+            let id = id.clone();
+            button(if held { "Replace" } else { "Restore" }, Scope::Panel, move || {
+                let mut sh = h2.borrow_mut();
+                let sheet = match crate::ui::sprite_store::find(&id) {
+                    Some(s) => s,
+                    None => return,
+                };
+                sh.app.record("restore sheet", false);
+                match sh.app.state.art.index_of(&id) {
+                    Some(at) => sh.app.state.art.sheets[at] = sheet,
+                    None => sh.app.state.art.sheets.push(sheet),
+                }
+                sh.app.ui.selected_sheet = id.clone();
+                sh.app.clamp_selection();
+                sh.app.art_changed();
+                sh.app.rebuild_panel();
+            })
+        };
+        let drop = {
+            let h2 = h.clone();
+            let id = id.clone();
+            let name = sheet.name.clone();
+            danger_button("Delete", Scope::Panel, move || {
+                // Deleting reaches outside the project, so undo cannot put it
+                // back and the question has to be asked first.
+                let asked = window()
+                    .confirm_with_message(&format!(
+                        "Delete the kept copy of {name}? Undo does not reach outside the \
+                         project, so this cannot be taken back."
+                    ))
+                    .unwrap_or(false);
+                if !asked {
+                    return;
+                }
+                crate::ui::sprite_store::remove(&id);
+                let mut sh = h2.borrow_mut();
+                sh.app.set_note(&format!("deleted the kept copy of {name}"));
+                sh.app.rebuild_panel();
+            })
+        };
+        let frames = sheet.frame_count();
+        let plural = if frames == 1 { "frame" } else { "frames" };
+        let item = el("div")
+            .class("kept-row")
+            .child(
+                &el("span")
+                    .class("sampler-meta")
+                    .child(&el("strong").text(&sheet.name).get())
+                    .child(
+                        &el("span")
+                            .text(&format!("{}x{}, {frames} {plural}", sheet.w, sheet.h))
+                            .get(),
+                    )
+                    .get(),
+            )
+            .child(&restore)
+            .child(&drop)
+            .get();
+        let _ = list.append_child(&item);
+    }
+    if kept.sheets.is_empty() {
+        rows.push(note("Nothing kept yet."));
+    } else {
+        rows.push(list);
+        rows.push(note(&format!(
+            "{} kept, {}.",
+            kept.sheets.len(),
+            size_text(crate::ui::sprite_store::bytes())
+        )));
+    }
+    rows.push(btn_row(vec![app_button(h, "Keep these now", |app| {
+        crate::ui::sprite_store::keep(&app.state.art);
+        app.set_note("kept a copy of every sheet");
+        app.rebuild_panel();
+    })]));
+    section("Kept sheets", rows)
+}
+
+fn size_text(bytes: usize) -> String {
+    if bytes >= 1 << 20 {
+        format!("{:.1} MB", bytes as f64 / (1 << 20) as f64)
+    } else if bytes >= 1024 {
+        format!("{} kB", (bytes as f64 / 1024.0).round() as i64)
+    } else {
+        format!("{bytes} bytes")
+    }
 }
 
 /// Pointing a settler motion at this sheet, which is the whole reason the

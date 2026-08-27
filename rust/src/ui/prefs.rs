@@ -28,11 +28,14 @@ pub struct Prefs {
     pub collapsed: bool,
     /// What the root font size is multiplied by.
     pub scale: f64,
+    /// Keep a copy of every sheet in the sprite store as the project saves, so
+    /// art outlives the project it was drawn in.
+    pub keep_sprites: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { collapsed: false, scale: 1.0 }
+        Prefs { collapsed: false, scale: 1.0, keep_sprites: true }
     }
 }
 

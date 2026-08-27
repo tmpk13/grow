@@ -5,6 +5,10 @@
 //! indexed databases. All of it goes, and only then does the page reload, so
 //! what comes back is a new project rather than a half cleared one.
 //!
+//! The one exception is the sprite store. Art outlives the project it was drawn
+//! in, which is the whole reason for keeping it separately, so it is read out
+//! before the clearing and written back after it.
+//!
 //! None of the three asynchronous stores is guaranteed to exist, and asking for
 //! one the browser does not have must not leave the reload waiting forever, so
 //! every step is counted in and out and the reload happens when the count
@@ -91,8 +95,15 @@ fn call(target: &JsValue, method: &str, args: &[JsValue]) -> Option<JsValue> {
 /// browser that refuses the rest still comes back with the project gone.
 pub fn everything() {
     let win = window();
+    // Sheets are the one thing that outlives a project, and a button for
+    // clearing a stuck page is not a reason to lose art. They are read out
+    // before the clearing and written back after it.
+    let sprites = crate::ui::sprite_store::raw();
     if let Ok(Some(store)) = win.local_storage() {
         let _ = store.clear();
+    }
+    if let Some(raw) = sprites {
+        crate::ui::sprite_store::put_raw(&raw);
     }
     if let Ok(Some(store)) = win.session_storage() {
         let _ = store.clear();

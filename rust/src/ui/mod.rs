@@ -27,6 +27,7 @@ pub mod reset;
 pub mod shading_panel;
 pub mod species_panel;
 pub mod sprite_drop;
+pub mod sprite_store;
 pub mod tech_panel;
 pub mod world_panel;
 
@@ -461,6 +462,46 @@ pub fn danger_button(text: &str, scope: Scope, mut on_click: impl FnMut() + 'sta
         .text(text)
         .on("click", scope, move |_| on_click())
         .get()
+}
+
+/// Hands the browser something to save. The anchor has to be in the page for a
+/// click on it to count, and is taken out again straight away.
+pub fn download(href: &str, filename: &str) {
+    let anchor = match document().create_element("a").ok().and_then(|a| {
+        a.dyn_into::<web_sys::HtmlAnchorElement>().ok()
+    }) {
+        Some(a) => a,
+        None => return,
+    };
+    anchor.set_href(href);
+    anchor.set_download(filename);
+    if let Some(body) = document().body() {
+        let _ = body.append_child(&anchor);
+        anchor.click();
+        anchor.remove();
+    }
+}
+
+/// A name that a file system will take: what somebody typed, with anything
+/// that is not a letter, a number or a dash folded into one.
+pub fn file_name(name: &str, extension: &str) -> String {
+    let mut out = String::new();
+    let mut gap = false;
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            if gap && !out.is_empty() {
+                out.push('-');
+            }
+            gap = false;
+            out.extend(c.to_lowercase());
+        } else {
+            gap = true;
+        }
+    }
+    if out.is_empty() {
+        out.push_str("untitled");
+    }
+    format!("{out}.{extension}")
 }
 
 pub fn note(text: &str) -> Element {

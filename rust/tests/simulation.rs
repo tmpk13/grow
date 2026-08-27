@@ -620,3 +620,24 @@ fn a_project_carries_its_sprites_through_a_save() {
         assert_eq!(clip.pixel(f, 0, 0), (f + 1) as u32, "frame {f} came back wrong");
     }
 }
+
+#[test]
+fn a_settler_behind_a_bush_is_drawn_behind_it() {
+    // Draw order is depth, not the row something stands in. Two things in one
+    // row used to tie and then be separated by what kind of thing they were,
+    // which put every settler in front of every plant in their row - so
+    // somebody walking behind a bush walked over it.
+    use grow::civ::civ_render::depth_key;
+
+    // A plant stands in the middle of its cell; a settler stands wherever they
+    // are in theirs.
+    let bush = depth_key(4.0 + 0.5);
+    assert!(depth_key(4.2) < bush, "a settler at the back of the row is not behind the bush");
+    assert!(depth_key(4.8) > bush, "a settler at the front of the row is not in front of it");
+    // Same row, and the two are told apart; a row apart is still a row apart.
+    assert!(depth_key(3.9) < bush);
+    assert!(depth_key(5.1) > bush);
+    // A building's foot is the front edge of its last row, which leaves it
+    // tying with a plant in that row and winning on kind, the way it did.
+    assert_eq!(depth_key((3 + 2) as f64 - 0.5), depth_key(4.0 + 0.5));
+}

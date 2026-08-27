@@ -503,27 +503,43 @@ The curve `C` is a smoothstep between `edge0` and `edge1` raised to `gamma`.
 Narrowing the gap between the two edges widens the flat plateau, which is what
 keeps the body of an object on one tone and confines the shading to a rim.
 
-A box is read twice over. Its **palette** is its distinct colors sorted dark to
-light, one entry each, and that is what the panel shows and what a swatch picks
-from. Its **tone lookup** is what shading indexes into, and there a color holds a
-span of the range as wide as its share of the box.
+Two things about the box reach the object drawn from it: how much of the box a
+color covers, and how far up the box it was drawn.
 
 ```mermaid
 flowchart LR
-  boxpx["the box, pixel by pixel"] --> tally["distinct colors with how many<br/>pixels wear each,<br/>sorted dark to light"]
+  boxpx["the box, pixel by pixel"] --> tally["distinct colors, sorted dark to light,<br/>each weighted by how much of the box<br/>it holds"]
   tally --> pal["palette: one entry per color"]
-  tally --> lut["tone lookup: steps shared out<br/>in proportion, never fewer than<br/>one step to a color"]
-  pal --> panel["swatches and the count"]
-  lut --> shade["shading, terrain, buildings"]
+  tally --> whole["whole box lookup"]
+  boxpx --> banded["the same, per band:<br/>rows weighted by how near they are<br/>to that height of the box"]
+  banded --> bands["one tone lookup per band,<br/>top of the box first"]
+  pal --> panel["the swatches"]
+  bands --> strip["the panel's strip,<br/>one row per band"]
+  bands --> shade["shading, terrain, buildings"]
+  whole --> shade
+  shade --> pick["pick: how far down the object<br/>chooses the band,<br/>tone picks within it"]
 ```
 
-Spreading the distinct colors evenly instead is what made a hand drawn box come
-out looking nothing like itself: a box that is nine tenths mid green and one
-pixel of highlight would hand the highlight as much of the shading range as the
-green, and the object would read as evenly banded whatever had been drawn.
-Weighting by coverage means the drawn proportions are the rendered ones, and the
-floor of one step is what keeps a highlight that is only ever a pixel or two
-from disappearing altogether.
+**Coverage.** Spreading the distinct colors evenly is what made a hand drawn box
+come out looking nothing like itself: a box that is nine tenths mid green and
+one pixel of highlight would hand the highlight as much of the shading range as
+the green, and the object would read as evenly banded whatever had been drawn.
+Weighting by coverage means the drawn proportions are the rendered ones, and a
+floor of one step keeps a highlight that is only ever a pixel or two from
+disappearing altogether.
+
+**Arrangement.** Reading the box as one ramp threw away where anything was
+drawn, so the panel and the object never looked like each other and the grid was
+hard to form any intuition about. A box is now read at eight heights: for each,
+the rows are weighted by how near they are to it, and only rows that clear a
+floor count at all. A color along the top of the box is therefore in the top
+bands only and never reaches the foot of the object, one drawn across the middle
+reaches most of the way either way, and a box whose rows are all alike reads the
+same at every height, so nothing changes for a box that ignores the idea.
+
+The bands overlap by more than half their reach, which is what keeps the change
+from one to the next a shift in the palette rather than a line across the
+object.
 
 ## Projection
 

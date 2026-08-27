@@ -4,7 +4,6 @@ use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, Element, HtmlCanvasElement, ImageData};
 
 use crate::app::{App, Handle, Panel};
-use crate::sampler::ramp_pick;
 use crate::shading::{curve_value, quantize, shade_value, Shading};
 use crate::ui::{
     app_button, app_num, append, btn_row, el, note, sampler_options, section, window,
@@ -272,7 +271,7 @@ fn draw_shapes(canvas: &HtmlCanvasElement, app: &App) {
     } else {
         app.state.materials.samplers.first().map(|s| s.id.clone()).unwrap_or_default()
     };
-    let ramp = app.state.materials.tone_lut(&sampler);
+    let ramp = app.state.materials.bands(&sampler);
     let core = app.ui.shade_preview_core;
     let tones = app.ui.shade_preview_tones;
 
@@ -294,7 +293,9 @@ fn draw_shapes(canvas: &HtmlCanvasElement, app: &App) {
                 0.0
             };
             let t = quantize(shade_value(nd, vert, &app.state.shading), tones);
-            let c = unpack_rgba(ramp_pick(&ramp, t));
+            // The preview reads the box the way anything else does, height and
+            // all, or it would be showing something the tool never draws.
+            let c = unpack_rgba(ramp.pick(t, vert));
             let o = i * 4;
             bytes[o] = c.r;
             bytes[o + 1] = c.g;

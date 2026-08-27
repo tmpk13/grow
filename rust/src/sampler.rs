@@ -7,13 +7,21 @@
 //!   Single - all samplers read from one shared atlas grid; each sampler owns a
 //!            rectangular region of it.
 //!
-//! A sampler is read as a ramp: its unique colors sorted dark to light, indexed
-//! by a tone value. How the colors are arranged in the grid does not matter,
-//! but how much of the box each one covers does: the tone lookup a material is
-//! actually shaded through gives every color a share of the range the size of
-//! its share of the box. A box that is mostly mid green with two pixels of
-//! highlight comes out mostly mid green, rather than handing the highlight a
-//! third of the shading the way an even spread over the distinct colors would.
+//! A sampler is read as a set of vertical bands, each a ramp of its own: the
+//! colors in that part of the box, sorted dark to light, indexed by a tone
+//! value. Two things about the box therefore reach the object drawn from it.
+//!
+//! How much of the box a color covers decides how much of the shading range it
+//! holds, so a box that is mostly mid green with two pixels of highlight comes
+//! out mostly mid green rather than handing the highlight a third of the range
+//! the way an even spread over the distinct colors would.
+//!
+//! Where in the box it was drawn decides how far up the object it appears. A
+//! color along the top of the box reads near the top of what is drawn from it
+//! and never at the foot; one along the bottom, the other way round. Bands
+//! overlap, so a color drawn in the middle reaches most of the way either way
+//! and the change from one band to the next is a shift in the palette rather
+//! than a seam.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -21,7 +29,7 @@ use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::util::{hsl_to_packed, luminance, packed_to_rgba_hex, rgba_hex_to_packed, EMPTY_COLOR};
+use crate::util::{clamp01, hsl_to_packed, luminance, packed_to_rgba_hex, rgba_hex_to_packed, EMPTY_COLOR};
 
 pub struct RoleDef {
     pub id: &'static str,
@@ -212,11 +220,31 @@ pub enum MaterialMode {
 /// box still gets a step of its own, short enough to build on demand.
 pub const TONE_STEPS: usize = 64;
 
+/// Heights a box is read at. Enough that a tall object shows the arrangement of
+/// the box it was drawn from, few enough that all of them are worth building
+/// and keeping the moment a box is touched.
+pub const BANDS: usize = 8;
+
+/// How far a row of the box reaches up and down the object, as a fraction of
+/// its height. Wide enough that neighbouring bands share most of their colors
+/// and the change from one to the next reads as a shift rather than as a line;
+/// narrow enough that the top row of a box never reaches the foot of what is
+/// drawn from it.
+const BAND_REACH: f64 = 0.55;
+
+/// How much of a row has to reach a band before it counts as part of it. The
+/// rule that every color in the box gets a step of the ramp is there so a
+/// highlight drawn as two pixels is not rounded away; without a floor here it
+/// would also hand a whole step to a row that barely reaches the band at all,
+/// and the top of a box would show at the foot of the object after all.
+const BAND_FLOOR: f64 = 0.15;
+
 #[derive(Default)]
 struct RampCache {
     key: (u32, bool),
     ramps: HashMap<String, Rc<Vec<u32>>>,
     luts: HashMap<String, Rc<Vec<u32>>>,
+    bands: HashMap<String, Rc<Bands>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -292,6 +320,7 @@ impl Materials {
         let mut cache = self.cache.borrow_mut();
         cache.ramps.clear();
         cache.luts.clear();
+        cache.bands.clear();
         cache.key = (u32::MAX, false);
     }
 
@@ -416,25 +445,43 @@ impl Materials {
             cache.key = key;
             cache.ramps.clear();
             cache.luts.clear();
+            cache.bands.clear();
         }
         key
     }
 
-    /// Every distinct color in a sampler with how many pixels wear it, sorted
-    /// dark to light.
-    fn tally(&self, id: &str) -> Vec<(u32, usize)> {
+    /// Every distinct color in a sampler with how much of the box it holds,
+    /// sorted dark to light. `band` weights the count by how near each pixel's
+    /// row is to that height of the box; the whole box is read when it is None.
+    fn tally(&self, id: &str, band: Option<usize>) -> Vec<(u32, f64)> {
         let sampler = match self.find(id) {
             Some(s) => s,
             None => return Vec::new(),
         };
-        let mut seen: Vec<(u32, usize)> = Vec::new();
-        for v in self.patch(sampler).px {
-            if v == EMPTY_COLOR {
+        let grid = self.patch(sampler);
+        let height = (grid.h - 1).max(1) as f64;
+        let center = band.map(|b| (b as f64 + 0.5) / BANDS as f64);
+        let mut seen: Vec<(u32, f64)> = Vec::new();
+        for y in 0..grid.h {
+            let weight = match center {
+                None => 1.0,
+                Some(center) => {
+                    let row = if grid.h > 1 { y as f64 / height } else { 0.5 };
+                    1.0 - (row - center).abs() / BAND_REACH
+                }
+            };
+            if weight <= if center.is_some() { BAND_FLOOR } else { 0.0 } {
                 continue;
             }
-            match seen.iter_mut().find(|(c, _)| *c == v) {
-                Some(entry) => entry.1 += 1,
-                None => seen.push((v, 1)),
+            for x in 0..grid.w {
+                let v = grid.px[(y * grid.w + x) as usize];
+                if v == EMPTY_COLOR {
+                    continue;
+                }
+                match seen.iter_mut().find(|(c, _)| *c == v) {
+                    Some(entry) => entry.1 += weight,
+                    None => seen.push((v, weight)),
+                }
             }
         }
         seen.sort_by(|a, b| luminance(a.0).partial_cmp(&luminance(b.0)).unwrap());
@@ -448,23 +495,74 @@ impl Materials {
         if let Some(hit) = self.cache.borrow().ramps.get(id) {
             return hit.clone();
         }
-        let rc = Rc::new(self.tally(id).into_iter().map(|(c, _)| c).collect::<Vec<u32>>());
+        let rc = Rc::new(self.tally(id, None).into_iter().map(|(c, _)| c).collect::<Vec<u32>>());
         self.cache.borrow_mut().ramps.insert(id.to_string(), rc.clone());
         rc
     }
 
-    /// The tone lookup a material is shaded through: the same colors, dark to
-    /// light, but each one holding a span of the range as wide as its share of
-    /// the box. Cached per materials version, because the sim reads it once
-    /// per pixel.
+    /// The whole box as one tone lookup, ignoring where in it a color was
+    /// drawn. What the panel shows as the box's overall reading, and what a
+    /// caller with no height to give reads.
     pub fn tone_lut(&self, id: &str) -> Rc<Vec<u32>> {
         self.refresh_cache();
         if let Some(hit) = self.cache.borrow().luts.get(id) {
             return hit.clone();
         }
-        let rc = Rc::new(weighted_lut(&self.tally(id)));
+        let rc = Rc::new(weighted_lut(&self.tally(id, None)));
         self.cache.borrow_mut().luts.insert(id.to_string(), rc.clone());
         rc
+    }
+
+    /// The box read band by band, which is what anything drawing an object out
+    /// of it reads. Cached per materials version: the sim asks for this once
+    /// per material per species and then indexes it once per pixel.
+    pub fn bands(&self, id: &str) -> Rc<Bands> {
+        self.refresh_cache();
+        if let Some(hit) = self.cache.borrow().bands.get(id) {
+            return hit.clone();
+        }
+        let lut = (0..BANDS)
+            .map(|b| weighted_lut(&self.tally(id, Some(b))))
+            .collect();
+        let rc = Rc::new(Bands { lut });
+        self.cache.borrow_mut().bands.insert(id.to_string(), rc.clone());
+        rc
+    }
+}
+
+/// Vertical bands a box is read in, top of the box first.
+///
+/// Every band is a full tone ramp, so shading still runs dark to light wherever
+/// on the object it lands; what changes between them is which colors are in the
+/// ramp at all.
+pub struct Bands {
+    lut: Vec<Vec<u32>>,
+}
+
+impl Bands {
+    /// A pixel's color: `t` is its tone, `v` how far down the object it is,
+    /// nothing at the top and one at the foot.
+    pub fn pick(&self, t: f64, v: f64) -> u32 {
+        let at = ((clamp01(v) * BANDS as f64) as usize).min(BANDS - 1);
+        match self.lut.get(at) {
+            Some(lut) => ramp_pick(lut, clamp01(t)),
+            None => EMPTY_COLOR,
+        }
+    }
+
+    /// One band, for a panel drawing what the box will read as.
+    pub fn band(&self, at: usize) -> &[u32] {
+        self.lut.get(at.min(BANDS - 1)).map(|l| l.as_slice()).unwrap_or(&[])
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lut.iter().all(|l| l.is_empty())
+    }
+
+    /// A stand-in for a box with nothing in it, so a caller drawing something
+    /// out of one still draws something.
+    pub fn fallback(colors: Vec<u32>) -> Bands {
+        Bands { lut: vec![colors; BANDS] }
     }
 }
 
@@ -472,15 +570,15 @@ impl Materials {
 /// the box each one covers. Every color that is in the box at all gets at least
 /// one step, so a single highlight pixel still lands somewhere rather than
 /// being rounded away.
-fn weighted_lut(tally: &[(u32, usize)]) -> Vec<u32> {
+fn weighted_lut(tally: &[(u32, f64)]) -> Vec<u32> {
     if tally.is_empty() {
         return Vec::new();
     }
     let steps = TONE_STEPS.max(tally.len());
-    let total: f64 = tally.iter().map(|(_, n)| *n as f64).sum::<f64>().max(1.0);
+    let total: f64 = tally.iter().map(|(_, n)| *n).sum::<f64>().max(f64::MIN_POSITIVE);
     let mut share: Vec<usize> = tally
         .iter()
-        .map(|(_, n)| ((*n as f64 / total) * steps as f64).floor().max(1.0) as usize)
+        .map(|(_, n)| ((*n / total) * steps as f64).floor().max(1.0) as usize)
         .collect();
     // Flooring leaves steps unclaimed and the floor of one takes too many. The
     // slack is settled against the widest bands either way, which are the ones

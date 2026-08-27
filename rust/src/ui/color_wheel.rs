@@ -9,9 +9,12 @@
 //! The disc is a raster the widget builds itself, at a resolution of its own
 //! rather than the element's, so the stylesheet is free to size it in whatever
 //! units the layout calls for. Rebuilding it costs a walk over that raster, so
-//! it is kept until the value moves.
+//! it is kept until the value moves - in a canvas of its own rather than as an
+//! `ImageData`, because an `ImageData` built from wasm memory is a view onto
+//! that memory rather than a copy of it, and keeping one past the life of the
+//! buffer behind it means drawing whatever was allocated there since.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use wasm_bindgen::{Clamped, JsCast};
@@ -34,8 +37,11 @@ pub struct ColorWheel {
     canvas: HtmlCanvasElement,
     value: HtmlInputElement,
     hex: HtmlInputElement,
-    /// The disc as last rastered, and the value it was rastered for.
-    disc: RefCell<Option<(i32, ImageData)>>,
+    /// The disc as last rastered. A canvas rather than an `ImageData`: these
+    /// pixels belong to the browser and outlive the buffer they came from.
+    disc: HtmlCanvasElement,
+    /// The value the disc was rastered for, in hundredths.
+    at: Cell<i32>,
 }
 
 /// Sets the brush from a wheel position, keeping hue and saturation apart from
@@ -77,12 +83,20 @@ impl ColorWheel {
             .child(&row("Hex", hex.clone().unchecked_into(), None))
             .get();
 
+        let disc = el("canvas")
+            .get()
+            .dyn_into::<HtmlCanvasElement>()
+            .unwrap();
+        disc.set_width(DISC_PX as u32);
+        disc.set_height(DISC_PX as u32);
+
         let wheel = Rc::new(ColorWheel {
             root,
             canvas,
             value,
             hex,
-            disc: RefCell::new(None),
+            disc,
+            at: Cell::new(i32::MIN),
         });
 
         // Ignore hue and saturation while the pointer is off the disc, so a
@@ -178,21 +192,15 @@ impl ColorWheel {
 
     /// Rasters the disc for the current value and marks where the brush sits.
     pub fn draw(&self, app: &App) {
-        let ctx = match context(&self.canvas) {
-            Some(c) => c,
-            None => return,
-        };
-        let value = app.ui.brush_hsv.2;
-        let key = (value * 100.0).round() as i32;
-        let stale = self.disc.borrow().as_ref().map(|(k, _)| *k) != Some(key);
-        if stale {
-            if let Some(image) = raster(value) {
-                *self.disc.borrow_mut() = Some((key, image));
+        let key = (app.ui.brush_hsv.2 * 100.0).round() as i32;
+        if self.at.get() != key {
+            if let (Some(ctx), Some(image)) = (context(&self.disc), raster(app.ui.brush_hsv.2)) {
+                // The image is put while the buffer behind it is still alive,
+                // and what is kept afterwards is the canvas it landed in.
+                ctx.clear_rect(0.0, 0.0, DISC_PX as f64, DISC_PX as f64);
+                let _ = ctx.put_image_data(&image, 0.0, 0.0);
+                self.at.set(key);
             }
-        }
-        if let Some((_, image)) = self.disc.borrow().as_ref() {
-            ctx.clear_rect(0.0, 0.0, DISC_PX as f64, DISC_PX as f64);
-            let _ = ctx.put_image_data(image, 0.0, 0.0);
         }
         self.mark(app);
     }
@@ -202,9 +210,8 @@ impl ColorWheel {
             Some(c) => c,
             None => return,
         };
-        if let Some((_, image)) = self.disc.borrow().as_ref() {
-            let _ = ctx.put_image_data(image, 0.0, 0.0);
-        }
+        ctx.clear_rect(0.0, 0.0, DISC_PX as f64, DISC_PX as f64);
+        let _ = ctx.draw_image_with_html_canvas_element(&self.disc, 0.0, 0.0);
         let (hue, sat, _) = app.ui.brush_hsv;
         let radius = DISC_PX as f64 / 2.0;
         let angle = (hue - 90.0).to_radians();

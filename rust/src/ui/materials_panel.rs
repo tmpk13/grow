@@ -4,7 +4,9 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, Element, HtmlCanvasElement};
 
 use crate::app::{App, Handle, Panel, Tool};
-use crate::sampler::{role_def, role_label, Grid, MaterialMode, Region, Sampler, DEFAULT_TONES, ROLES};
+use crate::sampler::{
+    role_def, role_label, Grid, MaterialMode, Region, Sampler, BANDS, DEFAULT_TONES, ROLES,
+};
 use crate::ui::color_wheel::{set_brush, Brush};
 use crate::ui::grid_editor::{self, GridEditor};
 use crate::ui::{
@@ -418,22 +420,28 @@ impl Panel for MaterialsPanel {
         self.editor.draw(app);
         self.brush.sync(app);
 
-        // The strip is the lookup shading actually reads, so a color covering
-        // most of the box shows as most of the strip. The swatches below it are
-        // the palette, one entry per color however little of the box it holds.
+        // What the box will actually read as: one strip per height of it, top
+        // of the box at the top, each running dark to light the way shading
+        // will walk it. A color covering most of a band is most of its strip,
+        // and a color drawn only along the top is in the top strips only.
         let ramp = app.state.materials.ramp(&app.ui.selected_sampler);
-        let lut = app.state.materials.tone_lut(&app.ui.selected_sampler);
+        let bands = app.state.materials.bands(&app.ui.selected_sampler);
         clear(&self.ramp_strip);
-        for c in lut.iter() {
-            let cell = el("span")
-                .class("ramp-cell")
-                .style("background", &packed_to_hex(*c))
-                .get();
-            let _ = self.ramp_strip.append_child(&cell);
+        for band in 0..BANDS {
+            let row = el("div").class("ramp-row").get();
+            for c in bands.band(band) {
+                let cell = el("span")
+                    .class("ramp-cell")
+                    .style("background", &packed_to_hex(*c))
+                    .get();
+                let _ = row.append_child(&cell);
+            }
+            let _ = self.ramp_strip.append_child(&row);
         }
         self.ramp_note.set_text_content(Some(&format!(
-            "{} tones, dark to light. Shading picks along this ramp, and each tone \
-             holds as much of it as it covers of the box.",
+            "{} tones. Each row is what this box reads as at that height of the thing \
+             drawn from it, dark to light: draw the top of the box for the top of the \
+             object. A tone holds as much of a row as it covers of that part of the box.",
             ramp.len()
         )));
 

@@ -17,7 +17,7 @@
 use std::rc::Rc;
 
 use crate::rng::Rng;
-use crate::sampler::ramp_pick;
+use crate::sampler::Bands;
 use crate::shading::{quantize, shade_value, Shading};
 use crate::species::{EffectiveLimits, SizeClass, Species};
 use crate::util::{
@@ -145,8 +145,9 @@ pub struct Scratch {
     stack: Vec<usize>,
 }
 
-/// The ramps a species resolves to, indexed by material.
-pub type Ramps = [Rc<Vec<u32>>; MAT_COUNT];
+/// The sampling boxes a species resolves to, indexed by material, each read as
+/// a set of vertical bands.
+pub type Ramps = [Rc<Bands>; MAT_COUNT];
 
 pub struct RasterEnv<'a> {
     pub shading: &'a Shading,
@@ -779,7 +780,10 @@ impl Plant {
                     let q = quantize(clamp01(t), tones);
                     let ramp = &env.ramps[self.mask[i] as usize];
                     if !ramp.is_empty() {
-                        self.sprite[i] = ramp_pick(ramp, q);
+                        // How far down the shape this pixel is chooses which
+                        // part of the box it reads, so a box drawn with a light
+                        // crown and a dark base comes out that way round.
+                        self.sprite[i] = ramp.pick(q, vert);
                     }
                 }
             }

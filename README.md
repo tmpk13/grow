@@ -69,12 +69,15 @@ texture, leaf edges, stem to leaf) and boxes can be added or removed.
   and a hex field for a color you already know.
 * **Make ramp** fills the box with a gradient between two colors, **Clear**
   empties it. In shared grid mode both act on the selected region only.
-* The strip under the editor is the *tone lookup*: the colors of that box, dark
-  to light, each holding as much of the strip as it covers of the box. A box
-  that is mostly one green shades mostly that green, and a highlight drawn as
-  two pixels stays a highlight rather than taking a third of the range. The
-  swatches above it are the palette, one entry per color however little of the
-  box it holds.
+* The strip under the editor is what the box will read as, one row per height
+  of the thing drawn from it, top of the box at the top. Two things about the
+  box reach the object: **how much of it** a color covers decides how much of
+  the shading it holds, so a box that is mostly one green shades mostly that
+  green and a highlight drawn as two pixels stays a highlight; and **where in it**
+  a color was drawn decides how far up the object it appears, so the top of the
+  box draws the top of the object and never its foot. A box whose rows are all
+  alike reads the same all the way down. The swatches above the strip are the
+  palette, one entry per color however little of the box it holds.
 
 ### Shading
 
@@ -159,6 +162,12 @@ middle button or a held ctrl drags, wheel or pinch zooms.
   you keep drawing. The motion's card in the settlement's People panel says
   which sheet it came from and offers to take that sheet again, which is how a
   change is pushed.
+* **Download PNG** saves the sheet as one image, every frame side by side at one
+  pixel each, which is the shape a drop zone reads a sheet back in.
+* **Kept sheets** are copies held outside the project, so art outlives the
+  project it was drawn in. Every save adds to them while the switch is on;
+  **Restore** brings one back into the project and **Delete** removes it for
+  good, after asking, because undo does not reach outside the project.
 * Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
   the art keeps its place and the new room is empty.
 
@@ -452,6 +461,11 @@ it again.
 browser - the saved project, the window settings, the session store, any cached
 files and any indexed databases - and reloads, so what comes back is the tool as
 it was the first time it was opened. It asks first, and it cannot be undone.
+
+Kept sheets are the one thing it leaves standing. Art outlives the project it
+was drawn in, which is the whole point of keeping it separately, and a button
+for clearing a stuck page is not a reason to lose it; a kept sheet goes when it
+is deleted from the sprite editor's Sheet tab.
 
 ## Window
 

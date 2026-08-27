@@ -23,7 +23,7 @@ use crate::civ::people::Person;
 use crate::civ::settlement::{Building, Rect, Settlement};
 use crate::civ::sprites::{motion_of, Clip, Motion};
 use crate::civ::terrain::{Cell, FLOW_DIRS};
-use crate::sampler::{ramp_pick, Materials};
+use crate::sampler::{Bands, Materials};
 use crate::sim::cast_shadow;
 use crate::species::SizeClass;
 use crate::state::State;
@@ -153,17 +153,23 @@ impl SpriteCache {
     }
 }
 
-fn ramp_of(materials: &Materials, sampler_id: &str) -> Rc<Vec<u32>> {
-    let ramp = materials.tone_lut(sampler_id);
-    if ramp.is_empty() {
-        Rc::new(vec![pack_rgba(90, 90, 90, 255), pack_rgba(150, 150, 150, 255)])
+fn ramp_of(materials: &Materials, sampler_id: &str) -> Rc<Bands> {
+    let bands = materials.bands(sampler_id);
+    if bands.is_empty() {
+        Rc::new(Bands::fallback(vec![
+            pack_rgba(90, 90, 90, 255),
+            pack_rgba(150, 150, 150, 255),
+        ]))
     } else {
-        ramp
+        bands
     }
 }
 
-fn shade(ramp: &[u32], t: f64) -> u32 {
-    ramp_pick(ramp, clamp01(t))
+/// One pixel of a sprite: its tone, and how far down the sprite it sits, which
+/// is what decides which part of the sampling box it reads from.
+fn shade(bands: &Bands, t: f64, y: i32, h: i32) -> u32 {
+    let v = if h > 1 { y as f64 / (h - 1) as f64 } else { 0.5 };
+    bands.pick(t, v)
 }
 
 // ---- background ----------------------------------------------------------
@@ -229,7 +235,9 @@ pub fn paint_terrain(sim: &Settlement, state: &State, buf: &mut [u32]) {
                     &soil
                 };
                 let t = clamp01(0.4 + far * fade * 2.0 + noise + (fert - 0.4) * 0.25);
-                shade(ramp, t)
+                // The back of the ground plane is the top of it as far as the
+                // box is concerned, so a soil box reads back to front.
+                ramp.pick(t, 1.0 - far)
             };
             buf[(y * world.px_w + x) as usize] = c;
         }
@@ -322,7 +330,8 @@ fn paint_deposits(sim: &Settlement, state: &State, buf: &mut [u32]) {
                     continue;
                 }
                 let t = 0.35 + n * 0.5 - (y as f64 / ry as f64) * 0.15;
-                buf[(py * world.px_w + px) as usize] = shade(ramp, t);
+                let v = (y + ry) as f64 / (2 * ry).max(1) as f64;
+                buf[(py * world.px_w + px) as usize] = ramp.pick(t, v);
             }
         }
     }
@@ -462,18 +471,18 @@ fn house_sprite(
             let inset = ((1.0 - t) * body_w as f64 * 0.22).round() as i32;
             let tone = 0.78 - t * 0.42 + (hash2(0, y, seed) - 0.5) * 0.08;
             for x in inset..w - inset {
-                let c = shade(&roof, tone + (hash2(x, y, seed) - 0.5) * 0.1);
+                let c = shade(&roof, tone + (hash2(x, y, seed) - 0.5) * 0.1, y, h);
                 put(&mut px, x, y, c);
             }
         }
         // Ridge and eave lines give the roof an edge without an outline pass.
         let ridge = (body_w as f64 * 0.22).round() as i32;
         for x in ridge..w - ridge {
-            let c = shade(&roof, 0.95);
+            let c = shade(&roof, 0.95, 0, h);
             put(&mut px, x, 0, c);
         }
         for x in 0..w {
-            let c = shade(&trim, 0.2);
+            let c = shade(&trim, 0.2, roof_bottom - 1, h);
             put(&mut px, x, roof_bottom - 1, c);
         }
 
@@ -481,7 +490,7 @@ fn house_sprite(
             let t = (y - wall_top) as f64 / (wall_h - 1).max(1) as f64;
             for x in eave..w - eave {
                 let tone = 0.68 - t * 0.34 + (hash2(x, y, seed + 7) - 0.5) * 0.09;
-                let c = shade(&wall, tone);
+                let c = shade(&wall, tone, y, h);
                 put(&mut px, x, y, c);
             }
         }
@@ -495,19 +504,19 @@ fn house_sprite(
         for y in h - raised..h {
             let t = (y - (h - raised)) as f64 / raised.max(1) as f64;
             for x in eave..w - eave {
-                let c = shade(&wall, 0.6 - t * 0.3 + (hash2(x, y, seed + 7) - 0.5) * 0.08);
+                let c = shade(&wall, 0.6 - t * 0.3 + (hash2(x, y, seed + 7) - 0.5) * 0.08, y, h);
                 put(&mut px, x, y, c);
             }
         }
         let post_top = h - wall_h - (roof_h as f64 * 0.4 * progress).round() as i32;
         for x in [eave, w - eave - 1, eave + body_w / 2] {
             for y in post_top..h {
-                let c = shade(&trim, 0.45 + (y % 3) as f64 * 0.05);
+                let c = shade(&trim, 0.45 + (y % 3) as f64 * 0.05, y, h);
                 put(&mut px, x, y, c);
             }
         }
         for x in eave..w - eave {
-            let c = shade(&trim, 0.55);
+            let c = shade(&trim, 0.55, post_top, h);
             put(&mut px, x, post_top, c);
         }
     }
@@ -527,11 +536,13 @@ fn paint_openings(
     wall_top: i32,
     wall_h: i32,
     seed: u32,
-    trim: &[u32],
+    trim: &Bands,
     def: &crate::civ::buildings::BuildingDef,
     lit: bool,
 ) {
-    let dark = shade(trim, 0.08);
+    // A doorway is a hole in the lower half of the wall, so it reads the box
+    // there rather than wherever a sprite-wide default would land.
+    let dark = shade(trim, 0.08, wall_top + wall_h, wall_top + wall_h);
     let glow = pack_rgba(250, 214, 130, 255);
     let door_w = ((body_w as f64 * 0.16).round() as i32).max(1);
     let door_h = ((wall_h as f64 * 0.6).round() as i32).max(2);
@@ -591,7 +602,7 @@ fn wall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
     let door_w = if gate { (body_w * 3 / 5).max(2) } else { 0 };
     let door_x = (w - door_w) / 2;
     let lintel = h - ((wall_h as f64 * 0.7).round() as i32).max(2);
-    let dark = shade(&trim, 0.06);
+    let dark = shade(&trim, 0.06, h, h);
 
     for y in floor.max(0)..h {
         for x in 0..w {
@@ -600,12 +611,12 @@ fn wall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
                 // The opening is drawn rather than left out: an arch you can
                 // see the far side of, not a hole in the sprite.
                 let t = (y - lintel) as f64 / (h - lintel).max(1) as f64;
-                mix_packed(dark, shade(&face, 0.2), t * 0.35)
+                mix_packed(dark, shade(&face, 0.2, y, h), t * 0.35)
             } else if y < top {
                 // The walk along the top, foreshortened over the depth of the
                 // footprint and falling away toward the near edge.
                 let t = y as f64 / top.max(1) as f64;
-                shade(&coping, 0.85 - t * 0.4 + (hash2(x, y, seed) - 0.5) * 0.1)
+                shade(&coping, 0.85 - t * 0.4 + (hash2(x, y, seed) - 0.5) * 0.1, y, h)
             } else {
                 let t = (y - top) as f64 / (h - top).max(1) as f64;
                 let tone = 0.66 - t * 0.36 + (hash2(x, y, seed + 3) - 0.5) * 0.08;
@@ -628,9 +639,9 @@ fn wall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
                     }
                 };
                 if seam {
-                    shade(&face, tone - 0.22)
+                    shade(&face, tone - 0.22, y, h)
                 } else {
-                    shade(&face, tone)
+                    shade(&face, tone, y, h)
                 }
             };
             px[(y * w + x) as usize] = c;
@@ -647,13 +658,13 @@ fn wall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
                 if y < 0 || y < floor {
                     continue;
                 }
-                px[(y * w + x) as usize] = shade(&trim, 0.5);
+                px[(y * w + x) as usize] = shade(&trim, 0.5, y, h);
             }
         }
     }
     if top - 1 >= floor && top - 1 >= 0 {
         for x in 0..w {
-            px[((top - 1) * w + x) as usize] = shade(&trim, 0.24);
+            px[((top - 1) * w + x) as usize] = shade(&trim, 0.24, top - 1, h);
         }
     }
 
@@ -684,7 +695,7 @@ fn stall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
     let post_top = h - ((post_h as f64 * progress).round() as i32).max(1);
     for x in [eave, w - eave - 1] {
         for y in post_top..h {
-            px[(y * w + x) as usize] = shade(&timber, 0.4 + (y % 3) as f64 * 0.06);
+            px[(y * w + x) as usize] = shade(&timber, 0.4 + (y % 3) as f64 * 0.06, y, h);
         }
     }
     if progress < 1.0 {
@@ -698,7 +709,7 @@ fn stall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
         for x in inset..w - inset {
             let band = ((x + (seed & 1)) / stripe) % 2 == 0;
             let tone = if band { 0.9 } else { 0.52 };
-            px[(y * w + x) as usize] = shade(&cloth, tone - t * 0.3);
+            px[(y * w + x) as usize] = shade(&cloth, tone - t * 0.3, y, h);
         }
     }
     // A scalloped fringe along the front edge, which is what says market
@@ -707,7 +718,7 @@ fn stall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
         if (x / (stripe / 2).max(1)) % 2 == 0 {
             let y = awning;
             if y < h {
-                px[(y * w + x) as usize] = shade(&cloth, 0.4);
+                px[(y * w + x) as usize] = shade(&cloth, 0.4, y, h);
             }
         }
     }
@@ -715,7 +726,8 @@ fn stall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
     let counter = h - ((post_h as f64 * 0.45).round() as i32).max(1);
     for y in counter..(counter + 2).min(h) {
         for x in eave..w - eave {
-            px[(y * w + x) as usize] = shade(&timber, if y == counter { 0.72 } else { 0.34 });
+            px[(y * w + x) as usize] =
+                shade(&timber, if y == counter { 0.72 } else { 0.34 }, y, h);
         }
     }
 
@@ -1172,6 +1184,19 @@ pub(crate) enum Item {
     Boat(usize),
 }
 
+/// How far into the map something stands, as sixteenths of a cell, which is
+/// what everything on the ground is sorted by.
+///
+/// Whole rows are not enough. A settler and a bush in the same row tie on the
+/// row and are then separated by what kind of thing they are, which put every
+/// settler in front of every plant they were standing among - so somebody
+/// walking behind a bush walked over it. A plant stands in the middle of its
+/// cell and a settler anywhere in theirs, and at a sixteenth of a cell that
+/// difference is what decides which is in front.
+pub fn depth_key(cells: f64) -> i32 {
+    (cells * 16.0).round() as i32
+}
+
 /// A filled rectangle, which is what a building is at the zoom where its walls
 /// are a pixel high.
 fn fill_rect(buf: &mut [u32], world: &World, x0: i32, y0: i32, x1: i32, y1: i32, color: u32) {
@@ -1302,7 +1327,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
         if !view.overlaps(ax - r, ay - up, ax + r + 1, ay + r + 1) {
             continue;
         }
-        items.push((plant.row, 1, plant.id, Item::Plant(i)));
+        items.push((depth_key(plant.row as f64 + 0.5), 1, plant.id, Item::Plant(i)));
     }
     if detail < Detail::Coarse {
         for (i, pile) in sim.piles.iter().enumerate() {
@@ -1311,7 +1336,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
             if !view.overlaps(ax - cell, ay - cell, ax + cell, ay + depth) {
                 continue;
             }
-            items.push((pile.row, 0, pile.id, Item::Pile(i)));
+            items.push((depth_key(pile.row as f64 + 0.5), 0, pile.id, Item::Pile(i)));
         }
     }
     for (i, b) in sim.buildings.iter().enumerate() {
@@ -1322,7 +1347,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
         if !view.overlaps(x0, y0, x1, y1) {
             continue;
         }
-        items.push((b.row + b.h - 1, 2, b.id, Item::Building(i)));
+        items.push((depth_key((b.row + b.h) as f64 - 0.5), 2, b.id, Item::Building(i)));
     }
     if state.civ.view.people {
         for (i, p) in sim.people.iter_indexed() {
@@ -1335,7 +1360,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
             if !view.overlaps(ax - cell, ay - cell * 2, ax + cell, ay + depth) {
                 continue;
             }
-            items.push((p.y.floor() as i32, 3, p.id as i32, Item::Person(i)));
+            items.push((depth_key(p.y), 3, p.id as i32, Item::Person(i)));
         }
     }
     if state.civ.view.boats {
@@ -1345,7 +1370,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
             if !view.overlaps(ax - cell * 2, ay - cell * 3, ax + cell * 2, ay + depth * 2) {
                 continue;
             }
-            items.push((boat.y.floor() as i32, 1, boat.id, Item::Boat(i)));
+            items.push((depth_key(boat.y), 1, boat.id, Item::Boat(i)));
         }
     }
     items.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
@@ -1380,7 +1405,9 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                         top,
                         sx + b.w * world.cell_px,
                         sy,
-                        shade(&roof, if b.built { 0.62 } else { 0.3 }),
+                        // One color for a whole building, so it reads the
+                        // middle of the box rather than any part of it.
+                        roof.pick(if b.built { 0.62 } else { 0.3 }, 0.5),
                     );
                     continue;
                 }

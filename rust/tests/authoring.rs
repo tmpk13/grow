@@ -465,3 +465,144 @@ fn a_clip_remembers_which_sheet_it_was_built_from() {
     let dropped = Clip::from_strip(4, 2, vec![RED; 8], 2, "walk.png".into()).expect("clip");
     assert!(dropped.sheet.is_empty());
 }
+
+// ---- where in the box a color was drawn ----------------------------------
+
+/// A box with one color across its top rows and another across its bottom
+/// rows, so which of the two comes back says which part of the box was read.
+fn split_box(top: u32, bottom: u32) -> (Materials, String) {
+    let mut materials = Materials::new();
+    let id = materials.samplers[0].id.clone();
+    {
+        let sampler = materials.find_mut(&id).expect("box");
+        let (w, h) = (sampler.w, sampler.h);
+        for y in 0..h {
+            let c = if y < h / 2 { top } else { bottom };
+            for x in 0..w {
+                sampler.px[(y * w + x) as usize] = c;
+            }
+        }
+    }
+    materials.touch();
+    (materials, id)
+}
+
+#[test]
+fn the_top_of_a_box_draws_the_top_of_the_object() {
+    let pale = pack_rgba(230, 230, 230, 255);
+    let dark = pack_rgba(30, 30, 30, 255);
+    let (materials, id) = split_box(pale, dark);
+    let bands = materials.bands(&id);
+
+    // Whatever the tone asked for, the top of the object only has the color
+    // from the top of the box to give, and the foot only the one from the foot.
+    for t in [0.0, 0.25, 0.5, 0.75, 1.0] {
+        assert_eq!(bands.pick(t, 0.0), pale, "the top of the object read the wrong end");
+        assert_eq!(bands.pick(t, 1.0), dark, "the foot of the object read the wrong end");
+    }
+    // The other way round in the box is the other way round on the object, so
+    // this is the arrangement being read and not the luminance.
+    let (flipped, id) = split_box(dark, pale);
+    let bands = flipped.bands(&id);
+    assert_eq!(bands.pick(0.5, 0.0), dark);
+    assert_eq!(bands.pick(0.5, 1.0), pale);
+}
+
+#[test]
+fn a_box_drawn_the_same_all_the_way_down_reads_the_same_all_the_way_down() {
+    // A box whose rows are identical - tones across it rather than down it -
+    // has nothing to say about height, and must read the same at every one of
+    // them. This is what keeps the arrangement mattering from changing what a
+    // box that ignores it does.
+    let mut materials = Materials::new();
+    let id = materials.samplers[0].id.clone();
+    {
+        let sampler = materials.find_mut(&id).expect("box");
+        let (w, h) = (sampler.w, sampler.h);
+        for y in 0..h {
+            for x in 0..w {
+                let step = x * 5 / w;
+                sampler.px[(y * w + x) as usize] =
+                    pack_rgba(step * 50, step * 50, step * 50, 255);
+            }
+        }
+    }
+    materials.touch();
+    let bands = materials.bands(&id);
+    for t in [0.0, 0.3, 0.6, 1.0] {
+        let at_top = bands.pick(t, 0.0);
+        for v in [0.25, 0.5, 0.75, 1.0] {
+            assert_eq!(bands.pick(t, v), at_top, "an even box read differently at {v}");
+        }
+    }
+}
+
+#[test]
+fn the_middle_of_a_box_reaches_most_of_the_way_either_way() {
+    // A band is not a slice: what is drawn in the middle of the box has to
+    // reach most of the object, or every box would read as three flat bands.
+    let mut materials = Materials::new();
+    let id = materials.samplers[0].id.clone();
+    let mid = pack_rgba(120, 200, 120, 255);
+    let edge = pack_rgba(20, 20, 20, 255);
+    {
+        let sampler = materials.find_mut(&id).expect("box");
+        let (w, h) = (sampler.w, sampler.h);
+        for y in 0..h {
+            let c = if y == h / 2 { mid } else { edge };
+            for x in 0..w {
+                sampler.px[(y * w + x) as usize] = c;
+            }
+        }
+    }
+    materials.touch();
+    let bands = materials.bands(&id);
+    let reach = [0.0, 0.25, 0.5, 0.75, 1.0]
+        .iter()
+        .filter(|v| (0..grow::sampler::TONE_STEPS).any(|i| {
+            bands.pick(i as f64 / grow::sampler::TONE_STEPS as f64, **v) == mid
+        }))
+        .count();
+    assert!(reach >= 4, "a color drawn mid box only reached {reach} of five heights");
+}
+
+#[test]
+fn an_empty_box_has_no_bands_to_read() {
+    let mut materials = Materials::new();
+    let id = materials.samplers[0].id.clone();
+    materials.find_mut(&id).expect("box").px.fill(EMPTY_COLOR);
+    materials.touch();
+    let bands = materials.bands(&id);
+    assert!(bands.is_empty());
+    assert_eq!(bands.pick(0.5, 0.5), EMPTY_COLOR);
+}
+
+// ---- what is drawn in front of what --------------------------------------
+
+#[test]
+fn a_contact_shadow_stops_at_the_horizon() {
+    use grow::sim::cast_shadow;
+    use grow::world::{World, WorldConfig};
+    let world = World::new(&WorldConfig { cols: 16, rows: 8, sky_px: 40, ..WorldConfig::default() });
+    let mut buf = vec![RED; (world.px_w * world.px_h) as usize];
+
+    // A plant standing in the back row, wide enough that its ellipse would
+    // reach above the horizon if nothing stopped it.
+    let state = State::new();
+    let species = &state.species[0];
+    let limits = grow::species::effective_limits(species, &state.class_limits);
+    let mut plant =
+        grow::plant::Plant::new(1, species, limits, 8, 0, &world, grow::rng::Rng::new(5));
+    plant.radius_px = 30.0;
+    cast_shadow(&world, &mut buf, world.anchor_x(8), world.sky_px + 1, &plant);
+
+    let untouched = (0..world.sky_px)
+        .flat_map(|y| (0..world.px_w).map(move |x| (x, y)))
+        .all(|(x, y)| buf[(y * world.px_w + x) as usize] == RED);
+    assert!(untouched, "a shadow reached into the sky");
+    // It did land somewhere, or the test proves nothing.
+    assert!(
+        buf.iter().any(|c| *c != RED),
+        "the shadow did not land at all, so the clamp is not what stopped it"
+    );
+}

@@ -334,6 +334,9 @@ impl App {
     }
 
     pub fn save_now(&mut self) {
+        if ui::prefs::Prefs::load().keep_sprites {
+            ui::sprite_store::keep(&self.state.art);
+        }
         let ok = save_local(&self.state);
         let stamp = js_sys::Date::new_0().to_locale_time_string("en-US");
         self.set_note(&if ok {
@@ -1475,7 +1478,8 @@ fn bind_project_actions(h: &Handle) {
                 .confirm_with_message(
                     "Clear everything this page has saved in the browser and start again? \
                      The project, the window settings and any cached files all go, and this \
-                     cannot be undone.",
+                     cannot be undone. Kept sheets are left alone; they are deleted from the \
+                     sprite editor's Sheet tab.",
                 )
                 .unwrap_or(false);
             if asked {
@@ -1567,17 +1571,7 @@ fn export_json(json: &str) {
         Ok(u) => u,
         Err(_) => return,
     };
-    let anchor = document()
-        .create_element("a")
-        .unwrap()
-        .dyn_into::<web_sys::HtmlAnchorElement>()
-        .unwrap();
-    anchor.set_href(&url);
-    anchor.set_download("grow-project.json");
-    let body = document().body().unwrap();
-    let _ = body.append_child(&anchor);
-    anchor.click();
-    anchor.remove();
+    ui::download(&url, "grow-project.json");
     let _ = web_sys::Url::revoke_object_url(&url);
 }
 
