@@ -35,13 +35,15 @@ pub enum Motion {
     Work,
     Sleep,
     Swim,
+    ToBed,
 }
 
-pub const MOTIONS: [Motion; 6] = [
+pub const MOTIONS: [Motion; 7] = [
     Motion::Idle,
     Motion::Walk,
     Motion::Carry,
     Motion::Work,
+    Motion::ToBed,
     Motion::Sleep,
     Motion::Swim,
 ];
@@ -57,6 +59,7 @@ impl Motion {
             Motion::Work => "Working",
             Motion::Sleep => "Sleeping",
             Motion::Swim => "Swimming",
+            Motion::ToBed => "Going to sleep",
         }
     }
 
@@ -69,6 +72,7 @@ impl Motion {
             Motion::Work => "work",
             Motion::Sleep => "sleep",
             Motion::Swim => "swim",
+            Motion::ToBed => "tobed",
         }
     }
 
@@ -80,6 +84,7 @@ impl Motion {
             Motion::Work => "stood at the work rather than walking to it",
             Motion::Sleep => "asleep out in the open",
             Motion::Swim => "in the water, crossing it",
+            Motion::ToBed => "turning in: on the way to a bed, or lying down in the open",
         }
     }
 
@@ -99,6 +104,7 @@ impl Motion {
             Motion::Work => (6.0, false),
             Motion::Sleep => (1.5, false),
             Motion::Swim => (4.0, true),
+            Motion::ToBed => (4.0, true),
         }
     }
 
@@ -116,6 +122,9 @@ impl Motion {
             // the waterline either way, so a walk cycle in the water reads as
             // somebody wading rather than as somebody standing on it.
             Motion::Swim => &[Motion::Swim, Motion::Walk, Motion::Idle],
+            // Turning in is a walk until somebody draws it otherwise, and a
+            // stand when there is nowhere to walk to.
+            Motion::ToBed => &[Motion::ToBed, Motion::Walk, Motion::Idle],
         }
     }
 }
@@ -421,6 +430,7 @@ pub struct PeopleSprites {
     pub work: Option<Clip>,
     pub sleep: Option<Clip>,
     pub swim: Option<Clip>,
+    pub to_bed: Option<Clip>,
     /// Bumped whenever a clip changes, so the drawing can tell a cached sprite
     /// built from the old pixels is stale. Not saved: a project that has only
     /// just been loaded has nothing cached to go stale.
@@ -438,6 +448,7 @@ impl Default for PeopleSprites {
             work: None,
             sleep: None,
             swim: None,
+            to_bed: None,
             rev: 0,
         }
     }
@@ -452,6 +463,7 @@ impl PeopleSprites {
             Motion::Work => self.work.as_ref(),
             Motion::Sleep => self.sleep.as_ref(),
             Motion::Swim => self.swim.as_ref(),
+            Motion::ToBed => self.to_bed.as_ref(),
         }
     }
 
@@ -463,6 +475,7 @@ impl PeopleSprites {
             Motion::Work => &mut self.work,
             Motion::Sleep => &mut self.sleep,
             Motion::Swim => &mut self.swim,
+            Motion::ToBed => &mut self.to_bed,
         }
     }
 
@@ -500,8 +513,9 @@ impl PeopleSprites {
 }
 
 /// What a settler is doing, folded down to the one thing the drawing asks.
-/// Sleeping wins over everything, then being in the water, then being on a
-/// path, and only somebody stood still and mid-task counts as working.
+/// Sleeping wins over everything, then being in the water, then turning in for
+/// the night, then being on a path, and only somebody stood still and mid-task
+/// counts as working.
 pub fn motion_of(p: &Person, swimming: bool) -> Motion {
     if p.sleeping {
         return Motion::Sleep;
@@ -510,6 +524,12 @@ pub fn motion_of(p: &Person, swimming: bool) -> Motion {
     // drawn cut off at the waterline whatever is in their hands.
     if swimming {
         return Motion::Swim;
+    }
+    // Turning in is its own thing, whether that is the walk to a bed or lying
+    // down where they stand: the settler has finished for the day either way,
+    // which a walk cycle does not say.
+    if p.task.as_ref().is_some_and(|t| t.is_sleep()) {
+        return Motion::ToBed;
     }
     if !p.path.is_empty() {
         return if p.carrying() { Motion::Carry } else { Motion::Walk };

@@ -1407,6 +1407,8 @@ fn bind_fullscreen(h: &Handle) {
         });
     }
 
+    bind_idle_fade();
+
     let h2 = h.clone();
     on(document().unchecked_ref(), "fullscreenchange", Scope::Global, move |_| {
         let entered = document().fullscreen_element().is_some();
@@ -1427,6 +1429,57 @@ fn bind_fullscreen(h: &Handle) {
             set_stage_only(&mut sh.app, false);
         }
     });
+}
+
+/// How long the pointer has to be still before the one piece of chrome left in
+/// fullscreen gets out of the way as well.
+const IDLE_MS: i32 = 2_500;
+
+/// Fades the escape hatch out once nothing has moved for a while, and brings it
+/// back on the first sign of life. Only the class is managed here; what it does
+/// is the stylesheet's business, and it does nothing at all outside fullscreen.
+fn bind_idle_fade() {
+    /// The callback the timer fires, held for as long as the page is up.
+    type Arm = Rc<RefCell<Option<Closure<dyn FnMut()>>>>;
+    let timer: Rc<Cell<i32>> = Rc::new(Cell::new(0));
+    let arm: Arm = Rc::new(RefCell::new(None));
+    {
+        let arm2 = arm.clone();
+        *arm.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+            let _ = &arm2;
+            if let Some(body) = document().body() {
+                let _ = body.class_list().add_1("idle");
+            }
+        }) as Box<dyn FnMut()>));
+    }
+
+    let wake = move |_: Event| {
+        let body = match document().body() {
+            Some(b) => b,
+            None => return,
+        };
+        let _ = body.class_list().remove_1("idle");
+        if timer.get() != 0 {
+            window().clear_timeout_with_handle(timer.get());
+            timer.set(0);
+        }
+        if !body.class_list().contains("stage-only") {
+            return;
+        }
+        if let Some(cb) = arm.borrow().as_ref() {
+            if let Ok(id) = window().set_timeout_with_callback_and_timeout_and_arguments_0(
+                cb.as_ref().unchecked_ref(),
+                IDLE_MS,
+            ) {
+                timer.set(id);
+            }
+        }
+    };
+    // Anything a person does counts, including leaving fullscreen, which is why
+    // this listens on the window rather than on the stage.
+    for event in ["pointermove", "pointerdown", "keydown", "wheel", "fullscreenchange"] {
+        on(window().unchecked_ref(), event, Scope::Global, wake.clone());
+    }
 }
 
 fn collapse_label(collapsed: bool) -> &'static str {

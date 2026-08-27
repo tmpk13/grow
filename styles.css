@@ -109,19 +109,26 @@ body {
 }
 
 /* Faint until it is looked for, so it does not sit on top of the thing it is
-   there to get out of the way of. */
+   there to get out of the way of, and gone altogether once the pointer has been
+   still for a while. Any movement brings it back. */
 .stage-escape {
   position: absolute;
   top: 0.6rem;
   right: 0.6rem;
   z-index: 2;
   opacity: 0.25;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.6s ease;
 }
 
 .stage-escape:hover,
 .stage-escape:focus-visible {
   opacity: 1;
+  transition: opacity 0.15s ease;
+}
+
+.stage-only.idle .stage-escape:not(:focus-visible) {
+  opacity: 0;
+  pointer-events: none;
 }
 
 body:not(.stage-only) .stage-escape {

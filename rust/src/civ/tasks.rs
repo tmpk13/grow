@@ -518,8 +518,31 @@ pub fn start_sleep(sim: &mut Settlement, state: &State, pi: usize) {
     sleep_rough(sim, pi);
 }
 
+/// Nobody with a roof and nothing at an inn still walks home. Lying down where
+/// the day happened to end leaves a forager asleep in the woods a morning's
+/// walk from anything, so they go back to the middle of their town and sleep
+/// among everybody else. Only somebody who cannot get there at all - cut off,
+/// or already standing in it - sleeps where they are.
 fn sleep_rough(sim: &mut Settlement, pi: usize) {
     sim.leave_building(pi);
+    let ci = sim.colony_of(pi);
+    let (tc, tr) = sim.colonies[ci].center;
+    let (cc, cr) = (sim.people[pi].cell_col(), sim.people[pi].cell_row());
+    let near = (cc - tc).abs() <= 1 && (cr - tr).abs() <= 1;
+    if !near {
+        if let Some(spot) = sim.free_spot_near(tc, tr) {
+            if let Some(path) = sim.find_path(cc, cr, spot.0, spot.1) {
+                sim.people[pi].path = path;
+                sim.people[pi].path_at = 0;
+                sim.people[pi].task =
+                    Some(Task::Sleep { building_id: 0, phase: Phase::Approach, hired: false });
+                // Still a night in the open, and still worth complaining about;
+                // the walk back is about where they wake up, not comfort.
+                sim.people[pi].happiness = clamp01(sim.people[pi].happiness - 0.02);
+                return;
+            }
+        }
+    }
     sim.people[pi].sleeping = true;
     sim.people[pi].task = Some(Task::Sleep { building_id: 0, phase: Phase::Working, hired: false });
     // A night in the open is worth complaining about.

@@ -628,6 +628,10 @@ fn a_settler_reports_the_motion_they_are_in() {
             match motion {
                 Motion::Sleep => assert!(p.sleeping),
                 Motion::Swim => assert!(*wet && !p.sleeping),
+                Motion::ToBed => assert!(
+                    !p.sleeping && p.task.as_ref().is_some_and(|t| t.is_sleep()),
+                    "turning in without a bed to turn in to"
+                ),
                 Motion::Walk => assert!(!p.path.is_empty() && !p.carrying()),
                 Motion::Carry => assert!(!p.path.is_empty() && p.carrying()),
                 Motion::Work | Motion::Idle => assert!(p.path.is_empty() && !p.sleeping),
@@ -726,4 +730,48 @@ fn a_settler_behind_a_bush_is_drawn_behind_it() {
     // A building's foot is the front edge of its last row, which leaves it
     // tying with a plant in that row and winning on kind, the way it did.
     assert_eq!(depth_key((3 + 2) as f64 - 0.5), depth_key(4.0 + 0.5));
+}
+
+#[test]
+fn nobody_beds_down_where_the_day_ended() {
+    // Somebody with no roof and nothing at an inn used to lie down wherever the
+    // day happened to end, which for a forager is out in the woods. They walk
+    // back to their town first now.
+    let mut state = State::new();
+    state.civ.world.cols = 64;
+    state.civ.world.rows = 30;
+    state.civ.terrain.warmup = 60.0;
+    // No beds and no coin, so every settler takes the last resort.
+    state.civ.start.storehouse = false;
+    state.civ.people.inn_price = 1e9;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    let day = (state.civ.people.day_length / dt) as usize;
+    let mut far_asleep = 0;
+    let mut asleep = 0;
+    for _ in 0..day * 3 {
+        sim.step(&state, dt);
+        for (pi, p) in sim.people.iter_indexed() {
+            if !p.sleeping || p.indoors() {
+                continue;
+            }
+            asleep += 1;
+            let ci = sim.colony_of(pi);
+            let (tc, tr) = sim.colonies[ci].center;
+            let away = (p.cell_col() - tc).abs().max((p.cell_row() - tr).abs());
+            // Sleeping in the town, or on its doorstep. Anything past this is
+            // somebody who bedded down where they were working.
+            if away > 8 {
+                far_asleep += 1;
+            }
+        }
+    }
+    assert!(asleep > 0, "nobody slept rough at all, so this proves nothing");
+    assert!(
+        far_asleep * 20 < asleep,
+        "{far_asleep} of {asleep} sleeping moments were far from town: settlers are \
+         still bedding down where the day ended"
+    );
 }

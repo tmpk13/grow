@@ -660,6 +660,29 @@ impl Settlement {
         c >= 0 && c < self.world().cols && r >= 0 && r < self.world().rows
     }
 
+    /// A cell near a spot that somebody can stand on, searched outward in rings
+    /// so the answer is the nearest one. Used where a place matters more than a
+    /// particular cell of it: the middle of a town is a building or a well as
+    /// often as it is open ground.
+    pub fn free_spot_near(&self, c: i32, r: i32) -> Option<(i32, i32)> {
+        if self.walkable(c, r) {
+            return Some((c, r));
+        }
+        for ring in 1i32..8 {
+            for dr in -ring..=ring {
+                for dc in -ring..=ring {
+                    if dc.abs() != ring && dr.abs() != ring {
+                        continue;
+                    }
+                    if self.walkable(c + dc, r + dr) {
+                        return Some((c + dc, r + dr));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Whether a cell is water, which is where somebody is swimming rather than
     /// walking.
     pub fn in_water(&self, c: i32, r: i32) -> bool {
