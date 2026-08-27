@@ -419,6 +419,7 @@ pub fn building_sprite(
     let sprite = match b.def.structure {
         Structure::Wall | Structure::Gate => wall_sprite(state, world, b),
         Structure::Stall => stall_sprite(state, world, b),
+        Structure::Lamp => lamp_sprite(state, world, b, night),
         Structure::Building => house_sprite(state, world, b, night, detail),
     };
     cache.map.insert(key, sprite.clone());
@@ -732,6 +733,56 @@ fn stall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
     }
 
     Rc::new(Sprite { w, h, px, ox: eave, oy: h })
+}
+
+/// A post with a light on it: a stone foot, a timber shaft, and a head that
+/// burns once it is dark. Nothing about it is a building, so it is not drawn
+/// like one.
+fn lamp_sprite(state: &State, world: &World, b: &Building, night: bool) -> Rc<Sprite> {
+    let post = ramp_of(&state.materials, b.def.palette.wall);
+    let iron = ramp_of(&state.materials, b.def.palette.trim);
+    let stone = ramp_of(&state.materials, "mat-stone");
+    let cell = world.cell_px;
+    let h = ((b.def.wall_h * cell as f64).round() as i32).max(4);
+    let w = (cell / 3).max(3);
+    let mut px = vec![0u32; (w * h) as usize];
+    let mid = w / 2;
+    let head = ((h as f64 * 0.22).round() as i32).max(1);
+    let foot = h - ((h as f64 * 0.12).round() as i32).max(1);
+    let progress = if b.built { 1.0 } else { clamp01(b.work_done / b.work.max(1.0)) };
+    let raised = h - ((h as f64 * progress).round() as i32).max(1);
+
+    for y in raised.max(0)..h {
+        let (from, tone) = if y >= foot {
+            (&stone, 0.5 + (y % 2) as f64 * 0.08)
+        } else if y < head {
+            (&iron, 0.7)
+        } else {
+            (&post, 0.55 - (y - head) as f64 / h as f64 * 0.2)
+        };
+        // The shaft is one pixel wide and the foot and head the full width, so
+        // it reads as a post rather than as a plank.
+        let half = if y >= foot || y < head { w / 2 } else { 0 };
+        for x in (mid - half).max(0)..=(mid + half).min(w - 1) {
+            px[(y * w + x) as usize] = shade(from, tone, y, h);
+        }
+    }
+    // The flame, once the lamp is finished and it is dark enough to want one.
+    if b.built && night {
+        for y in 0..head {
+            for x in (mid - 1).max(0)..=(mid + 1).min(w - 1) {
+                if x != mid && y == 0 {
+                    continue;
+                }
+                px[(y * w + x) as usize] = if y == 0 {
+                    pack_rgba(255, 246, 214, 255)
+                } else {
+                    pack_rgba(255, 214, 132, 255)
+                };
+            }
+        }
+    }
+    Rc::new(Sprite { w, h, px, ox: w / 2, oy: h })
 }
 
 /// What is actually on the counter, drawn straight into the frame rather than
@@ -1555,6 +1606,26 @@ pub fn building_labels(sim: &Settlement) -> Vec<(f64, f64, String)> {
 /// One label per town, placed over its center. Drawn at every zoom, because at
 /// the zoom where the buildings are blocks this is the only thing that says
 /// which block is which town.
+/// Every lit lamp and how far it throws, in world pixels: where it stands, and
+/// the radius of the pool around it. Read by the camera rather than composited
+/// into the frame, because the night it is lighting is drawn on the canvas over
+/// the finished frame and not into it.
+pub fn lamp_lights(sim: &Settlement) -> Vec<(f64, f64, f64)> {
+    let world = sim.world();
+    let cell = world.cell_px as f64;
+    sim.buildings
+        .iter()
+        .filter(|b| b.built && b.def.light > 0.0)
+        .map(|b| {
+            let x = (b.col as f64 + b.w as f64 / 2.0) * cell;
+            // The flame is at the head of the post, not at its foot.
+            let foot = world.sky_px as f64 + (b.row + b.h) as f64 * world.depth_px as f64;
+            let y = foot - b.def.wall_h * cell * 0.85;
+            (x, y, b.def.light * cell)
+        })
+        .collect()
+}
+
 pub fn colony_labels(sim: &Settlement) -> Vec<(f64, f64, String, u32)> {
     let world = sim.world();
     sim.colonies

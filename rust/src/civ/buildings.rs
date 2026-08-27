@@ -73,6 +73,9 @@ pub enum Structure {
     Gate,
     /// A counter under an awning, kept by one settler for their own account.
     Stall,
+    /// A post with a light on it. Nothing happens at one; it is there to be
+    /// seen by.
+    Lamp,
 }
 
 impl Structure {
@@ -229,6 +232,9 @@ pub struct BuildingDef {
     /// Personal coin a settler puts up to open one of these for themselves.
     /// It is paid into the treasury, which is what then funds the materials.
     pub keeper_coin: f64,
+    /// How far a lamp throws its light, in cells. Nothing else lights the map,
+    /// so anything above zero is a lamp.
+    pub light: f64,
     pub note: Option<&'static str>,
 }
 
@@ -269,6 +275,7 @@ const BLANK: BuildingDef = BuildingDef {
     planned: true,
     sells: &[],
     keeper_coin: 0.0,
+    light: 0.0,
     note: None,
 };
 
@@ -652,6 +659,21 @@ pub static BUILDINGS: &[BuildingDef] = &[
         health: 0.35,
         radius: 12.0,
         note: Some("Clean water: fewer deaths, faster recovery."),
+        ..BLANK
+    },
+    BuildingDef {
+        id: "lamp",
+        label: "Lamp post",
+        category: Category::Civic,
+        structure: Structure::Lamp,
+        wall_h: 1.05,
+        roof_h: 0.0,
+        palette: Palette { wall: "mat-timber", roof: "mat-metal", trim: "mat-metal" },
+        cost: &[(Res::Wood, 6.0), (Res::Stone, 3.0)],
+        work: 12.0,
+        base: true,
+        light: 5.0,
+        note: Some("A pool of light after dark, so a town is not all one shade of night."),
         ..BLANK
     },
     BuildingDef {

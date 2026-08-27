@@ -415,6 +415,11 @@ population. Pick any available tech to make it the target.
   thing that moves coin from one settler to another with the treasury nowhere in
   it, and the only use anybody has for coin besides a roof and a meal. Only what
   the town has spare is ever bought for a counter.
+* **Lamp posts.** A post with a light on the head, which burns after dark and
+  throws a pool of warm light over the ground around it. The town builds a few
+  once there are enough people to want them, and they can be queued by hand from
+  the Build panel like anything else. The light is added over the night tint
+  rather than cut out of it, because a lamp gives light off.
 * **Water is crossable, at a price.** A step into water costs the pathfinder
   several steps of dry ground, so a river is swum only when walking round it
   would be much further, and a swimmer moves at a fraction of walking speed and

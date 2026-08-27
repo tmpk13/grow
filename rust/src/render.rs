@@ -4,7 +4,7 @@
 use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData};
 
-use crate::civ::civ_render::{building_labels, colony_labels};
+use crate::civ::civ_render::{building_labels, colony_labels, lamp_lights};
 use crate::civ::settlement::{Rect, Settlement};
 use crate::plant::Plant;
 use crate::species::LAYER_COUNT;
@@ -443,6 +443,7 @@ impl Viewport {
                     tint.r, tint.g, tint.b, dark
                 ));
                 ctx.fill_rect(self.pan_x, self.pan_y, w, h);
+                self.draw_lamps(sim, 1.0 - light);
             }
         }
         if !state.civ.view.labels {
@@ -459,6 +460,44 @@ impl Viewport {
             let sy = self.pan_y + y * self.zoom + 10.0;
             let _ = ctx.stroke_text(&text, sx, sy);
             let _ = ctx.fill_text(&text, sx, sy);
+        }
+    }
+
+    /// Pools of light under the lamps, drawn over the night tint rather than
+    /// cut out of it: a lamp gives light off, so adding one is both the simpler
+    /// operation and the truer one. Nothing is drawn by day, and each pool
+    /// strengthens with the dark that it is pushing back.
+    fn draw_lamps(&self, sim: &Settlement, dark: f64) {
+        let ctx = &self.ctx;
+        let mut lit = false;
+        for (x, y, radius) in lamp_lights(sim) {
+            let sx = self.pan_x + x * self.zoom;
+            let sy = self.pan_y + y * self.zoom;
+            let sr = radius * self.zoom;
+            if sr < 1.0 {
+                continue;
+            }
+            let (rw, rh) = self.rect();
+            if sx + sr < 0.0 || sy + sr < 0.0 || sx - sr > rw || sy - sr > rh {
+                continue;
+            }
+            let grad = match ctx.create_radial_gradient(sx, sy, 0.0, sx, sy, sr) {
+                Ok(g) => g,
+                Err(_) => continue,
+            };
+            let core = (0.55 * dark).clamp(0.0, 0.6);
+            let _ = grad.add_color_stop(0.0, &format!("rgba(255, 214, 138, {core:.3})"));
+            let _ = grad.add_color_stop(0.45, &format!("rgba(255, 190, 110, {:.3})", core * 0.35));
+            let _ = grad.add_color_stop(1.0, "rgba(255, 180, 100, 0)");
+            if !lit {
+                ctx.set_global_composite_operation("lighter").ok();
+                lit = true;
+            }
+            ctx.set_fill_style_canvas_gradient(&grad);
+            ctx.fill_rect(sx - sr, sy - sr, sr * 2.0, sr * 2.0);
+        }
+        if lit {
+            ctx.set_global_composite_operation("source-over").ok();
         }
     }
 

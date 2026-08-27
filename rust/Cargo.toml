@@ -23,6 +23,7 @@ features = [
   "AddEventListenerOptions",
   "Blob",
   "BlobPropertyBag",
+  "CanvasGradient",
   "CanvasRenderingContext2d",
   "console",
   "CssStyleDeclaration",

@@ -392,6 +392,12 @@ pub fn plan_next(sim: &Settlement, state: &State, ci: usize) -> Option<&'static 
                     let partners = sim.colonies.len() as f64 - 1.0;
                     score = partners * 0.8 - have.built as f64 * 2.0;
                 }
+                // A lamp is worth having once there is a town to light, and one
+                // is worth more than the second: the first turns a black street
+                // into a lit one.
+                None if def.light > 0.0 => {
+                    score = pop as f64 / 8.0 - have.built as f64 * 0.7;
+                }
                 None if def.health > 0.0 => {
                     score = 0.9 - have.built as f64 * 0.5;
                 }
