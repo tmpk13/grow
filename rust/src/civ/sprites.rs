@@ -34,14 +34,16 @@ pub enum Motion {
     Carry,
     Work,
     Sleep,
+    Swim,
 }
 
-pub const MOTIONS: [Motion; 5] = [
+pub const MOTIONS: [Motion; 6] = [
     Motion::Idle,
     Motion::Walk,
     Motion::Carry,
     Motion::Work,
     Motion::Sleep,
+    Motion::Swim,
 ];
 
 pub const MOTION_COUNT: usize = MOTIONS.len();
@@ -54,6 +56,7 @@ impl Motion {
             Motion::Carry => "Carrying",
             Motion::Work => "Working",
             Motion::Sleep => "Sleeping",
+            Motion::Swim => "Swimming",
         }
     }
 
@@ -65,6 +68,7 @@ impl Motion {
             Motion::Carry => "carry",
             Motion::Work => "work",
             Motion::Sleep => "sleep",
+            Motion::Swim => "swim",
         }
     }
 
@@ -75,6 +79,7 @@ impl Motion {
             Motion::Carry => "on a path with a load",
             Motion::Work => "stood at the work rather than walking to it",
             Motion::Sleep => "asleep out in the open",
+            Motion::Swim => "in the water, crossing it",
         }
     }
 
@@ -93,6 +98,7 @@ impl Motion {
             Motion::Carry => (6.0, true),
             Motion::Work => (6.0, false),
             Motion::Sleep => (1.5, false),
+            Motion::Swim => (4.0, true),
         }
     }
 
@@ -106,6 +112,10 @@ impl Motion {
             Motion::Carry => &[Motion::Carry, Motion::Walk, Motion::Idle],
             Motion::Work => &[Motion::Work, Motion::Idle, Motion::Walk],
             Motion::Sleep => &[Motion::Sleep, Motion::Idle],
+            // A swim falls back to a walk: the drawing cuts a swimmer off at
+            // the waterline either way, so a walk cycle in the water reads as
+            // somebody wading rather than as somebody standing on it.
+            Motion::Swim => &[Motion::Swim, Motion::Walk, Motion::Idle],
         }
     }
 }
@@ -410,6 +420,7 @@ pub struct PeopleSprites {
     pub carry: Option<Clip>,
     pub work: Option<Clip>,
     pub sleep: Option<Clip>,
+    pub swim: Option<Clip>,
     /// Bumped whenever a clip changes, so the drawing can tell a cached sprite
     /// built from the old pixels is stale. Not saved: a project that has only
     /// just been loaded has nothing cached to go stale.
@@ -426,6 +437,7 @@ impl Default for PeopleSprites {
             carry: None,
             work: None,
             sleep: None,
+            swim: None,
             rev: 0,
         }
     }
@@ -439,6 +451,7 @@ impl PeopleSprites {
             Motion::Carry => self.carry.as_ref(),
             Motion::Work => self.work.as_ref(),
             Motion::Sleep => self.sleep.as_ref(),
+            Motion::Swim => self.swim.as_ref(),
         }
     }
 
@@ -449,6 +462,7 @@ impl PeopleSprites {
             Motion::Carry => &mut self.carry,
             Motion::Work => &mut self.work,
             Motion::Sleep => &mut self.sleep,
+            Motion::Swim => &mut self.swim,
         }
     }
 
@@ -486,11 +500,16 @@ impl PeopleSprites {
 }
 
 /// What a settler is doing, folded down to the one thing the drawing asks.
-/// Sleeping wins over everything, then being on a path, and only somebody
-/// stood still and mid-task counts as working.
-pub fn motion_of(p: &Person) -> Motion {
+/// Sleeping wins over everything, then being in the water, then being on a
+/// path, and only somebody stood still and mid-task counts as working.
+pub fn motion_of(p: &Person, swimming: bool) -> Motion {
     if p.sleeping {
         return Motion::Sleep;
+    }
+    // Being in the water beats what is being carried through it: a swimmer is
+    // drawn cut off at the waterline whatever is in their hands.
+    if swimming {
+        return Motion::Swim;
     }
     if !p.path.is_empty() {
         return if p.carrying() { Motion::Carry } else { Motion::Walk };

@@ -117,6 +117,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         people_num(h, "Work ends", p.work_end, 0.5, 1.0, 0.01, None, |c, v| c.work_end = v),
         people_num(h, "Walking speed", p.walk_speed, 0.3, 10.0, 0.1, Some("cells per second"), |c, v| c.walk_speed = v),
         people_num(h, "Path speed bonus", p.road_speed_bonus, 0.0, 1.5, 0.05, Some("how much a worn path helps"), |c, v| c.road_speed_bonus = v),
+        people_num(h, "Swimming speed", p.swim_speed, 0.05, 1.0, 0.05,
+            Some("against walking speed, once somebody is in the water"), |c, v| c.swim_speed = v),
+        people_num(h, "Cost of a swim", p.swim_cost, 1.0, 40.0, 0.5,
+            Some("how much dearer a step into water is than one onto ground: high enough and \
+                  a river is only ever walked round"), |c, v| c.swim_cost = v),
         people_num(h, "Carry capacity", p.carry_capacity, 1.0, 80.0, 1.0, Some("one load; the rest is left where it fell"), |c, v| c.carry_capacity = v),
         people_num(h, "Work rate", p.work_rate, 0.1, 4.0, 0.1, Some("global multiplier on every kind of work"), |c, v| c.work_rate = v),
         people_num(h, "Laborer share", p.laborer_share, 0.0, 0.9, 0.05, Some("adults kept out of workplaces to haul and build"), |c, v| c.laborer_share = v),

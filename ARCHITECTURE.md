@@ -1147,16 +1147,21 @@ slot borrows from a related one, so a single walk sheet stands in everywhere.
 flowchart TD
   p["a settler"] --> m{"what are they doing?"}
   m -->|sleeping| sl["sleep"]
+  m -->|in the water| sw["swim"]
   m -->|on a path, loaded| ca["carry"]
   m -->|on a path| wa["walk"]
   m -->|stood at a task mid-work| wo["work"]
   m -->|otherwise| id["idle"]
+  sw -.->|nothing dropped| wa
   ca -.->|nothing dropped| wa
   wa -.->|nothing dropped| id
   wo -.->|nothing dropped| id
   sl -.->|nothing dropped| id
   id -.->|nothing dropped| gen["the generated settler"]
 ```
+
+A swimmer is blitted with the bottom of the sprite left undrawn, so they are in
+the water rather than on it, whatever art the motion resolves to.
 
 Which frame shows is either the clock or the ground, per clip. A walk tied to
 the clock slides or runs on the spot; a walk tied to the ground covered never

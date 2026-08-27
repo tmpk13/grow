@@ -11,8 +11,11 @@
 //! goal without fanning out over the whole map, and every search is capped so
 //! an unreachable target costs a bounded amount rather than the whole grid.
 //!
-//! Cells that have been walked over are cheaper to walk over again, which is
-//! why traffic wears into roads that people then prefer.
+//! What a cell costs to step onto is the caller's to say, from the base step
+//! for the direction. Less for ground that has been walked over, which is why
+//! traffic wears into roads that people then prefer; far more for water, which
+//! is why somebody swims a river only when walking round it would be much
+//! further.
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -122,7 +125,7 @@ impl PathGrid {
         goal: (i32, i32),
         budget: usize,
         passable: impl Fn(i32, i32) -> bool,
-        wear: impl Fn(usize) -> f32,
+        cost: impl Fn(usize, i32) -> i32,
     ) -> Option<Vec<(i32, i32)>> {
         if !self.in_bounds(start.0, start.1) || !self.in_bounds(goal.0, goal.1) {
             return None;
@@ -178,8 +181,7 @@ impl PathGrid {
                     continue;
                 }
                 let base = if dx != 0 && dy != 0 { DIAGONAL } else { STEP };
-                let worn = (wear(ni as usize) / 6.0).clamp(0.0, 1.0);
-                let step = base - (base as f32 * worn * 0.3) as i32;
+                let step = cost(ni as usize, base);
                 let next = cost_here + step.max(1);
                 if self.stamp[ni as usize] == gen && self.g[ni as usize] <= next {
                     continue;

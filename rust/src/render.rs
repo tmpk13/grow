@@ -462,12 +462,10 @@ impl Viewport {
         }
     }
 
-    /// Town names over their centers. Drawn whenever there is more than one
-    /// town, whatever the label setting says, because at the zoom where a map
-    /// with several towns fits on screen this is the only thing telling them
-    /// apart.
-    pub fn draw_colony_labels(&self, sim: &Settlement) {
-        if sim.colonies.len() < 2 {
+    /// Town names over their centers, when labels are on and there is more than
+    /// one town to tell apart.
+    pub fn draw_colony_labels(&self, sim: &Settlement, state: &State) {
+        if !state.civ.view.labels || sim.colonies.len() < 2 {
             return;
         }
         let ctx = &self.ctx;

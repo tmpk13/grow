@@ -415,6 +415,11 @@ population. Pick any available tech to make it the target.
   thing that moves coin from one settler to another with the treasury nowhere in
   it, and the only use anybody has for coin besides a roof and a meal. Only what
   the town has spare is ever bought for a counter.
+* **Water is crossable, at a price.** A step into water costs the pathfinder
+  several steps of dry ground, so a river is swum only when walking round it
+  would be much further, and a swimmer moves at a fraction of walking speed and
+  wears no path behind them. Both numbers are in the People panel. Somebody in
+  the water is drawn cut off at the surface.
 * **Everybody knows somebody.** Standing near each other is how settlers meet,
   and what they make of each other follows from how alike they are. It decides
   who they marry - among people of a like age, never across a generation - whose

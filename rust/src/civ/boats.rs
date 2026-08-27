@@ -178,7 +178,8 @@ pub fn water_path(sim: &mut Settlement, from: (i32, i32), to: (i32, i32)) -> Opt
     let navigable = |c: i32, r: i32| {
         c >= 0 && c < cols && r >= 0 && r < rows && kind[(r * cols + c) as usize] == Cell::Water as u8
     };
-    let out = grid.find(from, to, 60_000, navigable, |_| 0.0);
+    // Open water is open water: nothing about a cell makes it dearer.
+    let out = grid.find(from, to, 60_000, navigable, |_, base| base);
     sim.water_paths = grid;
     out
 }

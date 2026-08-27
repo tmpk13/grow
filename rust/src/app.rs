@@ -1750,7 +1750,7 @@ fn draw(app: &mut App, budget: usize) {
             app.viewport.present_region(&world, &buffer, region);
             civ.buffer = buffer;
             app.viewport.draw_civ_overlay(&civ, &app.state);
-            app.viewport.draw_colony_labels(&civ);
+            app.viewport.draw_colony_labels(&civ, &app.state);
             if app.viewport.show_occupancy {
                 app.viewport.draw_occupancy(&world);
             }

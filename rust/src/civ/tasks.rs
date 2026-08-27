@@ -322,10 +322,18 @@ pub fn walk(sim: &mut Settlement, state: &State, pi: usize, dt: f64, speed_scale
         )
     };
     let road = sim.traffic[sim.idx(cc, cr)] as f64;
+    let swimming = sim.in_water(cc, cr);
     let p = &sim.people[pi];
+    // Swimming is slower than walking and gets no help from a worn path, there
+    // being no path in the water to have worn.
+    let terrain = if swimming {
+        pcfg.swim_speed.clamp(0.05, 1.0)
+    } else {
+        1.0 + clamp01(road / 6.0) * pcfg.road_speed_bonus
+    };
     let speed = pcfg.walk_speed
         * speed_scale
-        * (1.0 + clamp01(road / 6.0) * pcfg.road_speed_bonus)
+        * terrain
         * (0.7 + p.energy * 0.3)
         * (0.6 + p.health * 0.4);
     let before = !sim.people[pi].path.is_empty();
@@ -338,8 +346,11 @@ pub fn walk(sim: &mut Settlement, state: &State, pi: usize, dt: f64, speed_scale
                 clampi(p.cell_row(), 0, sim.world().rows - 1),
             )
         };
-        let i = sim.idx(cc, cr);
-        sim.traffic[i] = (sim.traffic[i] + (dt * 2.0) as f32).min(20.0);
+        // Nothing wears into water, so a crossing never becomes a road.
+        if !sim.in_water(cc, cr) {
+            let i = sim.idx(cc, cr);
+            sim.traffic[i] = (sim.traffic[i] + (dt * 2.0) as f32).min(20.0);
+        }
     }
     done
 }

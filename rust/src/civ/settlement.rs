@@ -261,9 +261,28 @@ pub struct Stats {
     pub boats: usize,
 }
 
+/// What one step onto a cell costs, given the base cost for the direction.
+/// Ground that has been walked over is cheaper, which is how paths wear in;
+/// water is dearer by the swimming price, which is why somebody swims a river
+/// only when walking round it would be much further.
+///
+/// A free function because the search borrows the map, and a method would want
+/// the settlement at the same time.
+fn step_cost(kind: u8, traffic: f32, swim: f32, base: i32) -> i32 {
+    if kind == Cell::Water as u8 {
+        return (base as f32 * swim.max(1.0)).round() as i32;
+    }
+    let worn = (traffic / 6.0).clamp(0.0, 1.0);
+    base - (base as f32 * worn * 0.3) as i32
+}
+
 pub struct Settlement {
     pub plant_sim: Sim,
     pub terrain: Terrain,
+    /// What a step into water costs against a step onto ground, taken from the
+    /// configuration each tick. Held here because the pathfinder reads it from
+    /// inside a closure that has already borrowed the map.
+    pub swim_cost: f32,
     pub rng: Rng,
     pub blocked: Vec<u8>,
     pub build_grid: Vec<i32>,
@@ -336,6 +355,7 @@ impl Settlement {
         let mut sett = Settlement {
             plant_sim,
             terrain,
+            swim_cost: state.civ.people.swim_cost as f32,
             rng: Rng::new(state.civ.seed),
             blocked: vec![0; n],
             build_grid: vec![0; n],
@@ -640,6 +660,14 @@ impl Settlement {
         c >= 0 && c < self.world().cols && r >= 0 && r < self.world().rows
     }
 
+    /// Whether a cell is water, which is where somebody is swimming rather than
+    /// walking.
+    pub fn in_water(&self, c: i32, r: i32) -> bool {
+        self.in_bounds(c, r) && self.terrain.kind[self.idx(c, r)] == Cell::Water as u8
+    }
+
+    /// Ground somebody can stand on and work from. Water is crossable but is
+    /// not somewhere anything happens, so this stays dry land.
     pub fn walkable(&self, c: i32, r: i32) -> bool {
         if !self.in_bounds(c, r) {
             return false;
@@ -728,9 +756,11 @@ impl Settlement {
         self.access_cells(bi)[0]
     }
 
-    /// A route over walkable ground. The grid is taken out of the settlement
-    /// for the search because the passability test reads the map.
+    /// A route over ground, or through water at a price. The grid is taken out
+    /// of the settlement for the search because the passability test reads the
+    /// map.
     pub fn find_path(&mut self, sc: i32, sr: i32, tc: i32, tr: i32) -> Option<Vec<(i32, i32)>> {
+        let swim_cost = self.swim_cost;
         let cols = self.world().cols;
         let rows = self.world().rows;
         if !self.paths.matches(cols, rows) {
@@ -746,9 +776,11 @@ impl Settlement {
                 return false;
             }
             let i = (r * cols + c) as usize;
-            kind[i] != Cell::Water as u8 && (build[i] == 0 || gates[i] != 0)
+            build[i] == 0 || gates[i] != 0
         };
-        let out = grid.find((sc, sr), (tc, tr), 24_000, passable, |i| traffic[i]);
+        let swim = swim_cost;
+        let cost = |i: usize, base: i32| step_cost(kind[i], traffic[i], swim, base);
+        let out = grid.find((sc, sr), (tc, tr), 24_000, passable, cost);
         self.paths = grid;
         out
     }
@@ -773,6 +805,10 @@ impl Settlement {
         let build = &self.build_grid;
         let gates = &self.gates;
         let traffic = &self.traffic;
+        // Dry land only, unlike the route search. This is the rule that stops a
+        // wall being closed on the last way out, and a way out is a gate to
+        // walk through: a town whose only exit is a swim is walled in as far as
+        // anybody living in it is concerned.
         let passable = |c: i32, r: i32| {
             if c < 0 || c >= cols || r < 0 || r >= rows || (c, r) == shut {
                 return false;
@@ -780,7 +816,8 @@ impl Settlement {
             let i = (r * cols + c) as usize;
             kind[i] != Cell::Water as u8 && (build[i] == 0 || gates[i] != 0)
         };
-        let out = grid.find(from, to, 24_000, passable, |i| traffic[i]);
+        let cost = |i: usize, base: i32| step_cost(Cell::Grass as u8, traffic[i], 1.0, base);
+        let out = grid.find(from, to, 24_000, passable, cost);
         self.paths = grid;
         out.is_some()
     }
@@ -2038,6 +2075,7 @@ impl Settlement {
             return;
         }
         let cfg = &state.civ;
+        self.swim_cost = cfg.people.swim_cost as f32;
         self.time += dt;
         self.ticks += 1;
         self.refresh_colonies();

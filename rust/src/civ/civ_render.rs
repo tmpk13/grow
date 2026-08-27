@@ -964,6 +964,38 @@ pub fn boat_sprite(cache: &mut SpriteCache, world: &World, boat: &Boat, banner: 
 
 // ---- compositing ---------------------------------------------------------
 
+/// How much of a settler is under the water, as a fraction of their height.
+const WADE_DEPTH: f64 = 0.45;
+
+/// The same as `blit`, with the bottom `sunk` of the sprite left undrawn. What
+/// is under the water is not drawn at all rather than tinted: the water is
+/// already painted there, and a settler half in it reads better as a shape
+/// cut off at the surface than as a shape showing through it.
+fn blit_above(buf: &mut [u32], world: &World, sprite: &Sprite, sx: i32, sy: i32, sunk: f64) {
+    let keep = ((sprite.h as f64) * (1.0 - sunk)).round().max(1.0) as i32;
+    let x0 = sx - sprite.ox;
+    let y0 = sy - sprite.oy;
+    for y in 0..keep.min(sprite.h) {
+        let py = y0 + y;
+        if py < 0 || py >= world.px_h {
+            continue;
+        }
+        let srow = (y * sprite.w) as usize;
+        let drow = (py * world.px_w) as usize;
+        for x in 0..sprite.w {
+            let v = sprite.px[srow + x as usize];
+            if v == 0 {
+                continue;
+            }
+            let px = x0 + x;
+            if px < 0 || px >= world.px_w {
+                continue;
+            }
+            buf[drow + px as usize] = v;
+        }
+    }
+}
+
 fn blit(buf: &mut [u32], world: &World, sprite: &Sprite, sx: i32, sy: i32) {
     let x0 = sx - sprite.ox;
     let y0 = sy - sprite.oy;
@@ -1432,7 +1464,8 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                     draw_person_dot(&mut buf, world, p, sx, sy, detail);
                     continue;
                 }
-                let motion = motion_of(p);
+                let swimming = sim.in_water(p.cell_col(), p.cell_row());
+                let motion = motion_of(p, swimming);
                 let sprite = match state.civ.sprites.resolve(motion) {
                     Some((slot, clip)) => {
                         let frame = clip.frame_index(p.bob, time);
@@ -1453,9 +1486,15 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                         person_sprite(&mut sprites, world, p, frame)
                     }
                 };
-                blit(&mut buf, world, &sprite, sx, sy);
-                if p.carrying() && detail.flourishes() {
-                    draw_carry(world, &mut buf, p, &sprite, sx, sy);
+                if swimming {
+                    // In the water, only what is above the waterline is drawn,
+                    // so somebody crossing a river is in it rather than on it.
+                    blit_above(&mut buf, world, &sprite, sx, sy, WADE_DEPTH);
+                } else {
+                    blit(&mut buf, world, &sprite, sx, sy);
+                    if p.carrying() && detail.flourishes() {
+                        draw_carry(world, &mut buf, p, &sprite, sx, sy);
+                    }
                 }
             }
             Item::Boat(i) => {

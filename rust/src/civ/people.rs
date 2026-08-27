@@ -178,6 +178,12 @@ pub struct PeopleConfig {
     /// Fraction of adults kept free of a workplace to haul and build.
     pub laborer_share: f64,
     pub road_speed_bonus: f64,
+    /// What a swim costs against a walk: how much dearer a step into water is
+    /// to the pathfinder, so somebody swims a river only when going round it
+    /// would be much further. One makes water no different from ground.
+    pub swim_cost: f64,
+    /// How fast somebody moves while in the water, against their walking speed.
+    pub swim_speed: f64,
     /// Share of a paid wage a settler keeps rather than handing back to the
     /// colony. Personal coin is what buys a house upgrade.
     pub savings_share: f64,
@@ -213,6 +219,8 @@ impl Default for PeopleConfig {
             sickness_rate: 0.008,
             laborer_share: 0.3,
             road_speed_bonus: 0.35,
+            swim_cost: 6.0,
+            swim_speed: 0.45,
             savings_share: 0.65,
             inn_price: 2.0,
             marry_age: 17.0,
