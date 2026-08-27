@@ -3,6 +3,11 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Farms need water as well as workers. Working a field dries it out; damp
+  ground near a river or lake fills it back up, and a farm out in the dry sends
+  one worker at a time to the nearest bank with a bucket. A parched field is
+  poor rather than barren, and the farming rate went up to match, so siting a
+  farm by the water is worth doing.
 - Separate images for everything people make: a slot per catalog entry, plus
   the boat and one per resource carried, grouped and folded in the Build panel.
   A picture is scaled to the box the generator would have filled, so art and

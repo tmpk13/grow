@@ -555,6 +555,23 @@ was drawn in, which is the whole point of keeping it separately, and a button
 for clearing a stuck page is not a reason to lose it; a kept sheet goes when it
 is deleted from the sprite editor's Sheet tab.
 
+### Farms and water
+
+A farm's yield follows the fertility under its fields, and now also how wet
+they are. Working a field dries it out. Damp ground within **Damp ground reach
+(cells)** of a river or a lake fills it back up on its own, every field in
+reach counting toward it, so a farm on a bank never runs dry and never asks
+anyone for anything. A farm out in the dry sends whoever works it to the
+nearest bank with a bucket, one at a time - three hands all walking to the
+river would leave nobody working the field.
+
+A parched field is poor rather than barren: **Yield with no water** is the
+share it still brings in. The farming rate went up to match, so a well watered
+farm is better than a farm used to be and a parched one is worse - siting a
+farm by the water is now worth doing. The Build panel says how wet each farm's
+fields are, where its water comes from, and what share of the yield that
+works out to.
+
 ### Waiting on a rebuild
 
 A setting the running world was built from - grid size, cell size, the terrain

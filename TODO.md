@@ -1,7 +1,5 @@
 What is left. What is done is in TODO_COMPLETE.md.
 
-- Farms that grow food. (Need employees/workers. And water. Initally from buckets. Maybe proximity to water or irrigation with bridges over it.)
-
 - Actions are more reactive. 
     - Example people should not just build lights they should have fear in the night that outweighs the need for money. So rich people are more likely to build lights (Near their house), given the financial cost is the same for both.
 

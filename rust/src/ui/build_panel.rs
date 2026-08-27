@@ -229,6 +229,34 @@ impl Panel for BuildPanel {
             let _ = self.towns.append_child(&stat(&c.name, &line));
         }
 
+        // Farms, and how wet their fields are: the one thing about a building
+        // that changes on its own and that nothing else on the panel says.
+        for b in &civ.buildings {
+            if !b.built || !matches!(b.def.job, Some(crate::civ::buildings::Job::Farm { .. })) {
+                continue;
+            }
+            let bi = match civ.building_index(b.id) {
+                Some(i) => i,
+                None => continue,
+            };
+            let soak = civ.farm_soak(&app.state, bi);
+            let source = if soak > 0.6 {
+                "on damp ground"
+            } else if soak > 0.0 {
+                "part way to water"
+            } else {
+                "carried to by hand"
+            };
+            let _ = self.towns.append_child(&stat(
+                &format!("{} in {}", b.def.label, civ.colony_name(b.colony)),
+                &format!(
+                    "fields {:.0}% watered, {source}, bringing in {:.0}% of the yield",
+                    b.water * 100.0,
+                    civ.farm_water_factor(&app.state, bi) * 100.0
+                ),
+            ));
+        }
+
         let mut counters = 0;
         for b in &civ.buildings {
             if !b.built || b.def.structure != Structure::Stall {

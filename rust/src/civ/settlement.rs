@@ -107,6 +107,10 @@ pub struct Building {
     pub name: Option<String>,
     /// Rooms taken tonight, for an inn.
     pub guests: Vec<u32>,
+    /// How wet a farm's fields are, from parched to soaked. Working them dries
+    /// them out; damp ground nearby and buckets carried up fill them again.
+    /// Nothing but a farm uses it.
+    pub water: f64,
 }
 
 impl Building {
@@ -1067,6 +1071,7 @@ impl Settlement {
             upgrading: false,
             name,
             guests: Vec::new(),
+            water: 1.0,
         };
         self.buildings.push(b);
         let bi = self.buildings.len() - 1;
@@ -2261,6 +2266,24 @@ impl Settlement {
             _ => {}
         }
 
+        // Damp ground fills a farm back up on its own. Every farm, every
+        // tick: there are a handful of them and the soak is a square search
+        // over their own fields.
+        for bi in 0..self.buildings.len() {
+            if !matches!(self.buildings[bi].def.job, Some(Job::Farm { .. })) {
+                continue;
+            }
+            if !self.buildings[bi].built {
+                continue;
+            }
+            let soak = self.farm_soak(state, bi);
+            if soak <= 0.0 {
+                continue;
+            }
+            let gain = soak * cfg.work.farm_soak_rate * dt;
+            self.buildings[bi].water = clamp01(self.buildings[bi].water + gain);
+        }
+
         // After everyone has moved, because who is standing next to whom is
         // the whole input.
         social_tick(self, state, dt);
@@ -3066,6 +3089,80 @@ impl Settlement {
         } else {
             at
         }
+    }
+
+    /// The share of a farm's fields that lie within reach of open water. A
+    /// farm on a riverbank waters itself; one out in the dry has to be carried
+    /// to.
+    pub fn farm_soak(&self, state: &State, bi: usize) -> f64 {
+        let b = &self.buildings[bi];
+        let rad = if b.def.fields > 0 { b.def.fields } else { 2 };
+        let reach = state.civ.work.farm_soak_reach.max(0);
+        let mut wet = 0;
+        let mut n = 0;
+        for r in b.row - rad..=b.row + b.h + rad {
+            for c in b.col - rad..=b.col + b.w + rad {
+                if !self.in_bounds(c, r) {
+                    continue;
+                }
+                n += 1;
+                if self.water_within(c, r, reach) {
+                    wet += 1;
+                }
+            }
+        }
+        if n > 0 {
+            wet as f64 / n as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Whether open water lies within `reach` cells. A square search: this is
+    /// asked once per farm per tick, not once per cell.
+    fn water_within(&self, col: i32, row: i32, reach: i32) -> bool {
+        for r in row - reach..=row + reach {
+            for c in col - reach..=col + reach {
+                if self.in_bounds(c, r) && self.in_water(c, r) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// The nearest cell of open water to somewhere, for whoever is going to
+    /// fill a bucket. None if there is none within a day's walk of the town.
+    pub fn nearest_water(&self, col: i32, row: i32, reach: i32) -> Option<(i32, i32)> {
+        for ring in 0..=reach {
+            let mut best: Option<((i32, i32), i32)> = None;
+            for r in row - ring..=row + ring {
+                for c in col - ring..=col + ring {
+                    if r.abs_diff(row) as i32 != ring && c.abs_diff(col) as i32 != ring {
+                        continue;
+                    }
+                    if !self.in_bounds(c, r) || !self.in_water(c, r) {
+                        continue;
+                    }
+                    // A bank to stand on, not the middle of a lake.
+                    let bank = self.free_spot_near(c, r)?;
+                    let d = (bank.0 - col).abs() + (bank.1 - row).abs();
+                    if best.is_none_or(|(_, was)| d < was) {
+                        best = Some((bank, d));
+                    }
+                }
+            }
+            if let Some((bank, _)) = best {
+                return Some(bank);
+            }
+        }
+        None
+    }
+
+    /// How much of its yield a farm is bringing in, given how wet it is.
+    pub fn farm_water_factor(&self, state: &State, bi: usize) -> f64 {
+        let dry = clamp01(state.civ.work.farm_dry_yield);
+        dry + (1.0 - dry) * clamp01(self.buildings[bi].water)
     }
 
     pub fn farm_fertility(&self, bi: usize) -> f64 {

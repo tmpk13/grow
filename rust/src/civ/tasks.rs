@@ -90,6 +90,15 @@ pub enum Task {
         phase: Phase,
         timer: f64,
     },
+    /// A bucket of water for a farm that has run dry. The walk out is to the
+    /// nearest bank, the walk back is to the field.
+    Water {
+        building_id: i32,
+        /// Whether the bucket is full, which is what decides which way they
+        /// are walking.
+        full: bool,
+        phase: Phase,
+    },
     /// Buying something over a counter, with this settler's own coin, from
     /// another settler.
     Shop {
@@ -110,6 +119,7 @@ impl Task {
             | Task::Mine { phase, .. }
             | Task::Build { phase, .. }
             | Task::Station { phase, .. }
+            | Task::Water { phase, .. }
             | Task::Haul { phase, .. } => *phase == Phase::Working,
             _ => false,
         }
@@ -128,6 +138,7 @@ impl Task {
             Task::Haul { .. } => "haul",
             Task::Build { .. } => "build",
             Task::Station { .. } => "station",
+            Task::Water { .. } => "water",
             Task::Shop { .. } => "shopping",
         }
     }
@@ -600,7 +611,18 @@ pub fn choose_task(sim: &mut Settlement, state: &State, pi: usize) {
                         return;
                     }
                 }
-                Job::Farm { .. } | Job::Research | Job::Trade | Job::Innkeep | Job::Ferry => {
+                Job::Farm { .. } => {
+                    // A field too dry to be worth working is worth carrying to
+                    // first, unless there is no water within reach of the town.
+                    if sim.buildings[bi].water < state.civ.work.farm_thirsty
+                        && start_water(sim, state, pi, bi)
+                    {
+                        return;
+                    }
+                    start_station(sim, pi, bi);
+                    return;
+                }
+                Job::Research | Job::Trade | Job::Innkeep | Job::Ferry => {
                     start_station(sim, pi, bi);
                     return;
                 }
@@ -859,6 +881,34 @@ pub fn start_station(sim: &mut Settlement, pi: usize, bi: usize) -> bool {
         return true;
     }
     if path_to_building(sim, pi, bi) {
+        return true;
+    }
+    sim.people[pi].clear_task();
+    false
+}
+
+/// Sends somebody to the nearest bank with a bucket, on the way back to a
+/// farm. False when there is no water anywhere near, which is when a farm has
+/// to make do with the rain it is not getting.
+pub fn start_water(sim: &mut Settlement, state: &State, pi: usize, bi: usize) -> bool {
+    let id = sim.buildings[bi].id;
+    // One at a time. A farm with three hands on it would otherwise send all
+    // three to the river and work nobody's field.
+    let already = sim.people.iter().any(|p| {
+        matches!(p.task, Some(Task::Water { building_id, .. }) if building_id == id)
+    });
+    if already {
+        return false;
+    }
+    let (cc, cr) = (sim.buildings[bi].col, sim.buildings[bi].row);
+    let reach = (state.civ.work.farm_soak_reach.max(1)) * 12;
+    let bank = match sim.nearest_water(cc, cr, reach) {
+        Some(b) => b,
+        None => return false,
+    };
+    sim.people[pi].task =
+        Some(Task::Water { building_id: id, full: false, phase: Phase::Approach });
+    if path_to(sim, pi, bank.0, bank.1) {
         return true;
     }
     sim.people[pi].clear_task();
@@ -1129,6 +1179,33 @@ pub fn run_task(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
                     }
                 }
             }
+        }
+        Task::Water { building_id, full, phase } => {
+            if phase != Phase::Approach || !walk(sim, state, pi, dt, 1.0) {
+                return;
+            }
+            let bi = match sim.building_index(building_id) {
+                Some(b) => b,
+                None => {
+                    sim.people[pi].clear_task();
+                    return;
+                }
+            };
+            if !full {
+                // At the bank: fill and turn round. The bucket is the walk,
+                // not a thing anybody has to be given.
+                let at = sim.work_spot(bi, sim.people[pi].id);
+                sim.people[pi].task =
+                    Some(Task::Water { building_id, full: true, phase: Phase::Approach });
+                if !path_to(sim, pi, at.0, at.1) && !path_to_building(sim, pi, bi) {
+                    sim.people[pi].clear_task();
+                }
+                return;
+            }
+            let bucket = state.civ.work.farm_bucket.max(0.0);
+            sim.buildings[bi].water = clamp01(sim.buildings[bi].water + bucket);
+            sim.buildings[bi].active = sim.time;
+            sim.people[pi].clear_task();
         }
         Task::Sleep { building_id, phase, hired } => {
             if phase != Phase::Approach || !walk(sim, state, pi, dt, 1.0) {
@@ -1609,7 +1686,12 @@ pub fn run_task(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
                         * sim.people[pi].skill_in(prof)
                         * diligence;
                     let fert = sim.farm_fertility(bi);
-                    sim.buildings[bi].craft_progress += rate * dt * fert;
+                    // Working a field dries it out, and a dry field is a poor
+                    // one rather than a barren one.
+                    let wet = sim.farm_water_factor(state, bi);
+                    let used = state.civ.work.farm_water_use * dt;
+                    sim.buildings[bi].water = clamp01(sim.buildings[bi].water - used);
+                    sim.buildings[bi].craft_progress += rate * dt * fert * wet;
                     sim.buildings[bi].active = sim.time;
                     do_work(sim, state, pi, rate * dt);
                     while sim.buildings[bi].craft_progress >= 1.0 {

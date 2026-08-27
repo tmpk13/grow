@@ -1266,3 +1266,132 @@ fn a_half_built_building_is_still_drawn_rising_out_of_the_ground() {
         "one picture cannot say how far up a wall has got"
     );
 }
+
+// ---- watering the fields ------------------------------------------------
+
+/// A settlement with a farm dropped where it is asked for, so what happens to
+/// its fields can be watched without waiting for the planner to want one.
+fn with_farm(wet: bool) -> (Settlement, State, usize) {
+    let (mut sim, state) = peopled(64, 30);
+    let farm = grow::civ::buildings::BUILDINGS
+        .iter()
+        .find(|d| d.id == "farm")
+        .expect("the catalog has a farm");
+
+    // Somewhere on land, either beside water or as far from it as the map
+    // allows.
+    let mut best: Option<((i32, i32), i32)> = None;
+    for row in 2..sim.world().rows - 4 {
+        for col in 2..sim.world().cols - 4 {
+            if !(0..farm.h).all(|dr| (0..farm.w).all(|dc| sim.walkable(col + dc, row + dr))) {
+                continue;
+            }
+            let mut near = 999;
+            for r in row - 6..=row + 6 {
+                for c in col - 6..=col + 6 {
+                    if sim.in_bounds(c, r) && sim.in_water(c, r) {
+                        near = near.min((c - col).abs() + (r - row).abs());
+                    }
+                }
+            }
+            let score = if wet { near } else { -near };
+            if best.is_none_or(|(_, was)| score < was) {
+                best = Some(((col, row), score));
+            }
+        }
+    }
+    let (col, row) = best.expect("somewhere to put a farm").0;
+    let bi = sim
+        .place_building(&state, 0, "farm", col, row, true)
+        .expect("the farm went up");
+    (sim, state, bi)
+}
+
+#[test]
+fn a_farm_beside_water_keeps_its_own_fields_wet() {
+    let (mut sim, state, bi) = with_farm(true);
+    let soak = sim.farm_soak(&state, bi);
+    assert!(soak > 0.0, "a farm placed beside water should reach some of it");
+
+    sim.buildings[bi].water = 0.0;
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..400 {
+        sim.step(&state, dt);
+    }
+    assert!(
+        sim.buildings[bi].water > 0.1,
+        "damp ground should have filled it, got {}",
+        sim.buildings[bi].water
+    );
+}
+
+#[test]
+fn a_field_never_holds_more_than_a_field_can() {
+    let (mut sim, state, bi) = with_farm(true);
+    sim.buildings[bi].water = 1.0;
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..600 {
+        sim.step(&state, dt);
+        assert!(
+            (0.0..=1.0).contains(&sim.buildings[bi].water),
+            "water ran to {}",
+            sim.buildings[bi].water
+        );
+    }
+}
+
+#[test]
+fn a_parched_field_is_poor_rather_than_barren() {
+    let (mut sim, state, bi) = with_farm(false);
+    sim.buildings[bi].water = 0.0;
+    let dry = sim.farm_water_factor(&state, bi);
+    assert!(dry > 0.0, "nothing should stop growing entirely");
+    assert!((dry - state.civ.work.farm_dry_yield).abs() < 1e-9);
+
+    sim.buildings[bi].water = 1.0;
+    let wet = sim.farm_water_factor(&state, bi);
+    assert!((wet - 1.0).abs() < 1e-9, "a full field brings in all of it");
+    assert!(wet > dry);
+}
+
+#[test]
+fn a_bucket_is_worth_a_walk_to_the_bank() {
+    use grow::civ::tasks::{start_water, Task};
+    let (mut sim, state, bi) = with_farm(false);
+    sim.buildings[bi].water = 0.0;
+
+    // Somebody out in the open, with nothing else on.
+    let pi = sim.people.live_indices()[0];
+    grow::civ::tasks::abandon_task(&mut sim, pi);
+    sim.people[pi].clear_task();
+    assert!(start_water(&mut sim, &state, pi, bi), "there is water on this map to fetch");
+    assert!(matches!(sim.people[pi].task, Some(Task::Water { full: false, .. })));
+
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    let mut poured = false;
+    for _ in 0..4000 {
+        sim.step(&state, dt);
+        if sim.buildings[bi].water > 0.0 {
+            poured = true;
+            break;
+        }
+    }
+    assert!(poured, "the bucket never made it back to the field");
+}
+
+#[test]
+fn the_nearest_bank_is_somewhere_to_stand() {
+    let (sim, _, bi) = with_farm(true);
+    let (col, row) = (sim.buildings[bi].col, sim.buildings[bi].row);
+    let bank = sim.nearest_water(col, row, 40).expect("water somewhere on this map");
+    assert!(sim.walkable(bank.0, bank.1), "a bank has to be dry land to stand on");
+    let mut touches = false;
+    for r in bank.1 - 1..=bank.1 + 1 {
+        for c in bank.0 - 1..=bank.0 + 1 {
+            if sim.in_bounds(c, r) && sim.in_water(c, r) {
+                touches = true;
+            }
+        }
+    }
+    assert!(touches, "and has to be able to reach the water from there");
+}

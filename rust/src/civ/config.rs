@@ -46,6 +46,21 @@ pub struct WorkConfig {
     pub pile_life: f64,
     /// Fraction of a full load a hauler is willing to fetch for a workshop.
     pub restock_share: f64,
+    /// Water a farm uses per second of work. Fields dry out as they are
+    /// worked, and a dry field is a poor one.
+    pub farm_water_use: f64,
+    /// How far a field draws water from a river or a lake on its own. Inside
+    /// this, the ground stays damp and nobody has to carry anything.
+    pub farm_soak_reach: i32,
+    /// How fast damp ground fills a farm back up, per second, at its best.
+    pub farm_soak_rate: f64,
+    /// What one trip with a bucket adds, as a share of a full field.
+    pub farm_bucket: f64,
+    /// The share of its yield a bone dry farm still brings in. Never nothing:
+    /// a field with no water is poor, not barren.
+    pub farm_dry_yield: f64,
+    /// A farm below this asks for a bucket rather than working the field.
+    pub farm_thirsty: f64,
     pub plan_interval: f64,
     /// Simulated seconds between rebuilds of the coarse plant index every
     /// gathering decision reads. Higher is cheaper and staler.
@@ -59,11 +74,17 @@ impl Default for WorkConfig {
             mine_rate: 1.6,
             build_rate: 1.2,
             craft_rate: 1.0,
-            farm_rate: 0.45,
+            farm_rate: 0.6,
             min_harvest_mass: 1.5,
             clear_yield: 0.5,
             pile_life: 4.0,
             restock_share: 1.0,
+            farm_water_use: 0.002,
+            farm_soak_reach: 3,
+            farm_soak_rate: 0.06,
+            farm_bucket: 0.4,
+            farm_dry_yield: 0.35,
+            farm_thirsty: 0.35,
             plan_interval: 0.5,
             plant_index_interval: 1.0,
         }

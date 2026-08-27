@@ -215,8 +215,32 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         work_num(h, "Mining rate", w.mine_rate, 0.1, 12.0, 0.1, None, |c, v| c.mine_rate = v),
         work_num(h, "Building rate", w.build_rate, 0.1, 12.0, 0.1, None, |c, v| c.build_rate = v),
         work_num(h, "Crafting rate", w.craft_rate, 0.1, 12.0, 0.1, None, |c, v| c.craft_rate = v),
-        work_num(h, "Farming rate", w.farm_rate, 0.05, 4.0, 0.05, Some("multiplied by the fertility under the fields"), |c, v| c.farm_rate = v),
+        work_num(h, "Farming rate", w.farm_rate, 0.05, 4.0, 0.05, Some("multiplied by the fertility under the fields and by how wet they are"), |c, v| c.farm_rate = v),
         work_num(h, "Smallest plant worth cutting", w.min_harvest_mass, 0.5, 20.0, 0.5, None, |c, v| c.min_harvest_mass = v),
+    ]));
+
+    append(root, section("Watering the fields", vec![
+        note("A field dries out as it is worked. Damp ground within reach of a river or a lake \
+              fills it back up on its own; anywhere else, whoever works the farm walks to the \
+              nearest bank with a bucket first."),
+        work_num(h, "Water used per second", w.farm_water_use, 0.0, 0.5, 0.005,
+            Some("how fast working a field dries it out"), |c, v| c.farm_water_use = v),
+        work_num(h, "Damp ground reach (cells)", w.farm_soak_reach as f64, 0.0, 20.0, 1.0,
+            Some("how far a field draws water without anybody carrying it"),
+            |c, v| c.farm_soak_reach = v.round() as i32),
+        work_num(h, "Soaking rate", w.farm_soak_rate, 0.0, 0.5, 0.005,
+            Some("how fast damp ground fills a field, with every field in reach"),
+            |c, v| c.farm_soak_rate = v),
+        work_num(h, "A bucket is worth", w.farm_bucket, 0.05, 1.0, 0.05,
+            Some("share of a full field one trip adds"), |c, v| c.farm_bucket = v),
+        work_num(h, "Thirsty below", w.farm_thirsty, 0.0, 1.0, 0.05,
+            Some("a farm drier than this sends its worker for a bucket instead"),
+            |c, v| c.farm_thirsty = v),
+        work_num(h, "Yield with no water", w.farm_dry_yield, 0.0, 1.0, 0.05,
+            Some("a parched field is poor rather than barren"), |c, v| c.farm_dry_yield = v),
+    ]));
+
+    append(root, section("More rates", vec![
         work_num(h, "Cleared ground yield", w.clear_yield, 0.0, 1.0, 0.05, Some("share of a plant recovered when a building is raised over it"), |c, v| c.clear_yield = v),
         work_num(h, "Dropped load life (days)", w.pile_life, 0.2, 30.0, 0.2, None, |c, v| c.pile_life = v),
         work_num(h, "Replanning interval (s)", w.plan_interval, 0.1, 10.0, 0.1, None, |c, v| c.plan_interval = v),
