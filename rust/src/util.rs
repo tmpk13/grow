@@ -371,3 +371,46 @@ pub fn packed_to_hsv(v: u32, keep_hue: f64) -> (f64, f64, f64) {
     let sat = if max <= 0.0 { 0.0 } else { d / max };
     (hue, sat, max)
 }
+
+// ---- names ---------------------------------------------------------------
+
+/// A label reduced to something that can be looked up in the page: lowercase,
+/// with every run of anything else turned into one dash.
+pub fn slug(text: &str) -> String {
+    let mut out = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+        } else if !out.ends_with('-') && !out.is_empty() {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').to_string()
+}
+
+/// A name that a file system will take: what somebody typed, with anything
+/// that is not a letter, a number or a dash folded into one.
+pub fn file_name(name: &str, extension: &str) -> String {
+    let mut out = String::new();
+    let mut gap = false;
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            if gap && !out.is_empty() {
+                out.push('-');
+            }
+            gap = false;
+            out.extend(c.to_lowercase());
+        } else {
+            gap = true;
+        }
+    }
+    if out.is_empty() {
+        out.push_str("untitled");
+    }
+    // An empty extension means this is a folder inside an archive rather than
+    // a file, and a trailing dot on a directory is a name some systems refuse.
+    if extension.is_empty() {
+        return out;
+    }
+    format!("{out}.{extension}")
+}

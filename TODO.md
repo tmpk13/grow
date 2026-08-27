@@ -11,8 +11,6 @@ What is left. What is done is in TODO_COMPLETE.md.
       motions have one per motion, with the drawn art scaled to the box the generator
       would have filled.
 
-- Need button in sprite editor to download individual or zipped images, can select images to put in zip. 
-
 - Farms that grow food. (Need employees/workers. And water. Initally from buckets. Maybe proximity to water or irrigation with bridges over it.)
 
 - Actions are more reactive. 

@@ -18,6 +18,7 @@ pub mod state;
 pub mod undo;
 pub mod util;
 pub mod world;
+pub mod zip;
 
 #[cfg(target_arch = "wasm32")]
 pub mod app;

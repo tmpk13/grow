@@ -3,6 +3,11 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Downloads from the sprite editor: the frame showing on its own, or every
+  ticked sheet in one zip, a folder per sheet and a file per frame beside the
+  strip when asked for. The archive is written here, stored rather than
+  compressed since a PNG is deflated already, and carries no clock so two
+  exports of the same sheets are the same bytes.
 - Frames and layers reorder by dragging. A dragged one walks past the others
   rather than swapping with what it landed on, stays selected, and is one undo
   step; the Left and Right buttons keep the swap, which is what one press means.

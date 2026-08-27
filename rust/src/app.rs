@@ -98,6 +98,11 @@ pub struct UiState {
     /// rather than in the project: it is how somebody is using the map right
     /// now, not something about the map.
     pub move_people: bool,
+    /// Sheets left out of the next zip. Empty means all of them, so a project
+    /// that has just gained a sheet includes it without anybody saying so.
+    pub zip_skip: Vec<String>,
+    /// Put every frame in the zip as its own image as well as the strip.
+    pub zip_frames: bool,
     pub shade_preview_sampler: String,
     pub shade_preview_tones: i32,
     pub shade_preview_core: f64,
@@ -640,6 +645,8 @@ pub fn start() -> Result<(), JsValue> {
         playing: false,
         play_time: 0.0,
         move_people: false,
+        zip_skip: Vec::new(),
+        zip_frames: false,
         shade_preview_sampler: state
             .materials
             .samplers

@@ -216,6 +216,7 @@ pub fn build_sheet(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> 
     if selected(app).is_some() {
         append(root, use_section(app, h));
     }
+    append(root, zip_section(app, h));
     append(root, store_section(app, h));
     Box::new(crate::app::StaticPanel)
 }
@@ -764,6 +765,42 @@ fn frame_strip(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasElement,
     thumbs
 }
 
+/// A block of packed pixels as PNG bytes, using the browser's own encoder: it
+/// is right there, and a second one written here would be a deflate stream for
+/// the sake of it.
+fn png_bytes(w: i32, h: i32, px: &[u32]) -> Option<Vec<u8>> {
+    if w <= 0 || h <= 0 || px.len() < (w * h) as usize {
+        return None;
+    }
+    let canvas = crate::ui::document()
+        .create_element("canvas")
+        .ok()?
+        .dyn_into::<HtmlCanvasElement>()
+        .ok()?;
+    canvas.set_width(w as u32);
+    canvas.set_height(h as u32);
+    let ctx = canvas
+        .get_context("2d")
+        .ok()??
+        .dyn_into::<CanvasRenderingContext2d>()
+        .ok()?;
+    // Straight into an ImageData: the buffer is already laid out as the RGBA
+    // bytes a canvas wants, and the empty pixels have to stay transparent
+    // rather than being painted over with a background.
+    let bytes: &[u8] =
+        unsafe { std::slice::from_raw_parts(px.as_ptr() as *const u8, px.len() * 4) };
+    let image = web_sys::ImageData::new_with_u8_clamped_array_and_sh(
+        wasm_bindgen::Clamped(bytes),
+        w as u32,
+        h as u32,
+    )
+    .ok()?;
+    let _ = ctx.put_image_data(&image, 0.0, 0.0);
+    let url = canvas.to_data_url_with_type("image/png").ok()?;
+    let base64 = url.split_once(",")?.1;
+    crate::zip::from_base64(base64)
+}
+
 /// The selected sheet as a PNG: the strip, at one image pixel per art pixel,
 /// which is both the honest size for an asset and the shape a drop zone reads
 /// a sheet back in.
@@ -773,50 +810,156 @@ fn download_sheet(app: &mut App) {
         None => return,
     };
     let (w, h, px) = sheet.strip();
-    if w <= 0 || h <= 0 {
-        return;
-    }
-    let canvas = match crate::ui::document()
-        .create_element("canvas")
-        .ok()
-        .and_then(|c| c.dyn_into::<HtmlCanvasElement>().ok())
-    {
-        Some(c) => c,
-        None => return,
-    };
-    canvas.set_width(w as u32);
-    canvas.set_height(h as u32);
-    let ctx = match canvas
-        .get_context("2d")
-        .ok()
-        .flatten()
-        .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok())
-    {
-        Some(c) => c,
-        None => return,
-    };
-    // Straight into an ImageData: the buffer is already laid out as the RGBA
-    // bytes a canvas wants, and the empty pixels have to stay transparent
-    // rather than being painted over with a background.
-    let bytes: &[u8] =
-        unsafe { std::slice::from_raw_parts(px.as_ptr() as *const u8, px.len() * 4) };
-    let image = match web_sys::ImageData::new_with_u8_clamped_array_and_sh(
-        wasm_bindgen::Clamped(bytes),
-        w as u32,
-        h as u32,
-    ) {
-        Ok(i) => i,
-        Err(_) => return,
-    };
-    let _ = ctx.put_image_data(&image, 0.0, 0.0);
     let name = crate::ui::file_name(&sheet.name, "png");
-    match canvas.to_data_url_with_type("image/png") {
-        Ok(url) => {
-            crate::ui::download(&url, &name);
+    match png_bytes(w, h, &px) {
+        Some(bytes) => {
+            crate::ui::save_bytes(&bytes, "image/png", &name);
             app.set_note(&format!("saved {name}"));
         }
-        Err(_) => app.set_note("the browser would not make a png of that"),
+        None => app.set_note("the browser would not make a png of that"),
     }
+}
+
+/// One frame of a sheet as its own PNG, for art that is used a frame at a time
+/// rather than as a strip.
+fn download_frame(app: &mut App, frame: i32) {
+    let (name, made) = match selected(app) {
+        Some(sheet) => {
+            let flat = sheet.flatten(frame);
+            (
+                crate::ui::file_name(&format!("{} {}", sheet.name, frame + 1), "png"),
+                png_bytes(sheet.w, sheet.h, &flat),
+            )
+        }
+        None => return,
+    };
+    match made {
+        Some(bytes) => {
+            crate::ui::save_bytes(&bytes, "image/png", &name);
+            app.set_note(&format!("saved {name}"));
+        }
+        None => app.set_note("the browser would not make a png of that"),
+    }
+}
+
+/// Everything ticked, in one archive: a strip per sheet, and a frame per file
+/// beside it when that is asked for. Stored rather than compressed, since a
+/// PNG is deflated already.
+fn download_zip(app: &mut App) {
+    /// One image on its way into the archive: what to call it, and the pixels.
+    struct Image {
+        name: String,
+        w: i32,
+        h: i32,
+        px: Vec<u32>,
+    }
+
+    let want: Vec<(String, Vec<Image>)> = app
+        .state
+        .art
+        .sheets
+        .iter()
+        .filter(|s| !app.ui.zip_skip.contains(&s.id))
+        .map(|sheet| {
+            let mut files = Vec::new();
+            let (w, h, px) = sheet.strip();
+            files.push(Image { name: crate::ui::file_name(&sheet.name, "png"), w, h, px });
+            if app.ui.zip_frames {
+                for f in 0..sheet.frame_count() {
+                    files.push(Image {
+                        name: crate::ui::file_name(&format!("{} {}", sheet.name, f + 1), "png"),
+                        w: sheet.w,
+                        h: sheet.h,
+                        px: sheet.flatten(f),
+                    });
+                }
+            }
+            (crate::ui::file_name(&sheet.name, ""), files)
+        })
+        .collect();
+
+    if want.is_empty() {
+        app.set_note("nothing ticked to put in a zip");
+        return;
+    }
+
+    let mut zip = crate::zip::Zip::new();
+    let mut missed = 0;
+    for (folder, files) in &want {
+        for image in files {
+            // A folder per sheet, so a zip of several does not land as a heap
+            // of files whose names are all that tell them apart.
+            match png_bytes(image.w, image.h, &image.px) {
+                Some(bytes) => zip.add(&format!("{folder}/{}", image.name), &bytes),
+                None => missed += 1,
+            }
+        }
+    }
+    if zip.is_empty() {
+        app.set_note("nothing drawn on any of those sheets");
+        return;
+    }
+    let n = zip.len();
+    let name = crate::ui::file_name("grow sheets", "zip");
+    crate::ui::save_bytes(&zip.finish(), "application/zip", &name);
+    app.set_note(&if missed > 0 {
+        format!("saved {name}: {n} images, {missed} the browser would not encode")
+    } else {
+        format!("saved {name}: {n} images")
+    });
+}
+
+/// Which sheets go in the zip, and whether the frames go in one at a time.
+/// None of this is the project, so none of it is recorded for undo.
+fn zip_section(app: &App, h: &Handle) -> Element {
+    let mut rows = vec![note(
+        "One image per sheet, laid out as a strip. Tick the sheets to include; ask for frames \
+         as well and each one lands beside the strip as its own file.",
+    )];
+    let list = el("div").class("chips").get();
+    for sheet in &app.state.art.sheets {
+        let id = sheet.id.clone();
+        let taking = !app.ui.zip_skip.contains(&id);
+        let h2 = h.clone();
+        let chip = crate::ui::toggle_button(&sheet.name, taking, Scope::Panel, move |on| {
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.zip_skip.retain(|s| *s != id);
+            if !on {
+                sh.app.ui.zip_skip.push(id.clone());
+            }
+        });
+        let _ = list.append_child(&chip);
+    }
+    rows.push(list);
+
+    let h2 = h.clone();
+    rows.push(row(
+        "One file per frame too",
+        crate::ui::input_el("checkbox")
+            .tap(|i| i.set_checked(app.ui.zip_frames))
+            .tap(|i| {
+                on(i.unchecked_ref(), "change", Scope::Panel, move |e| {
+                    h2.borrow_mut().app.ui.zip_frames = crate::ui::checked_of(&e);
+                });
+            })
+            .unchecked_into(),
+        Some("as well as the strip, not instead of it"),
+    ));
+
+    let h2 = h.clone();
+    let h3 = h.clone();
+    rows.push(btn_row(vec![
+        button("Download this frame", Scope::Panel, move || {
+            let mut sh = h2.borrow_mut();
+            let frame = sh.app.ui.sheet_frame;
+            download_frame(&mut sh.app, frame);
+        }),
+        button("Download zip", Scope::Panel, move || {
+            let mut sh = h3.borrow_mut();
+            download_zip(&mut sh.app);
+        }),
+    ]));
+    section("Download", rows)
 }
 
 /// Sheets kept outside the project. The list is read from the store rather than

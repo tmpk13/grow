@@ -5,7 +5,7 @@
 //   bun run tools/uicheck.js /tmp/shots
 
 import { chromium } from 'playwright-core';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 
 const outDir = process.argv[2] || '/tmp/grow-shots';
 mkdirSync(outDir, { recursive: true });
@@ -25,7 +25,7 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH,
   args: ['--no-sandbox'],
 });
-const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+const page = await browser.newPage({ viewport: { width: 1500, height: 950 }, acceptDownloads: true });
 
 const problems = [];
 page.on('console', (msg) => {
@@ -266,6 +266,47 @@ if (!staleNow.includes('out of date')) {
   problems.push(`drawing on a taken sheet left the button reading "${staleNow}"`);
 }
 await page.screenshot({ path: `${outDir}/08g-sheet-moved-on.png` });
+
+// Downloads: one frame as a PNG, and the ticked sheets as a zip.
+const grab = async (selector) => {
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 8000 }),
+    page.click(selector),
+  ]);
+  return { name: download.suggestedFilename(), bytes: readFileSync(await download.path()) };
+};
+const frame = await grab('#panel-body .btn:text-is("Download this frame")');
+if (frame.bytes.subarray(1, 4).toString() !== 'PNG') {
+  problems.push(`downloading a frame gave ${frame.name}, which is not a png`);
+}
+const zip = await grab('#panel-body .btn:text-is("Download zip")');
+if (zip.bytes.subarray(0, 2).toString() !== 'PK') {
+  problems.push(`downloading a zip gave ${zip.name}, which is not an archive`);
+}
+// The end record says how many files are in it, and where the directory is.
+const end = zip.bytes.length - 22;
+if (zip.bytes.readUInt32LE(end) !== 0x06054b50) {
+  problems.push('the zip has no end record where one should be');
+} else {
+  const count = zip.bytes.readUInt16LE(end + 10);
+  const at = zip.bytes.readUInt32LE(end + 16);
+  const size = zip.bytes.readUInt32LE(end + 12);
+  if (count < 1) problems.push('the zip holds no files');
+  if (at + size !== end) problems.push('the zip directory does not run up to its end record');
+}
+// With nothing ticked it says so rather than handing out an empty archive.
+const chips = await page.locator('#panel-body .group:has-text("Download") .chips .btn').count();
+for (let i = 0; i < chips; i += 1) {
+  await page.click(`#panel-body .group:has-text("Download") .chips .btn >> nth=${i}`);
+}
+await page.click('#panel-body .btn:text-is("Download zip")');
+await page.waitForTimeout(400);
+if (!(await page.textContent('#save-note')).includes('nothing ticked')) {
+  problems.push('a zip with no sheets ticked did not say so');
+}
+for (let i = 0; i < chips; i += 1) {
+  await page.click(`#panel-body .group:has-text("Download") .chips .btn >> nth=${i}`);
+}
 
 // Frames reorder by dragging, and a sheet a motion took before it was last
 // drawn on says so.

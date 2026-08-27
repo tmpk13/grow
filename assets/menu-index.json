@@ -1489,6 +1489,47 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
+    "group": "Download",
+    "label": "Settler",
+    "anchor": "settler",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "sheet",
+    "tab_label": "Sheet",
+    "group": "Download",
+    "label": "One file per frame too",
+    "hint": "as well as the strip, not instead of it",
+    "anchor": "one-file-per-frame-too",
+    "kind": "field"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "sheet",
+    "tab_label": "Sheet",
+    "group": "Download",
+    "label": "Download this frame",
+    "anchor": "download-this-frame",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "sheet",
+    "tab_label": "Sheet",
+    "group": "Download",
+    "label": "Download zip",
+    "anchor": "download-zip",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "sheet",
+    "tab_label": "Sheet",
     "group": "Kept sheets",
     "label": "Keep a copy",
     "hint": "every save copies the project's sheets in here",

@@ -171,6 +171,19 @@ middle button or a held ctrl drags, wheel or pinch zooms.
 * Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
   the art keeps its place and the new room is empty.
 
+### Getting art out
+
+**Download PNG** on the Sheet tab writes the whole strip, one image pixel per
+art pixel, which is the shape a drop zone reads a sheet back in. **Download
+this frame** writes only the frame showing. **Download zip** writes every
+ticked sheet at once, a folder per sheet, with a file per frame beside the
+strip if that is asked for.
+
+The archive is stored rather than compressed - a PNG is deflated already, so a
+second pass would cost code and save nothing - and it is written here rather
+than by a library. It carries no clock, so exporting the same sheets twice
+gives the same bytes.
+
 ### Reordering
 
 Frames and layers move by dragging as well as by stepping: pick one up and drop

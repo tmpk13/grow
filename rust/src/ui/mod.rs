@@ -338,20 +338,6 @@ fn num(v: f64) -> String {
     }
 }
 
-/// A label reduced to something that can be looked up in the page: lowercase,
-/// with every run of anything else turned into one dash.
-pub fn slug(text: &str) -> String {
-    let mut out = String::new();
-    for ch in text.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-        } else if !out.ends_with('-') && !out.is_empty() {
-            out.push('-');
-        }
-    }
-    out.trim_end_matches('-').to_string()
-}
-
 pub fn row(label: &str, control: Element, hint: Option<&str>) -> Element {
     // The stamp is what menu search jumps to. Every labeled control gets one
     // by passing through here, so the index can never name a row the page
@@ -616,6 +602,28 @@ pub fn danger_button(text: &str, scope: Scope, mut on_click: impl FnMut() + 'sta
 
 /// Hands the browser something to save. The anchor has to be in the page for a
 /// click on it to count, and is taken out again straight away.
+/// Hands the browser a file made here. A blob rather than a data URL: an
+/// archive of sheets runs to megabytes, and a URL that long is a string the
+/// browser has to parse before it can save anything.
+pub fn save_bytes(bytes: &[u8], mime: &str, filename: &str) {
+    let array = js_sys::Array::new();
+    // The copy is deliberate: a view straight onto the wasm heap is only valid
+    // until the next allocation, and the blob outlives this call.
+    array.push(&js_sys::Uint8Array::from(bytes).into());
+    let options = web_sys::BlobPropertyBag::new();
+    options.set_type(mime);
+    let blob = match web_sys::Blob::new_with_u8_array_sequence_and_options(&array, &options) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    let url = match web_sys::Url::create_object_url_with_blob(&blob) {
+        Ok(u) => u,
+        Err(_) => return,
+    };
+    download(&url, filename);
+    let _ = web_sys::Url::revoke_object_url(&url);
+}
+
 pub fn download(href: &str, filename: &str) {
     let anchor = match document().create_element("a").ok().and_then(|a| {
         a.dyn_into::<web_sys::HtmlAnchorElement>().ok()
@@ -632,27 +640,6 @@ pub fn download(href: &str, filename: &str) {
     }
 }
 
-/// A name that a file system will take: what somebody typed, with anything
-/// that is not a letter, a number or a dash folded into one.
-pub fn file_name(name: &str, extension: &str) -> String {
-    let mut out = String::new();
-    let mut gap = false;
-    for c in name.chars() {
-        if c.is_ascii_alphanumeric() {
-            if gap && !out.is_empty() {
-                out.push('-');
-            }
-            gap = false;
-            out.extend(c.to_lowercase());
-        } else {
-            gap = true;
-        }
-    }
-    if out.is_empty() {
-        out.push_str("untitled");
-    }
-    format!("{out}.{extension}")
-}
 
 pub fn note(text: &str) -> Element {
     el("p").class("note").text(text).get()
@@ -705,6 +692,7 @@ pub fn bar(kind: &str, value: f64) -> Element {
 // somebody presses does not.
 
 use crate::app::{App, Handle};
+pub use crate::util::{file_name, slug};
 
 pub fn app_num(
     h: &Handle,

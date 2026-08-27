@@ -729,3 +729,34 @@ fn dragging_in_a_sheet_with_one_of_a_thing_does_nothing() {
     assert_eq!(sheet.layers.len(), 1);
     assert_eq!(sheet.drag_layer(0, 3), 0);
 }
+
+
+// ---- names -------------------------------------------------------------
+
+#[test]
+fn a_label_slugs_to_something_a_selector_can_hold() {
+    use grow::util::slug;
+    assert_eq!(slug("Cell depth (px)"), "cell-depth-px");
+    assert_eq!(slug("Walls and gates"), "walls-and-gates");
+    assert_eq!(slug("Seed"), "seed");
+    assert_eq!(slug("  spaced  out  "), "spaced-out");
+    assert_eq!(slug("!!!"), "");
+    for label in ["Rows (depth)", "Frames", "Pick"] {
+        assert!(
+            slug(label).chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+            "{label} slugged to something a selector would choke on"
+        );
+    }
+}
+
+#[test]
+fn a_file_name_survives_being_a_file_name() {
+    use grow::util::file_name;
+    assert_eq!(file_name("Settler", "png"), "settler.png");
+    assert_eq!(file_name("walk cycle", "png"), "walk-cycle.png");
+    assert_eq!(file_name("Tree/Trunk", "zip"), "tree-trunk.zip");
+    assert_eq!(file_name("!!!", "png"), "untitled.png");
+    // No extension means a folder inside an archive, and a directory whose
+    // name ends in a dot is one some systems refuse.
+    assert_eq!(file_name("Settler", ""), "settler");
+}
