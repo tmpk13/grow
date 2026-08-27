@@ -45,6 +45,8 @@ What is left. What is done is in TODO_COMPLETE.md.
 
 - Options for one of normal(current), hatched, or semi-transparent(settable alpha) folliage around people walking behind.
 
+- Search should be prioritized based on which of the three tabs you are in.
+
 # Lower priority.
 
 - Scripting
