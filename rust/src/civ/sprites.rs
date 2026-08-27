@@ -132,6 +132,20 @@ impl Motion {
 /// One image on its way into a sheet: width, height and packed pixels.
 pub type Frame = (i32, i32, Vec<u32>);
 
+/// Where a motion's art came from, and whether it is still what the editor has.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FromSheet {
+    /// Dropped in as files, so there is no sheet behind it to be behind.
+    Dropped,
+    /// Taken from a sheet that has not been touched since.
+    Current,
+    /// Taken from a sheet that has been drawn on since; taking it again would
+    /// change what is on the map.
+    Behind,
+    /// Taken from a sheet that is not in the project any more.
+    Gone,
+}
+
 /// One animation: a sheet of frames laid left to right, and how it is played.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -167,6 +181,11 @@ pub struct Clip {
     /// is a copy and stays one; this is only so the panel can offer to build it
     /// again from a sheet that has moved on since.
     pub sheet: String,
+    /// The sheet's fingerprint at the moment it was taken. Comparing it with
+    /// the sheet's fingerprint now is what says whether taking it again would
+    /// change anything.
+    #[serde(default)]
+    pub stamp: String,
 }
 
 impl Default for Clip {
@@ -184,6 +203,7 @@ impl Default for Clip {
             mirror: false,
             source: String::new(),
             sheet: String::new(),
+            stamp: String::new(),
         }
     }
 }
@@ -255,8 +275,21 @@ impl Clip {
             fps: sheet.fps,
             source: format!("editor: {}", sheet.name),
             sheet: sheet.id.clone(),
+            stamp: sheet.stamp(),
             ..Clip::default()
         })
+    }
+
+    /// How this clip stands against the sheet it came from.
+    pub fn against(&self, sheet: Option<&crate::art::Sheet>) -> FromSheet {
+        if self.sheet.is_empty() {
+            return FromSheet::Dropped;
+        }
+        match sheet {
+            None => FromSheet::Gone,
+            Some(s) if s.stamp() == self.stamp => FromSheet::Current,
+            Some(_) => FromSheet::Behind,
+        }
     }
 
     pub fn ready(&self) -> bool {

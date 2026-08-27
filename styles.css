@@ -1496,3 +1496,18 @@ kbd.key {
 .confirm-body .note {
   margin: 0 0 0.8rem;
 }
+
+/* A sheet a motion took before it was last drawn on. */
+.field-hint.stale {
+  color: var(--accent-warm);
+}
+
+/* Where a dragged frame or layer would land. */
+[data-drag-at] {
+  cursor: grab;
+}
+
+.drop-here {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: -0.125rem;
+}

@@ -245,6 +245,68 @@ await page.click('.group:has-text("Use as settler art") .btn:text-is("Walking")'
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${outDir}/08e-sheet.png` });
 
+// A motion that has taken this sheet says whether it is still what the editor
+// holds, and says so again after another stroke on the sheet.
+await page.click('#panel-body .btn:text-is("Standing")');
+await page.waitForTimeout(500);
+const takenNow = await page.textContent('#panel-body .btn:has-text("Standing")');
+if (!takenNow.includes('taken')) problems.push(`taking the sheet left the button reading "${takenNow}"`);
+await page.click('.tab[data-tab="draw"]');
+await page.waitForTimeout(400);
+await page.keyboard.press('b');
+await page.mouse.move(stage.x + stage.width * 0.4, stage.y + stage.height * 0.3);
+await page.mouse.down();
+await page.mouse.move(stage.x + stage.width * 0.6, stage.y + stage.height * 0.6, { steps: 12 });
+await page.mouse.up();
+await page.waitForTimeout(500);
+await page.click('.tab[data-tab="sheet"]');
+await page.waitForTimeout(500);
+const staleNow = await page.textContent('#panel-body .btn:has-text("Standing")');
+if (!staleNow.includes('out of date')) {
+  problems.push(`drawing on a taken sheet left the button reading "${staleNow}"`);
+}
+await page.screenshot({ path: `${outDir}/08g-sheet-moved-on.png` });
+
+// Frames reorder by dragging, and a sheet a motion took before it was last
+// drawn on says so.
+const frameMarks = () =>
+  page.$$eval('.frame-cell', (cells) => cells.map((c) => c.getAttribute('data-drag-at')));
+await page.click('.tab[data-tab="draw"]');
+await page.waitForTimeout(400);
+const frameCount = await page.locator('.frame-cell').count();
+if (frameCount >= 2) {
+  // The frame being dragged is the one selected after the drop, so where the
+  // active cell ends up is what says the strip moved.
+  await page.click('.frame-cell >> nth=0');
+  await page.waitForTimeout(300);
+  const activeAt = () =>
+    page.$$eval('.frame-cell', (cells) => cells.findIndex((c) => c.classList.contains('active')));
+  if ((await activeAt()) !== 0) problems.push('clicking the first frame did not select it');
+
+  const dragged = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll('.frame-cell')];
+    const dt = new DataTransfer();
+    const last = cells[cells.length - 1];
+    cells[0].dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    last.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }));
+    last.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }));
+    return dt.getData('text/plain');
+  });
+  if (dragged !== '0') problems.push(`the drag carried "${dragged}" rather than the frame index`);
+  await page.waitForTimeout(500);
+  if ((await page.locator('.frame-cell').count()) !== frameCount) {
+    problems.push('dragging a frame changed how many there are');
+  }
+  if ((await activeAt()) !== frameCount - 1) {
+    problems.push(`the dragged frame landed at ${await activeAt()}, not the end of the strip`);
+  }
+  const marks = await frameMarks();
+  if (marks.join(',') !== marks.map((_, i) => String(i)).join(',')) {
+    problems.push(`the strip is stamped ${marks.join(',')} rather than in order`);
+  }
+  await page.screenshot({ path: `${outDir}/08f-frames-dragged.png` });
+}
+
 // Keys: the tools answer to the keyboard, and say which key on a desktop.
 await page.click('.tab[data-tab="draw"]');
 await page.waitForTimeout(400);

@@ -201,6 +201,88 @@ impl E {
     }
 }
 
+/// Makes the children of `list` reorderable by dragging. Each child that can
+/// be moved carries `data-drag-at` with its position; dropping one on another
+/// calls `land(from, to)`.
+///
+/// Four listeners on the container rather than four per row: the list is
+/// rebuilt whenever anything about the sheet changes, and a closure per row per
+/// rebuild is a closure per row that never goes away.
+pub fn reorder_by_drag(list: &Element, scope: Scope, land: impl Fn(usize, usize) + 'static) {
+    let at_of = |e: &Event| -> Option<usize> {
+        e.target()
+            .and_then(|t| t.dyn_into::<Element>().ok())
+            .and_then(|t| t.closest("[data-drag-at]").ok().flatten())
+            .and_then(|n| n.get_attribute("data-drag-at"))
+            .and_then(|v| v.parse().ok())
+    };
+
+    on(list.unchecked_ref(), "dragstart", scope, move |e: Event| {
+        let at = match at_of(&e) {
+            Some(a) => a,
+            None => return,
+        };
+        if let Some(dt) = e.dyn_ref::<web_sys::DragEvent>().and_then(|d| d.data_transfer()) {
+            dt.set_effect_allowed("move");
+            let _ = dt.set_data("text/plain", &at.to_string());
+        }
+    });
+
+    // Without stopping the default, a drop never happens at all.
+    let node = list.clone();
+    on_passive_false(list.unchecked_ref(), "dragover", scope, move |e: Event| {
+        e.prevent_default();
+        let over = e
+            .target()
+            .and_then(|t| t.dyn_into::<Element>().ok())
+            .and_then(|t| t.closest("[data-drag-at]").ok().flatten());
+        mark_drop(&node, over.as_ref());
+    });
+
+    let node = list.clone();
+    on(list.unchecked_ref(), "dragleave", scope, move |_| mark_drop(&node, None));
+
+    let node = list.clone();
+    on_passive_false(list.unchecked_ref(), "drop", scope, move |e: Event| {
+        e.prevent_default();
+        mark_drop(&node, None);
+        let to = match at_of(&e) {
+            Some(a) => a,
+            None => return,
+        };
+        let from = e
+            .dyn_ref::<web_sys::DragEvent>()
+            .and_then(|d| d.data_transfer())
+            .and_then(|dt| dt.get_data("text/plain").ok())
+            .and_then(|v| v.parse::<usize>().ok());
+        if let Some(from) = from {
+            if from != to {
+                land(from, to);
+            }
+        }
+    });
+}
+
+/// Puts the drop marker on one row of a list and takes it off the rest.
+fn mark_drop(list: &Element, row: Option<&Element>) {
+    let rows = match list.query_selector_all("[data-drag-at]") {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    for i in 0..rows.length() {
+        let node = match rows.item(i).and_then(|n| n.dyn_into::<Element>().ok()) {
+            Some(n) => n,
+            None => continue,
+        };
+        let want = row.is_some_and(|r| r.is_same_node(Some(&node)));
+        let _ = if want {
+            node.class_list().add_1("drop-here")
+        } else {
+            node.class_list().remove_1("drop-here")
+        };
+    }
+}
+
 pub fn append(parent: &Element, child: Element) {
     let _ = parent.append_child(&child);
 }

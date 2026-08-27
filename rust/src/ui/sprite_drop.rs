@@ -17,7 +17,7 @@ use web_sys::{
 };
 
 use crate::app::{App, Handle};
-use crate::civ::sprites::{guess_frames, Clip, Frame, Motion, MAX_FRAMES, MOTIONS};
+use crate::civ::sprites::{guess_frames, Clip, Frame, FromSheet, Motion, MAX_FRAMES, MOTIONS};
 use crate::ui::{
     app_bool, button, danger_button, document, el, input_el, note, number_field, on, section,
     select_field, NumOpts, Scope, Tap,
@@ -209,7 +209,15 @@ fn sheet_row(app: &App, h: &Handle, motion: Motion) -> Element {
     if options.is_empty() {
         return el("div").get();
     }
-    let first = options.first().map(|(id, _)| id.clone()).unwrap_or_default();
+    let clip = app.state.civ.sprites.clip(motion);
+    // A motion that already came from a sheet points at that one, so the
+    // button beside it means "the same sheet again" rather than "some sheet".
+    let held = clip.map(|c| c.sheet.clone()).unwrap_or_default();
+    let first = if options.iter().any(|(id, _)| *id == held) {
+        held
+    } else {
+        options.first().map(|(id, _)| id.clone()).unwrap_or_default()
+    };
     let chosen = Rc::new(RefCell::new(first.clone()));
     let picker = {
         let chosen = chosen.clone();
@@ -217,16 +225,46 @@ fn sheet_row(app: &App, h: &Handle, motion: Motion) -> Element {
             *chosen.borrow_mut() = v;
         })
     };
+    let state = clip.map(|c| c.against(app.state.art.find(&c.sheet)));
+    let label = match state {
+        Some(FromSheet::Behind) => "Take again",
+        Some(FromSheet::Current) => "Taken",
+        _ => "Use sheet",
+    };
     let send = {
         let h2 = h.clone();
         let chosen = chosen.clone();
-        button("Use sheet", Scope::Panel, move || {
+        button(label, Scope::Panel, move || {
             let id = chosen.borrow().clone();
             let mut sh = h2.borrow_mut();
             build_from_sheet(&mut sh.app, motion, &id);
         })
     };
-    el("div").class("sprite-from").child(&picker).child(&send).get()
+    if state == Some(FromSheet::Behind) {
+        let _ = send.class_list().add_1("accent");
+    }
+    let row = el("div").class("sprite-from").child(&picker).child(&send).get();
+    if let Some(said) = sheet_state_text(app, clip) {
+        let class = if state == Some(FromSheet::Current) { "field-hint" } else { "field-hint stale" };
+        let _ = row.append_child(&el("span").class(class).text(&said).get());
+    }
+    row
+}
+
+/// What to say under the picker about the sheet this motion came from. None
+/// when it did not come from one, which is the case the row already reads as.
+fn sheet_state_text(app: &App, clip: Option<&Clip>) -> Option<String> {
+    let clip = clip.filter(|c| c.ready())?;
+    let sheet = app.state.art.find(&clip.sheet);
+    let name = sheet.map(|s| s.name.clone()).unwrap_or_else(|| clip.sheet.clone());
+    match clip.against(sheet) {
+        FromSheet::Dropped => None,
+        FromSheet::Current => Some(format!("from {name}, which has not been drawn on since")),
+        FromSheet::Behind => {
+            Some(format!("from {name}, which has been drawn on since - take it again to catch up"))
+        }
+        FromSheet::Gone => Some(format!("from {name}, which is no longer in the project")),
+    }
 }
 
 /// Builds a motion's clip from a sheet, whether it is being pointed at one for

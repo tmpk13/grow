@@ -607,3 +607,125 @@ fn a_contact_shadow_stops_at_the_horizon() {
     );
 }
 
+
+// ---- a sheet that has moved on ------------------------------------------
+
+#[test]
+fn a_clip_knows_whether_its_sheet_has_been_drawn_on_since() {
+    use grow::civ::sprites::{Clip, FromSheet};
+
+    let mut sheet = Sheet::new("art-1", "Walk", 8, 8);
+    sheet.set(0, 0, 3, 3, 0xff00ff00);
+    let clip = Clip::from_sheet(&sheet).expect("something is drawn on it");
+    assert_eq!(clip.sheet, "art-1");
+    assert_eq!(clip.against(Some(&sheet)), FromSheet::Current);
+
+    // One pixel is enough: the settlers on the map are no longer showing it.
+    sheet.set(0, 0, 4, 4, 0xff0000ff);
+    assert_eq!(clip.against(Some(&sheet)), FromSheet::Behind);
+
+    // Put back the way it was, and it is current again.
+    sheet.set(0, 0, 4, 4, 0);
+    assert_eq!(clip.against(Some(&sheet)), FromSheet::Current);
+
+    assert_eq!(clip.against(None), FromSheet::Gone);
+}
+
+#[test]
+fn a_dropped_clip_has_no_sheet_to_be_behind() {
+    use grow::civ::sprites::{Clip, FromSheet};
+
+    let px = vec![0xff00ff00u32; 8 * 8];
+    let clip = Clip::from_strip(8, 8, px, 1, "walk.png".into()).expect("a strip");
+    assert!(clip.sheet.is_empty());
+    assert_eq!(clip.against(None), FromSheet::Dropped);
+}
+
+#[test]
+fn the_frame_rate_and_the_layers_are_part_of_the_stamp() {
+    let mut sheet = Sheet::new("art-1", "Walk", 8, 8);
+    sheet.set(0, 0, 3, 3, 0xff00ff00);
+    let was = sheet.stamp();
+
+    sheet.fps += 1.0;
+    assert_ne!(sheet.stamp(), was, "the rate a clip is built with is part of it");
+    sheet.fps -= 1.0;
+    assert_eq!(sheet.stamp(), was);
+
+    sheet.layers[0].visible = !sheet.layers[0].visible;
+    assert_ne!(sheet.stamp(), was, "a hidden layer changes what a clip would hold");
+}
+
+// ---- reordering by dragging ---------------------------------------------
+
+/// A sheet whose frames can be told apart: frame n has the value n+1 in its
+/// top left pixel.
+fn numbered_frames(n: i32) -> Sheet {
+    let mut sheet = Sheet::new("art-1", "Walk", 4, 4);
+    for f in 0..n {
+        if f > 0 {
+            sheet.add_frame(f - 1, false);
+        }
+    }
+    for f in 0..n {
+        sheet.set(0, f, 0, 0, (f + 1) as u32);
+    }
+    sheet
+}
+
+fn frame_marks(sheet: &Sheet) -> Vec<u32> {
+    (0..sheet.frame_count()).map(|f| sheet.get(0, f, 0, 0)).collect()
+}
+
+#[test]
+fn a_frame_dragged_along_walks_past_the_others_rather_than_swapping() {
+    let mut sheet = numbered_frames(4);
+    assert_eq!(frame_marks(&sheet), vec![1, 2, 3, 4]);
+
+    // The first frame dropped at the end is last, and the rest close up.
+    assert_eq!(sheet.drag_frame(0, 3), 3);
+    assert_eq!(frame_marks(&sheet), vec![2, 3, 4, 1]);
+
+    // And back again.
+    assert_eq!(sheet.drag_frame(3, 0), 0);
+    assert_eq!(frame_marks(&sheet), vec![1, 2, 3, 4]);
+}
+
+#[test]
+fn dragging_a_frame_onto_itself_changes_nothing() {
+    let mut sheet = numbered_frames(3);
+    assert_eq!(sheet.drag_frame(1, 1), 1);
+    assert_eq!(frame_marks(&sheet), vec![1, 2, 3]);
+}
+
+#[test]
+fn a_frame_dropped_off_the_end_lands_on_the_end() {
+    let mut sheet = numbered_frames(3);
+    assert_eq!(sheet.drag_frame(0, 99), 2);
+    assert_eq!(frame_marks(&sheet), vec![2, 3, 1]);
+    assert_eq!(sheet.frame_count(), 3, "nothing should have been added or lost");
+}
+
+#[test]
+fn a_layer_dragged_along_walks_past_the_others() {
+    let mut sheet = Sheet::new("art-1", "Walk", 4, 4);
+    sheet.add_layer(0, "Two");
+    sheet.add_layer(1, "Three");
+    let names: Vec<String> = sheet.layers.iter().map(|l| l.name.clone()).collect();
+    assert_eq!(names.len(), 3);
+
+    assert_eq!(sheet.drag_layer(2, 0), 0);
+    let after: Vec<String> = sheet.layers.iter().map(|l| l.name.clone()).collect();
+    assert_eq!(after[0], names[2]);
+    assert_eq!(after[1], names[0]);
+    assert_eq!(after[2], names[1]);
+}
+
+#[test]
+fn dragging_in_a_sheet_with_one_of_a_thing_does_nothing() {
+    let mut sheet = Sheet::new("art-1", "Walk", 4, 4);
+    assert_eq!(sheet.frame_count(), 1);
+    assert_eq!(sheet.drag_frame(0, 5), 0);
+    assert_eq!(sheet.layers.len(), 1);
+    assert_eq!(sheet.drag_layer(0, 3), 0);
+}

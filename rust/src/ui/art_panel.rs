@@ -12,7 +12,7 @@ use web_sys::{CanvasRenderingContext2d, Element, Event, HtmlCanvasElement};
 
 use crate::app::{App, Handle, Panel, Tool};
 use crate::art::{Sheet, MAX_LAYERS, MAX_SHEET_FRAMES, MAX_SHEET_PX};
-use crate::civ::sprites::MOTIONS;
+use crate::civ::sprites::{FromSheet, MOTIONS};
 use crate::ui::color_wheel::Brush;
 use crate::ui::paint::Surface;
 use crate::ui::{
@@ -600,11 +600,26 @@ fn layers_section(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasEleme
 
         let item = el("div")
             .class(class)
+            .attr("draggable", "true")
+            .attr("data-drag-at", &i.to_string())
+            .attr("title", "Drag to move this layer up or down the stack")
             .child(&select)
             .child(name.unchecked_ref())
             .child(eye.unchecked_ref())
             .get();
         let _ = list.append_child(&item);
+    }
+
+    {
+        let h2 = h.clone();
+        crate::ui::reorder_by_drag(&list, Scope::Panel, move |from, to| {
+            let mut sh = h2.borrow_mut();
+            sh.app.record("reorder layers", false);
+            let mut landed = to;
+            with_sheet(&mut sh.app, |s| landed = s.drag_layer(from, to));
+            sh.app.ui.sheet_layer = landed;
+            sh.app.rebuild_panel();
+        });
     }
 
     let actions = btn_row(vec![
@@ -675,7 +690,9 @@ fn frame_strip(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasElement,
         let cell = el("button")
             .class(class)
             .attr("type", "button")
-            .attr("title", &format!("Frame {}", f + 1))
+            .attr("title", &format!("Frame {}, or drag it somewhere else in the strip", f + 1))
+            .attr("draggable", "true")
+            .attr("data-drag-at", &f.to_string())
             .child(thumb.unchecked_ref())
             .child(&el("span").class("frame-index").text(&format!("{}", f + 1)).get())
             .on("click", Scope::Panel, move |_| {
@@ -686,6 +703,19 @@ fn frame_strip(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasElement,
             })
             .get();
         let _ = strip.append_child(&cell);
+    }
+
+    {
+        let h2 = h.clone();
+        crate::ui::reorder_by_drag(&strip, Scope::Panel, move |from, to| {
+            let mut sh = h2.borrow_mut();
+            sh.app.record("reorder frames", false);
+            let mut landed = to as i32;
+            with_sheet(&mut sh.app, |s| landed = s.drag_frame(from as i32, to as i32));
+            sh.app.ui.sheet_frame = landed;
+            sh.app.ui.playing = false;
+            sh.app.rebuild_panel();
+        });
     }
 
     let actions = btn_row(vec![
@@ -919,24 +949,53 @@ fn size_text(bytes: usize) -> String {
 /// Pointing a settler motion at this sheet, which is the whole reason the
 /// editor is in a tool about a settlement.
 fn use_section(app: &App, h: &Handle) -> Element {
-    let ready = selected(app).is_some_and(|s| s.any());
+    let sheet = selected(app);
+    let ready = sheet.is_some_and(|s| s.any());
+    let id = app.ui.selected_sheet.clone();
     let mut rows = vec![note(
         "Sends this sheet to a settler motion as a clip. The clip keeps its own \
          copy, so the settlers on the map do not change again until it is sent \
          a second time.",
     )];
+    // A motion this sheet is already behind says so on its own button: the
+    // press is the same either way, and what it is worth is not.
+    let mut behind = 0;
     let buttons: Vec<Element> = MOTIONS
         .iter()
         .map(|&motion| {
             let h2 = h.clone();
-            button(motion.label(), Scope::Panel, move || {
+            let clip = app.state.civ.sprites.clip(motion).filter(|c| c.sheet == id);
+            let state = clip.map(|c| c.against(sheet));
+            let label = match state {
+                Some(FromSheet::Current) => format!("{} - taken", motion.label()),
+                Some(FromSheet::Behind) => {
+                    behind += 1;
+                    format!("{} - out of date", motion.label())
+                }
+                _ => motion.label().to_string(),
+            };
+            let node = button(&label, Scope::Panel, move || {
                 let mut sh = h2.borrow_mut();
                 let id = sh.app.ui.selected_sheet.clone();
                 crate::ui::sprite_drop::build_from_sheet(&mut sh.app, motion, &id);
-            })
+            });
+            // The stamp names the motion, not the state: menu search points at
+            // this button, and where it points must not depend on what has
+            // been taken.
+            let _ = node.set_attribute("data-find", &crate::ui::slug(motion.label()));
+            if state == Some(FromSheet::Behind) {
+                let _ = node.class_list().add_1("accent");
+            }
+            node
         })
         .collect();
     rows.push(btn_row(buttons));
+    if behind > 0 {
+        rows.push(note(&format!(
+            "{behind} of these took this sheet before it was last drawn on. The settlers on the \
+             map are still showing what it looked like then."
+        )));
+    }
     if !ready {
         rows.push(note("Nothing is drawn on this sheet yet."));
     }

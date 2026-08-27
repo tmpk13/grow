@@ -1,14 +1,10 @@
 What is left. What is done is in TODO_COMPLETE.md.
 
 - Pixel editors
-    - (LLM) Frames cannot be reordered by dragging, only stepped left and right.
     - (LLM) No marquee selection. Nudging moves a whole cel or a whole sheet;
       there is no way to move part of one.
 
 - Sprites
-    - (LLM) A sheet that has moved on since a motion took it gives no sign of
-      it. The card offers to take it again either way, but nothing says whether
-      it needs taking again.
     - Seperate images for all human made things. (non proceedural) Including carried items.
       Buildings, walls, gates, stalls, boats and carried loads are all still drawn
       procedurally out of the sampling boxes. Wants a slot per thing, the way settler

@@ -3,6 +3,13 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Frames and layers reorder by dragging. A dragged one walks past the others
+  rather than swapping with what it landed on, stays selected, and is one undo
+  step; the Left and Right buttons keep the swap, which is what one press means.
+- A motion says whether the sheet it took has been drawn on since. The sheet is
+  fingerprinted when it is taken, so the card reads "which has been drawn on
+  since - take it again to catch up" and the editor's own buttons read taken or
+  out of date. Drawing something and undoing it leaves the clip current.
 - Settings the running world is built from wait for Apply rather than rebuilding
   under the slider. Each one is starred, a bar says how many are waiting, and
   Discard puts them back. Leaving the panel with one waiting asks, with the

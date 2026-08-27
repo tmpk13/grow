@@ -171,6 +171,14 @@ middle button or a held ctrl drags, wheel or pinch zooms.
 * Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
   the art keeps its place and the new room is empty.
 
+### Reordering
+
+Frames and layers move by dragging as well as by stepping: pick one up and drop
+it anywhere in the strip or the stack and it walks past the others rather than
+swapping with the one it landed on, so dragging the first frame to the end
+leaves the rest closed up in order. The frame or layer you dragged stays
+selected. Both are one undo step.
+
 ### Keys
 
 On anything with a keyboard the tool buttons carry their key - **Pick (P)** -
@@ -285,6 +293,14 @@ whose stall they walk to, and how content they are - friends nearby against
 rivals. The section under the register sets how often the sim looks at who is
 near whom, how close counts, how many people a settler carries, how fast a bond
 warms, and where the friendship and feud lines sit.
+
+**Taking a sheet again.** A clip keeps its own copy of the art, so a sheet
+drawn on after a motion took it does not change the settlers on the map. Both
+ends now say so: the motion's card in the People panel reads *from Settler,
+which has been drawn on since - take it again to catch up*, and the sprite
+editor's own buttons read **Standing - taken** or **Standing - out of date**.
+The sheet is fingerprinted when it is taken and compared with what it is now,
+so drawing something and undoing it back leaves the clip current.
 
 **Settler sprites.** Settlers are drawn from a generated body by default: three
 pixels wide, a head, and a two frame walk. Drop images on the panel to replace

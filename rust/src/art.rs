@@ -289,6 +289,27 @@ impl Sheet {
         to
     }
 
+    /// Takes a frame out and puts it back at `to`, shuffling the rest along.
+    /// A drag drops a frame *between* two others, so a swap is the wrong move:
+    /// dragging the first frame to the end would swap it with the last rather
+    /// than walking it past them.
+    pub fn drag_frame(&mut self, from: i32, to: i32) -> i32 {
+        let n = self.frame_count();
+        if n < 2 {
+            return from;
+        }
+        let from = from.clamp(0, n - 1) as usize;
+        let to = to.clamp(0, n - 1) as usize;
+        if from == to {
+            return to as i32;
+        }
+        for layer in &mut self.layers {
+            let cel = layer.cels.remove(from);
+            layer.cels.insert(to, cel);
+        }
+        to as i32
+    }
+
     // ---- layers ----------------------------------------------------------
 
     /// Adds an empty layer above `at` and returns where it landed.
@@ -321,6 +342,21 @@ impl Sheet {
         }
         self.layers.swap(at, to as usize);
         to as usize
+    }
+
+    /// The same for layers: out at `from` and back in at `to`.
+    pub fn drag_layer(&mut self, from: usize, to: usize) -> usize {
+        let n = self.layers.len();
+        if n < 2 || from >= n {
+            return from;
+        }
+        let to = to.min(n - 1);
+        if from == to {
+            return to;
+        }
+        let layer = self.layers.remove(from);
+        self.layers.insert(to, layer);
+        to
     }
 
     /// Folds a layer into the one below it, in every frame, and drops it. The
@@ -465,6 +501,33 @@ impl Sheet {
 
     /// What the sheet costs in a saved project, counting the ten characters a
     /// run of one pixel takes.
+    /// A short fingerprint of everything a clip built from this sheet would
+    /// carry: the shape, the frame rate, and every pixel of every visible cel.
+    /// A clip keeps the stamp it was built with, so the panel can tell a sheet
+    /// that has moved on from one that has not.
+    pub fn stamp(&self) -> String {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut eat = |v: u64| {
+            for b in v.to_le_bytes() {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x100_0000_01b3);
+            }
+        };
+        eat(self.w as u64);
+        eat(self.h as u64);
+        eat(self.frame_count() as u64);
+        eat(self.fps.to_bits());
+        for layer in &self.layers {
+            eat(layer.visible as u64);
+            for cel in &layer.cels {
+                for px in &cel.px {
+                    eat(*px as u64);
+                }
+            }
+        }
+        format!("{h:016x}")
+    }
+
     pub fn bytes(&self) -> usize {
         self.layers
             .iter()
