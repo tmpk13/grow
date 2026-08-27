@@ -457,6 +457,74 @@ impl Sheet {
         }
     }
 
+    /// Moves what is inside `rect` and leaves the rest of the cel where it is.
+    /// What moves out of the rectangle is dropped and what it leaves behind is
+    /// cleared, which is what a selection dragged across a drawing does.
+    pub fn shift_region(
+        &mut self,
+        layer: usize,
+        frame: i32,
+        rect: (i32, i32, i32, i32),
+        dx: i32,
+        dy: i32,
+    ) {
+        let (w, h) = (self.w, self.h);
+        let (x0, y0, x1, y1) = rect;
+        let cel = match self
+            .layers
+            .get_mut(layer)
+            .and_then(|l| l.cels.get_mut(frame.max(0) as usize))
+        {
+            Some(c) => c,
+            None => return,
+        };
+        if dx == 0 && dy == 0 {
+            return;
+        }
+        // Read the whole selection out first: moving in place would overwrite
+        // pixels that have not been read yet whenever the move is small.
+        let mut taken = Vec::new();
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                if x < 0 || y < 0 || x >= w || y >= h {
+                    continue;
+                }
+                let i = (y * w + x) as usize;
+                taken.push((x, y, cel.px[i]));
+                cel.px[i] = EMPTY_COLOR;
+            }
+        }
+        for (x, y, v) in taken {
+            let (nx, ny) = (x + dx, y + dy);
+            // Only inside the selection: a selection is a window on the cel,
+            // and dragging it does not smear its contents past its own edge.
+            if nx < x0 || ny < y0 || nx > x1 || ny > y1 {
+                continue;
+            }
+            if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                continue;
+            }
+            cel.px[(ny * w + nx) as usize] = v;
+        }
+    }
+
+    /// Empties one rectangle of one cel.
+    pub fn clear_region(&mut self, layer: usize, frame: i32, rect: (i32, i32, i32, i32)) {
+        let (w, h) = (self.w, self.h);
+        let (x0, y0, x1, y1) = rect;
+        if let Some(cel) = self
+            .layers
+            .get_mut(layer)
+            .and_then(|l| l.cels.get_mut(frame.max(0) as usize))
+        {
+            for y in y0.max(0)..=y1.min(h - 1) {
+                for x in x0.max(0)..=x1.min(w - 1) {
+                    cel.px[(y * w + x) as usize] = EMPTY_COLOR;
+                }
+            }
+        }
+    }
+
     pub fn clear_cel(&mut self, layer: usize, frame: i32) {
         if let Some(cel) = self
             .layers

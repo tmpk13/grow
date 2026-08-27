@@ -38,6 +38,22 @@ pub const MODES: [(Mode, &str); 3] = [
     (Mode::Settlement, "Settlement"),
 ];
 
+impl UiState {
+    /// The selection as corners in order, clamped to the sheet, or None when
+    /// there is no selection or it has been dragged down to nothing.
+    pub fn marquee_rect(&self, w: i32, h: i32) -> Option<(i32, i32, i32, i32)> {
+        let (ax, ay, bx, by) = self.marquee?;
+        let x0 = ax.min(bx).clamp(0, w - 1);
+        let y0 = ay.min(by).clamp(0, h - 1);
+        let x1 = ax.max(bx).clamp(0, w - 1);
+        let y1 = ay.max(by).clamp(0, h - 1);
+        if x1 < x0 || y1 < y0 {
+            return None;
+        }
+        Some((x0, y0, x1, y1))
+    }
+}
+
 impl Mode {
     /// A short name that survives being written to a file, unlike the enum
     /// and unlike the label, which is prose and free to change.
@@ -72,6 +88,9 @@ pub enum Tool {
     Eraser,
     Fill,
     Pick,
+    /// Drags out a rectangle rather than drawing. What is inside it is what
+    /// the nudges and the clear act on, instead of the whole cel.
+    Select,
 }
 
 pub struct UiState {
@@ -98,6 +117,9 @@ pub struct UiState {
     /// rather than in the project: it is how somebody is using the map right
     /// now, not something about the map.
     pub move_people: bool,
+    /// The corners a marquee was dragged between, in sheet pixels, kept raw so
+    /// the anchor survives the drag. Read through `marquee_rect`.
+    pub marquee: Option<(i32, i32, i32, i32)>,
     /// Sheets left out of the next zip. Empty means all of them, so a project
     /// that has just gained a sheet includes it without anybody saying so.
     pub zip_skip: Vec<String>,
@@ -552,6 +574,10 @@ const CHECKER_DARK: u32 = crate::util::pack_rgba(20, 25, 32, 255);
 
 const ZOOM_MAX_SPRITE: f64 = 48.0;
 
+/// The dashes of the selection outline. Bright enough to find over any art,
+/// and not a color a plant or a settler is ever drawn in.
+const MARQUEE_COLOR: u32 = crate::util::pack_rgba(255, 255, 255, 255);
+
 /// How often the status line is rewritten. Fast enough to read as live, slow
 /// enough that the walk over the settlement it costs does not land in a frame.
 const STATUS_INTERVAL_MS: f64 = 200.0;
@@ -645,6 +671,7 @@ pub fn start() -> Result<(), JsValue> {
         playing: false,
         play_time: 0.0,
         move_people: false,
+        marquee: None,
         zip_skip: Vec::new(),
         zip_frames: false,
         shade_preview_sampler: state
@@ -749,6 +776,11 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
         } else {
             list.remove_1("painting")
         };
+    }
+    if mode != Mode::Sprites && sh.app.ui.tool == Tool::Select {
+        // The marquee belongs to the sheet, and the sampling grid has no row
+        // of tools to change it back with.
+        sh.app.ui.tool = Tool::Pencil;
     }
     sync_grab_cursor(&sh.app);
     build_toolbar(sh, h);
@@ -1253,6 +1285,15 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                 pe.client_y() as f64,
             );
             if let Some(cell) = cell {
+                if sh.app.ui.tool == Tool::Select {
+                    // A press starts a new selection wherever it lands, so
+                    // there is no way to end up with a stale one under the
+                    // pointer.
+                    sh.app.ui.marquee = Some((cell.0, cell.1, cell.0, cell.1));
+                    *stroke.borrow_mut() = Some(cell);
+                    sh.app.redraw_panel = true;
+                    return;
+                }
                 if sh.app.ui.tool != Tool::Pick {
                     sh.app.record("stroke", false);
                 }
@@ -1295,6 +1336,18 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                     y,
                 );
                 if let Some(cell) = cell {
+                    if sh.app.ui.tool == Tool::Select {
+                        // The far corner follows the pointer; the near one is
+                        // where the press landed and does not move.
+                        if let Some(m) = &mut sh.app.ui.marquee {
+                            if (m.2, m.3) != cell {
+                                m.2 = cell.0;
+                                m.3 = cell.1;
+                                sh.app.redraw_panel = true;
+                            }
+                        }
+                        return;
+                    }
                     let was = *stroke.borrow();
                     if was != Some(cell) {
                         let erase = pe.buttons() & 2 == 2;
@@ -1469,6 +1522,12 @@ fn end_stroke(h: &Handle, stroke: &Rc<RefCell<Option<(i32, i32)>>>) {
     }
     *stroke.borrow_mut() = None;
     let mut sh = h.borrow_mut();
+    if sh.app.ui.tool == Tool::Select {
+        // The panel says what the selection covers, so it is rebuilt once the
+        // drag is over rather than at every value the pointer passes through.
+        sh.app.rebuild_panel();
+        return;
+    }
     SHEET_SURFACE.commit(&mut sh.app);
     sh.app.redraw_panel = true;
 }
@@ -1531,6 +1590,11 @@ fn bind_keys(h: &Handle) {
                 }
                 _ => {}
             }
+            return;
+        }
+        if ke.code() == "Escape" && sh.app.ui.marquee.is_some() {
+            sh.app.ui.marquee = None;
+            sh.app.rebuild_panel();
             return;
         }
         if sh.app.mode == Mode::Sprites
@@ -2149,6 +2213,24 @@ fn draw_sheet(app: &mut App) {
             buf[i] = c;
         }
     }
+    // The selection outline goes over the art rather than under it, and is
+    // dashed, so it reads as a selection rather than as something drawn.
+    if let Some((x0, y0, x1, y1)) = app.ui.marquee_rect(w, h) {
+        for x in x0..=x1 {
+            for y in [y0, y1] {
+                if (x + y) % 2 == 0 {
+                    buf[(y * w + x) as usize] = MARQUEE_COLOR;
+                }
+            }
+        }
+        for y in y0..=y1 {
+            for x in [x0, x1] {
+                if (x + y) % 2 == 0 {
+                    buf[(y * w + x) as usize] = MARQUEE_COLOR;
+                }
+            }
+        }
+    }
     app.viewport.present_flat(w, h, &buf);
     if app.viewport.show_grid {
         app.viewport.draw_pixel_grid(w, h);
@@ -2178,11 +2260,12 @@ fn active_frame(app: &App) -> i32 {
 /// What the sprite editor answers to from the keyboard. Listed in the Draw
 /// panel wherever there is a keyboard to use them from, because a shortcut
 /// nobody can find is not a shortcut.
-pub const SPRITE_KEYS: [(&str, &str); 11] = [
+pub const SPRITE_KEYS: [(&str, &str); 12] = [
     ("B", "Pencil"),
     ("E", "Eraser"),
     ("G", "Fill"),
     ("P", "Pick"),
+    ("M", "Marquee"),
     ("X", "Mirror X"),
     ("O", "Onion skin"),
     ("Space", "Play or pause"),
@@ -2212,6 +2295,7 @@ fn sprite_key(sh: &mut Shell, key: &str) -> bool {
         "e" => sh.app.ui.tool = Tool::Eraser,
         "g" => sh.app.ui.tool = Tool::Fill,
         "p" => sh.app.ui.tool = Tool::Pick,
+        "m" => sh.app.ui.tool = Tool::Select,
         "x" => sh.app.ui.mirror_x = !sh.app.ui.mirror_x,
         "o" => {
             sh.app.ui.onion = !sh.app.ui.onion;

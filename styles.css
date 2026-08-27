@@ -1511,3 +1511,10 @@ kbd.key {
   outline: 0.125rem solid var(--accent);
   outline-offset: -0.125rem;
 }
+
+/* What the marquee covers, and the two things to do with it. */
+.marquee-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}

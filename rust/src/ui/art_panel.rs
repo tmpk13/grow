@@ -21,11 +21,12 @@ use crate::ui::{
 };
 use crate::util::{packed_to_hex, EMPTY_COLOR};
 
-const TOOLS: [(Tool, &str, &str); 4] = [
+const TOOLS: [(Tool, &str, &str); 5] = [
     (Tool::Pencil, "Pencil", "B"),
     (Tool::Eraser, "Eraser", "E"),
     (Tool::Fill, "Fill", "G"),
     (Tool::Pick, "Pick", "P"),
+    (Tool::Select, "Marquee", "M"),
 ];
 
 /// Most colors a sheet's palette row will show. Past this the row stops being
@@ -141,6 +142,9 @@ pub fn build_draw(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let mut brush = Brush::build(h, app);
     let swatches = el("div").class("swatches").get();
     let mut rows = vec![tool_row(app, h)];
+    if let Some(row) = marquee_row(app, h) {
+        rows.push(row);
+    }
     rows.append(&mut brush.rows);
     rows.push(mirror_row(app, h));
     rows.push(swatches.clone());
@@ -483,12 +487,16 @@ fn nudge_row(h: &Handle) -> Element {
             sh.app.record(label, true);
             let (layer, frame) = (sh.app.ui.sheet_layer, sh.app.ui.sheet_frame);
             let every = whole.checked();
-            with_sheet(&mut sh.app, |s| {
-                if every {
-                    s.shift_all(dx, dy);
-                } else {
-                    s.shift_cel(layer, frame, dx, dy);
-                }
+            // A selection wins over both: it is the smaller thing somebody
+            // asked for, and dragging it out is a deliberate act.
+            let picked = sh
+                .app
+                .sheet_dims()
+                .and_then(|(w, h)| sh.app.ui.marquee_rect(w, h));
+            with_sheet(&mut sh.app, |s| match (picked, every) {
+                (Some(rect), _) => s.shift_region(layer, frame, rect, dx, dy),
+                (None, true) => s.shift_all(dx, dy),
+                (None, false) => s.shift_cel(layer, frame, dx, dy),
             });
         }));
     }
@@ -523,6 +531,44 @@ fn tool_row(app: &App, h: &Handle) -> Element {
         let _ = tools.append_child(&btn);
     }
     tools
+}
+
+/// What the selection covers and the two things to do with it. Only shown when
+/// there is one: with no selection the nudges act on the cel, which is what the
+/// row below already says.
+fn marquee_row(app: &App, h: &Handle) -> Option<Element> {
+    let (w, h_px) = app.sheet_dims()?;
+    let (x0, y0, x1, y1) = app.ui.marquee_rect(w, h_px)?;
+    let said = format!(
+        "{} by {} at {x0},{y0} - nudges and Clear act on this",
+        x1 - x0 + 1,
+        y1 - y0 + 1
+    );
+    let h2 = h.clone();
+    let h3 = h.clone();
+    Some(
+        el("div")
+            .class("marquee-row")
+            .child(&el("span").class("field-hint").text(&said).get())
+            .child(&btn_row(vec![
+                button("Clear inside", Scope::Panel, move || {
+                    let mut sh = h2.borrow_mut();
+                    sh.app.record("clear selection", false);
+                    let (layer, frame) = (sh.app.ui.sheet_layer, sh.app.ui.sheet_frame);
+                    let rect = match sh.app.sheet_dims().and_then(|(w, h)| sh.app.ui.marquee_rect(w, h)) {
+                        Some(r) => r,
+                        None => return,
+                    };
+                    with_sheet(&mut sh.app, |s| s.clear_region(layer, frame, rect));
+                }),
+                button("Drop selection", Scope::Panel, move || {
+                    let mut sh = h3.borrow_mut();
+                    sh.app.ui.marquee = None;
+                    sh.app.rebuild_panel();
+                }),
+            ]))
+            .get(),
+    )
 }
 
 fn mirror_row(app: &App, h: &Handle) -> Element {

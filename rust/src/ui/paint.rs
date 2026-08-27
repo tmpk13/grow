@@ -99,6 +99,9 @@ pub fn apply(app: &mut App, s: &dyn Surface, cell: (i32, i32), erase: bool) {
             let value = if erase { EMPTY_COLOR } else { app.ui.brush_color };
             flood_fill(app, s, cell.0, cell.1, value);
         }
+        // The marquee is dragged out by whoever owns the pointer, not stamped
+        // a cell at a time, so there is nothing to do per cell.
+        Tool::Select => {}
         _ => {
             let erase = erase || app.ui.tool == Tool::Eraser;
             let value = if erase { EMPTY_COLOR } else { app.ui.brush_color };

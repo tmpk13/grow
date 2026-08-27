@@ -348,6 +348,40 @@ if (frameCount >= 2) {
   await page.screenshot({ path: `${outDir}/08f-frames-dragged.png` });
 }
 
+// The marquee: drag one out on the stage, nudge what is inside it, and drop it.
+await page.click('.tab[data-tab="draw"]');
+await page.waitForTimeout(400);
+await page.keyboard.press('m');
+await page.waitForTimeout(300);
+await page.mouse.move(stage.x + stage.width * 0.42, stage.y + stage.height * 0.32);
+await page.mouse.down();
+await page.mouse.move(stage.x + stage.width * 0.58, stage.y + stage.height * 0.58, { steps: 10 });
+await page.mouse.up();
+await page.waitForTimeout(500);
+if ((await page.locator('.marquee-row').count()) === 0) {
+  problems.push('dragging with the marquee tool selected nothing');
+}
+await page.screenshot({ path: `${outDir}/08h-marquee.png` });
+const said = await page.textContent('.marquee-row .field-hint');
+if (!/^\d+ by \d+ at \d+,\d+/.test(said.trim())) {
+  problems.push(`the selection reads "${said.trim()}"`);
+}
+// Nudging with a selection moves what is inside it and leaves the rest.
+await page.click('.btn:text-is("Nudge right")');
+await page.waitForTimeout(400);
+if (await page.locator('#btn-undo').isDisabled()) {
+  problems.push('nudging a selection recorded nothing to undo');
+}
+await page.click('#btn-undo');
+await page.waitForTimeout(300);
+// Escape drops it, and the row goes with it.
+await page.click('#world-canvas', { position: { x: 5, y: 5 } });
+await page.keyboard.press('Escape');
+await page.waitForTimeout(400);
+if ((await page.locator('.marquee-row').count()) !== 0) {
+  problems.push('escape did not drop the selection');
+}
+
 // Keys: the tools answer to the keyboard, and say which key on a desktop.
 await page.click('.tab[data-tab="draw"]');
 await page.waitForTimeout(400);

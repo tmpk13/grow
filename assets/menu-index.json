@@ -1137,6 +1137,16 @@
     "tab": "draw",
     "tab_label": "Draw",
     "group": "Brush",
+    "label": "Marquee (M)",
+    "anchor": "marquee",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "draw",
+    "tab_label": "Draw",
+    "group": "Brush",
     "label": "Brush color",
     "hint": "the wheel is hue around, saturation out from the middle",
     "anchor": "brush-color",

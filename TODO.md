@@ -1,9 +1,5 @@
 What is left. What is done is in TODO_COMPLETE.md.
 
-- Pixel editors
-    - (LLM) No marquee selection. Nudging moves a whole cel or a whole sheet;
-      there is no way to move part of one.
-
 - Sprites
     - Seperate images for all human made things. (non proceedural) Including carried items.
       Buildings, walls, gates, stalls, boats and carried loads are all still drawn

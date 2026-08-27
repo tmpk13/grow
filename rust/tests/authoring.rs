@@ -760,3 +760,73 @@ fn a_file_name_survives_being_a_file_name() {
     // name ends in a dot is one some systems refuse.
     assert_eq!(file_name("Settler", ""), "settler");
 }
+
+// ---- the marquee ---------------------------------------------------------
+
+/// A sheet with a run of pixels across the middle row, each a different value,
+/// so what moved and what did not can be read off.
+fn striped() -> Sheet {
+    let mut sheet = Sheet::new("art-1", "Walk", 8, 3);
+    for x in 0..8 {
+        sheet.set(0, 0, x, 1, (x + 1) as u32);
+    }
+    sheet
+}
+
+fn middle_row(sheet: &Sheet) -> Vec<u32> {
+    (0..8).map(|x| sheet.get(0, 0, x, 1)).collect()
+}
+
+#[test]
+fn a_nudged_selection_moves_only_what_is_inside_it() {
+    let mut sheet = striped();
+    assert_eq!(middle_row(&sheet), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+
+    // The middle four, one to the right. The two either side stay put, the
+    // rightmost of the four falls off the edge of the selection, and the space
+    // it came from is cleared.
+    sheet.shift_region(0, 0, (2, 1, 5, 1), 1, 0);
+    assert_eq!(middle_row(&sheet), vec![1, 2, 0, 3, 4, 5, 7, 8]);
+}
+
+#[test]
+fn a_selection_does_not_smear_past_its_own_edge() {
+    let mut sheet = striped();
+    sheet.shift_region(0, 0, (0, 1, 3, 1), 2, 0);
+    // Only what fits inside the selection stays; 3 and 4 would have landed on
+    // 5 and 6, which are not part of it.
+    assert_eq!(middle_row(&sheet), vec![0, 0, 1, 2, 5, 6, 7, 8]);
+}
+
+#[test]
+fn a_selection_moved_by_nothing_is_left_alone() {
+    let mut sheet = striped();
+    sheet.shift_region(0, 0, (1, 1, 4, 1), 0, 0);
+    assert_eq!(middle_row(&sheet), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+}
+
+#[test]
+fn a_small_move_does_not_eat_what_it_has_not_read_yet() {
+    // Moving in place, left to right, would copy 1 onto 2 and then copy the
+    // copy onto 3, and so on. The whole selection is read out first.
+    let mut sheet = striped();
+    sheet.shift_region(0, 0, (0, 1, 7, 1), 1, 0);
+    assert_eq!(middle_row(&sheet), vec![0, 1, 2, 3, 4, 5, 6, 7]);
+}
+
+#[test]
+fn clearing_a_selection_empties_only_that_rectangle() {
+    let mut sheet = striped();
+    sheet.clear_region(0, 0, (2, 0, 4, 2));
+    assert_eq!(middle_row(&sheet), vec![1, 2, 0, 0, 0, 6, 7, 8]);
+}
+
+#[test]
+fn a_selection_off_the_edge_is_clamped_rather_than_refused() {
+    let mut sheet = striped();
+    // Nothing should panic, and nothing outside the sheet should be touched.
+    sheet.clear_region(0, 0, (-4, -4, 2, 40));
+    assert_eq!(middle_row(&sheet), vec![0, 0, 0, 4, 5, 6, 7, 8]);
+    sheet.shift_region(0, 0, (5, 1, 40, 1), 1, 0);
+    assert_eq!(middle_row(&sheet), vec![0, 0, 0, 4, 5, 0, 6, 7]);
+}

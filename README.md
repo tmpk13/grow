@@ -171,6 +171,15 @@ middle button or a held ctrl drags, wheel or pinch zooms.
 * Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
   the art keeps its place and the new room is empty.
 
+### Selecting part of a cel
+
+**Marquee (M)** drags a rectangle out on the stage instead of drawing. With one
+up, the nudges move what is inside it rather than the whole cel, and **Clear
+inside** empties it; the panel says how large it is and where. What moves out of
+the rectangle is dropped, so a selection is a window on the cel rather than
+something that smears its contents across it. Escape or **Drop selection**
+lets it go.
+
 ### Getting art out
 
 **Download PNG** on the Sheet tab writes the whole strip, one image pixel per
@@ -196,7 +205,7 @@ selected. Both are one undo step.
 
 On anything with a keyboard the tool buttons carry their key - **Pick (P)** -
 and the Draw panel has a folded **Keys** list with the rest of them: `B` pencil,
-`E` eraser, `G` fill, `P` pick, `X` mirror, `O` onion skin, space to play,
+`E` eraser, `G` fill, `P` pick, `M` marquee, `X` mirror, `O` onion skin, space to play,
 `,` and `.` for the frame before and after, `[` and `]` for the layer below and
 above, `F` to fit the sheet to the stage. Nothing is listed on a phone, which
 has no keys to press.

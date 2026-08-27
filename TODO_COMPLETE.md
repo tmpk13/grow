@@ -3,6 +3,10 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Marquee selection in the sprite editor: a fifth tool that drags a rectangle
+  out on the stage. The nudges and Clear act on what is inside it rather than
+  on the whole cel, and what leaves the rectangle is dropped, so a selection is
+  a window on the cel rather than something that smears across it.
 - Foliage over a settler can be solid (what a plant is), hatched, or mixed over
   them by a settable amount, so somebody walking through a wood stays findable.
   The settler is marked in the alpha byte of the composite buffer rather than in
