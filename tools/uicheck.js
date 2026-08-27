@@ -65,7 +65,7 @@ await setSpeed(speedPos(16));
 await page.waitForTimeout(4000);
 await page.screenshot({ path: `${outDir}/01-materials.png` });
 
-const labTabs = ['Sprites', 'Shading', 'Species', 'World'];
+const labTabs = ['Shading', 'Species', 'World'];
 for (const tab of labTabs) {
   await page.click(`.tab:text-is("${tab}")`);
   await page.waitForTimeout(1200);
@@ -114,15 +114,22 @@ const topSpeed = (await page.locator('.toolbar-row .readout').first().textConten
 if (topSpeed !== `${SPEED_MAX}x`) problems.push(`top speed reads ${topSpeed}, not ${SPEED_MAX}x`);
 await setSpeed(speedPos(4));
 
-// The sprite editor: draw on a layer, stack another one, add a frame, play it
-// back, and send the sheet to a settler motion.
-await page.click('.tab:text-is("Sprites")');
-await page.waitForTimeout(500);
-const sheet = await page.locator('.editor-wrap .grid-canvas').boundingBox();
-await page.mouse.move(sheet.x + sheet.width * 0.3, sheet.y + sheet.height * 0.3);
+// The sprite editor is its own mode, and its surface is the stage: draw on it,
+// stack a layer, step and play the frames, and send the sheet to a motion.
+await page.click('.mode:text-is("Sprite editor")');
+await page.waitForTimeout(700);
+if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet') {
+  problems.push('the sprite editor did not bring its own tabs');
+}
+const stage = await page.locator('#world-canvas').boundingBox();
+await page.mouse.move(stage.x + stage.width * 0.45, stage.y + stage.height * 0.35);
 await page.mouse.down();
-await page.mouse.move(sheet.x + sheet.width * 0.7, sheet.y + sheet.height * 0.7, { steps: 10 });
+await page.mouse.move(stage.x + stage.width * 0.55, stage.y + stage.height * 0.55, { steps: 12 });
 await page.mouse.up();
+await page.waitForTimeout(900);
+if (!/frame 1\//.test(await page.evaluate(() => document.getElementById('statusbar').textContent))) {
+  problems.push('the sprite editor status line does not say which frame is showing');
+}
 await page.click('.btn:text-is("Add layer")');
 await page.waitForTimeout(300);
 if ((await page.locator('.layer-row').count()) < 2) problems.push('adding a layer did nothing');
@@ -137,7 +144,39 @@ await page.click('#btn-redo');
 await page.waitForTimeout(400);
 if ((await page.locator('.layer-row').count()) !== 2) problems.push('redo did not put the layer back');
 
-// And a plain panel field is a step too, which is the point of the rework.
+await page.click('.btn:text-is("Duplicate frame")');
+await page.waitForTimeout(300);
+if ((await page.locator('.frame-cell').count()) < 2) problems.push('duplicating a frame did nothing');
+// Nudging the art, and stepping that back too.
+await page.click('.btn:text-is("Nudge right")');
+await page.waitForTimeout(300);
+await page.click('#btn-undo');
+await page.waitForTimeout(300);
+await page.click('.btn:text-is("Wheel")');
+await page.waitForTimeout(300);
+if ((await page.locator('.wheel-canvas').count()) === 0) problems.push('the color wheel did not open');
+const wheel = await page.locator('.wheel-canvas').boundingBox();
+await page.mouse.click(wheel.x + wheel.width * 0.65, wheel.y + wheel.height * 0.5);
+
+// The transport is on the stage toolbar, beside the camera. Duplicating a
+// frame lands on the duplicate, so the sheet is already on its last frame and
+// a step forward from here is the one that wraps.
+const readout = async () => (await page.locator('#frame-readout').textContent()).trim();
+if ((await readout()) !== '2/2') problems.push('duplicating a frame did not select it');
+await page.click('.toolbar-row .btn:text-is("Next")');
+await page.waitForTimeout(300);
+if ((await readout()) !== '1/2') problems.push('stepping past the last frame did not wrap');
+await page.click('.toolbar-row .btn:text-is("Prev")');
+await page.waitForTimeout(300);
+if ((await readout()) !== '2/2') problems.push('stepping back before the first frame did not wrap');
+await page.click('.toolbar-row .btn:text-is("Play")');
+await page.waitForTimeout(900);
+await page.screenshot({ path: `${outDir}/08b-sprites.png` });
+await page.click('.toolbar-row .btn:text-is("Pause")');
+
+// A plain panel field is a step too, which is the point of the undo rework.
+await page.click('.tab:text-is("Sheet")');
+await page.waitForTimeout(400);
 const rate = page.locator('.field', { has: page.locator('.field-label:text-is("Rate")') }).locator('.num');
 const rateBefore = await rate.inputValue();
 await rate.fill('11');
@@ -152,28 +191,9 @@ const rateAfter = await page
 if (rateAfter !== rateBefore) {
   problems.push(`undo left the rate at ${rateAfter}, not ${rateBefore}`);
 }
-const frames = '.group:has-text("Frames") .btn';
-await page.click(`${frames}:text-is("Duplicate frame")`);
-await page.waitForTimeout(300);
-if ((await page.locator('.frame-cell').count()) < 2) problems.push('duplicating a frame did nothing');
-// Nudging the art, and stepping that back too.
-await page.click('.btn:text-is("Nudge right")');
-await page.waitForTimeout(300);
-await page.click('#btn-undo');
-await page.waitForTimeout(300);
-await page.click('.btn:text-is("Wheel")');
-await page.waitForTimeout(300);
-if ((await page.locator('.wheel-canvas').count()) === 0) problems.push('the color wheel did not open');
-const wheel = await page.locator('.wheel-canvas').boundingBox();
-await page.mouse.click(wheel.x + wheel.width * 0.65, wheel.y + wheel.height * 0.5);
-// Scoped to the section: the stage toolbar has its own Play and Pause.
-const transport = '.group:has-text("Animation") .btn';
-await page.click(`${transport}:text-is("Play")`);
-await page.waitForTimeout(900);
-await page.screenshot({ path: `${outDir}/08b-sprites.png` });
-await page.click(`${transport}:text-is("Pause")`);
 await page.click('.group:has-text("Use as settler art") .btn:text-is("Walking")');
 await page.waitForTimeout(400);
+await page.screenshot({ path: `${outDir}/08c-sheet.png` });
 
 // Settlement mode: founding the settlement runs the wilderness warmup, which
 // takes a moment, so give it room before touching the panels.

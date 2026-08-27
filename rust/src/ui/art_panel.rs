@@ -7,8 +7,6 @@
 //! change. What the panel keeps is only the nodes it has to repaint: the
 //! editor, the preview, and the thumbnails down the sides.
 
-use std::rc::Rc;
-
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, Element, Event, HtmlCanvasElement};
 
@@ -16,7 +14,7 @@ use crate::app::{App, Handle, Panel, Tool};
 use crate::art::{Sheet, MAX_LAYERS, MAX_SHEET_FRAMES, MAX_SHEET_PX};
 use crate::civ::sprites::MOTIONS;
 use crate::ui::color_wheel::Brush;
-use crate::ui::paint::{self, Surface};
+use crate::ui::paint::Surface;
 use crate::ui::{
     app_button, app_danger_button, app_num, app_text, append, btn_row, button, clear, el, note,
     on, row, section, window, NumOpts, Scope, Tap,
@@ -39,7 +37,10 @@ const PALETTE_MAX: usize = 32;
 /// The selected layer of the selected frame of the selected sheet. Drawing
 /// lands on one layer; picking reads what is on show, which is the flattened
 /// frame, because that is the color the pointer is over.
-struct SheetSurface;
+///
+/// Public because the surface being drawn on is the stage, which the shell
+/// owns: the sprite editor is a mode rather than a panel with a canvas in it.
+pub struct SheetSurface;
 
 fn selected(app: &App) -> Option<&Sheet> {
     app.state.art.find(&app.ui.selected_sheet)
@@ -85,6 +86,19 @@ impl Surface for SheetSurface {
     fn commit(&self, app: &mut App) {
         app.art_changed();
     }
+
+    /// The sheet is drawn through the camera rather than stretched to fill an
+    /// element, so where a pointer landed is the camera's answer to give.
+    fn locate(
+        &self,
+        app: &App,
+        _canvas: &HtmlCanvasElement,
+        client_x: f64,
+        client_y: f64,
+    ) -> Option<(i32, i32)> {
+        let (w, h) = self.dims(app)?;
+        app.viewport.flat_cell_at(client_x, client_y, w, h)
+    }
 }
 
 /// Runs an edit against the selected sheet and saves the result. The sheet is
@@ -109,85 +123,65 @@ fn with_sheet(app: &mut App, f: impl FnOnce(&mut Sheet)) {
 
 pub struct ArtPanel {
     handle: Handle,
-    editor: HtmlCanvasElement,
-    preview: HtmlCanvasElement,
-    brush: Brush,
-    swatches: Element,
+    brush: Option<Brush>,
+    swatches: Option<Element>,
     frame_thumbs: Vec<(HtmlCanvasElement, i32)>,
     layer_thumbs: Vec<(HtmlCanvasElement, usize)>,
-    play_label: Element,
 }
 
-pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
+/// The drawing tab: what a stroke is made of, what is under it, and which frame
+/// it lands in. The surface itself is the stage, so none of it is here.
+pub fn build_draw(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     app.clamp_selection();
-
-    append(root, sheet_section(app, h));
-
-    let editor = el("canvas")
-        .class("grid-canvas")
-        .get()
-        .dyn_into::<HtmlCanvasElement>()
-        .unwrap();
-    if let Some(s) = selected(app) {
-        let wrap = el("div").class("editor-wrap").child(editor.unchecked_ref()).get();
-        let _ = wrap
-            .dyn_ref::<web_sys::HtmlElement>()
-            .unwrap()
-            .style()
-            .set_property("aspect-ratio", &format!("{} / {}", s.w, s.h));
-        paint::attach(
-            &editor,
-            h,
-            Rc::new(SheetSurface),
-            Rc::new(draw_editor),
-        );
-
-        let mut brush = Brush::build(h, app);
-        let swatches = el("div").class("swatches").get();
-
-        let mut rows = vec![tool_row(app, h)];
-        rows.append(&mut brush.rows);
-        rows.push(mirror_row(app, h));
-        rows.push(swatches.clone());
-        rows.push(wrap);
-        rows.push(image_drop(h));
-        rows.push(nudge_row(h));
-        rows.push(btn_row(vec![
-            app_button(h, "Clear frame", |app| {
-                let (layer, frame) = (app.ui.sheet_layer, app.ui.sheet_frame);
-                with_sheet(app, |s| s.clear_cel(layer, frame));
-            }),
-            app_button(h, "Flip layer", |app| {
-                let (layer, frame) = (app.ui.sheet_layer, app.ui.sheet_frame);
-                with_sheet(app, |s| s.flip_cel(layer, frame));
-            }),
-            app_button(h, "Flip sheet", |app| with_sheet(app, |s| s.flip_all())),
-        ]));
-        append(root, section("Draw", rows));
-
-        let (preview, play_label, animation) = animation_section(app, h);
-        append(root, animation);
-
-        let mut panel = ArtPanel {
-            handle: h.clone(),
-            editor,
-            preview,
-            brush,
-            swatches,
-            frame_thumbs: Vec::new(),
-            layer_thumbs: Vec::new(),
-            play_label,
-        };
-        // The thumbnails are made by the sections that own them, which run
-        // after the panel exists so they can hand back the canvases.
-        panel.layer_thumbs = layers_section(root, app, h);
-        panel.frame_thumbs = frame_strip(root, app, h);
-        append(root, use_section(app, h));
-        panel.redraw(app);
-        return Box::new(panel);
+    if selected(app).is_none() {
+        append(root, note("No sheets in this project. Add one on the Sheet tab."));
+        return Box::new(crate::app::StaticPanel);
     }
 
-    append(root, note("No sheets in this project. Add one to start drawing."));
+    let mut brush = Brush::build(h, app);
+    let swatches = el("div").class("swatches").get();
+    let mut rows = vec![tool_row(app, h)];
+    rows.append(&mut brush.rows);
+    rows.push(mirror_row(app, h));
+    rows.push(swatches.clone());
+    rows.push(image_drop(h));
+    rows.push(nudge_row(h));
+    rows.push(btn_row(vec![
+        app_button(h, "Clear frame", |app| {
+            let (layer, frame) = (app.ui.sheet_layer, app.ui.sheet_frame);
+            with_sheet(app, |s| s.clear_cel(layer, frame));
+        }),
+        app_button(h, "Flip layer", |app| {
+            let (layer, frame) = (app.ui.sheet_layer, app.ui.sheet_frame);
+            with_sheet(app, |s| s.flip_cel(layer, frame));
+        }),
+        app_button(h, "Flip sheet", |app| with_sheet(app, |s| s.flip_all())),
+    ]));
+    append(root, section("Brush", rows));
+
+    let mut panel = ArtPanel {
+        handle: h.clone(),
+        brush: Some(brush),
+        swatches: Some(swatches),
+        frame_thumbs: Vec::new(),
+        layer_thumbs: Vec::new(),
+    };
+    // The thumbnails are made by the sections that own them, which run after
+    // the panel exists so they can hand back the canvases.
+    panel.layer_thumbs = layers_section(root, app, h);
+    panel.frame_thumbs = frame_strip(root, app, h);
+    panel.redraw(app);
+    Box::new(panel)
+}
+
+/// The sheet tab: which sheets there are, how large and how fast this one is,
+/// and where its art can be sent.
+pub fn build_sheet(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
+    app.clamp_selection();
+    append(root, sheet_section(app, h));
+    if selected(app).is_some() {
+        append(root, use_section(app, h));
+    }
     Box::new(crate::app::StaticPanel)
 }
 
@@ -209,6 +203,7 @@ fn sheet_section(app: &App, h: &Handle) -> Element {
                 sh.app.ui.sheet_layer = 0;
                 sh.app.ui.sheet_frame = 0;
                 sh.app.ui.playing = false;
+                crate::app::fit_view(&mut sh.app);
                 sh.app.rebuild_panel();
             })
             .get();
@@ -274,6 +269,7 @@ fn sheet_section(app: &App, h: &Handle) -> Element {
             |app, v| {
                 let height = selected(app).map(|s| s.h).unwrap_or(1);
                 with_sheet(app, |s| s.resize(v as i32, height));
+                crate::app::fit_view(app);
                 app.rebuild_panel();
             }));
         rows.push(app_num(h, "Frame height", sheet.h as f64,
@@ -281,11 +277,12 @@ fn sheet_section(app: &App, h: &Handle) -> Element {
             |app, v| {
                 let width = selected(app).map(|s| s.w).unwrap_or(1);
                 with_sheet(app, |s| s.resize(width, v as i32));
+                crate::app::fit_view(app);
                 app.rebuild_panel();
             }));
         rows.push(app_num(h, "Rate", sheet.fps,
             NumOpts { min: 0.0, max: 24.0, step: 0.5 },
-            Some("frames per second, for the preview and for a clip made from this sheet"),
+            Some("frames per second, for playing it back and for a clip made from this sheet"),
             |app, v| {
                 let id = app.ui.selected_sheet.clone();
                 if let Some(s) = app.state.art.find_mut(&id) {
@@ -492,63 +489,6 @@ fn mirror_row(app: &App, h: &Handle) -> Element {
         });
     }
     row("Mirror X", mirror.unchecked_into(), Some("paints the same pixel on both sides"))
-}
-
-/// The preview and its transport. Hands back the preview canvas and the label
-/// the frame counter is written into, so the panel can keep both up to date
-/// without rebuilding itself.
-fn animation_section(app: &App, h: &Handle) -> (HtmlCanvasElement, Element, Element) {
-    let preview = el("canvas")
-        .class("sheet-preview")
-        .get()
-        .dyn_into::<HtmlCanvasElement>()
-        .unwrap();
-    let wrap = el("div").class("preview-wrap tall").child(preview.unchecked_ref()).get();
-    let play_label = el("span").class("readout").get();
-
-    let play = {
-        let h2 = h.clone();
-        let text = if app.ui.playing { "Pause" } else { "Play" };
-        el("button")
-            .class("btn")
-            .attr("type", "button")
-            .text(text)
-            .on("click", Scope::Panel, move |e| {
-                let mut sh = h2.borrow_mut();
-                sh.app.ui.playing = !sh.app.ui.playing;
-                sh.app.ui.play_time = 0.0;
-                let text = if sh.app.ui.playing { "Pause" } else { "Play" };
-                if let Some(node) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
-                    node.set_text_content(Some(text));
-                }
-            })
-            .get()
-    };
-
-    let onion = crate::ui::input_el("checkbox");
-    onion.set_checked(app.ui.onion);
-    {
-        let h2 = h.clone();
-        on(onion.unchecked_ref(), "change", Scope::Panel, move |e| {
-            let mut sh = h2.borrow_mut();
-            sh.app.ui.onion = crate::ui::checked_of(&e);
-            sh.app.redraw_panel = true;
-        });
-    }
-
-    let built = section(
-        "Animation",
-        vec![
-            btn_row(vec![play, play_label.clone()]),
-            row(
-                "Onion skin",
-                onion.unchecked_into(),
-                Some("the frame before this one, faint, behind it"),
-            ),
-            wrap,
-        ],
-    );
-    (preview, play_label, built)
 }
 
 /// The layer stack, drawn top of the pile first the way it is looked at.
@@ -808,51 +748,6 @@ fn checker(ctx: &CanvasRenderingContext2d, x: f64, y: f64, cw: f64, ch: f64, dar
     ctx.fill_rect(x, y, cw.ceil(), ch.ceil());
 }
 
-/// The frame being drawn: the flattened stack, the frame before it behind that
-/// when onion skin is on, and the grid over the top.
-pub fn draw_editor(canvas: &HtmlCanvasElement, app: &App) {
-    let sheet = match selected(app) {
-        Some(s) => s,
-        None => return,
-    };
-    let (ctx, rw, rh) = match fit_canvas(canvas) {
-        Some(v) => v,
-        None => return,
-    };
-    let (gw, gh) = (sheet.w, sheet.h);
-    let cw = rw / gw as f64;
-    let ch = rh / gh as f64;
-    let frame = app.ui.sheet_frame;
-    let flat = sheet.flatten(frame);
-    let ghost = if app.ui.onion && sheet.frame_count() > 1 {
-        Some(sheet.flatten((frame + sheet.frame_count() - 1) % sheet.frame_count()))
-    } else {
-        None
-    };
-
-    for y in 0..gh {
-        for x in 0..gw {
-            let i = (y * gw + x) as usize;
-            let (px, py) = (x as f64 * cw, y as f64 * ch);
-            checker(&ctx, px, py, cw, ch, (x + y) % 2 == 0);
-            if let Some(ghost) = &ghost {
-                let g = ghost[i];
-                if g != EMPTY_COLOR && flat[i] == EMPTY_COLOR {
-                    ctx.set_global_alpha(0.28);
-                    ctx.set_fill_style_str(&packed_to_hex(g));
-                    ctx.fill_rect(px, py, cw.ceil(), ch.ceil());
-                    ctx.set_global_alpha(1.0);
-                }
-            }
-            if flat[i] != EMPTY_COLOR {
-                ctx.set_fill_style_str(&packed_to_hex(flat[i]));
-                ctx.fill_rect(px, py, cw.ceil(), ch.ceil());
-            }
-        }
-    }
-    paint::cell_grid(&ctx, rw, rh, gw, gh, cw, ch);
-}
-
 /// One frame at whatever size the box gives it, letterboxed so the art keeps
 /// its shape. Used by the preview and by every thumbnail.
 fn draw_frame(canvas: &HtmlCanvasElement, sheet: &Sheet, frame: i32, checkered: bool) {
@@ -927,21 +822,9 @@ impl Panel for ArtPanel {
             Some(s) => s.clone(),
             None => return,
         };
-        draw_editor(&self.editor, app);
-        self.brush.sync(app);
-
-        let frame = if app.ui.playing {
-            play_frame(&sheet, app.ui.play_time)
-        } else {
-            app.ui.sheet_frame
-        };
-        draw_frame(&self.preview, &sheet, frame, false);
-        self.play_label.set_text_content(Some(&format!(
-            "frame {} of {}",
-            frame + 1,
-            sheet.frame_count()
-        )));
-
+        if let Some(brush) = &self.brush {
+            brush.sync(app);
+        }
         for (canvas, f) in &self.frame_thumbs {
             draw_frame(canvas, &sheet, *f, true);
         }
@@ -949,8 +832,14 @@ impl Panel for ArtPanel {
             draw_layer_thumb(canvas, &sheet, *layer, app.ui.sheet_frame);
         }
 
+        let swatches = match &self.swatches {
+            Some(s) => s,
+            None => return,
+        };
+        // The palette is rebuilt every redraw, so its listeners go in the scope
+        // that is emptied first rather than piling up a closure a click.
         crate::ui::clear_scope(Scope::List);
-        clear(&self.swatches);
+        clear(swatches);
         for color in palette(&sheet) {
             let hex = packed_to_hex(color);
             let h2 = self.handle.clone();
@@ -965,36 +854,7 @@ impl Panel for ArtPanel {
                     sh.app.redraw_panel = true;
                 })
                 .get();
-            let _ = self.swatches.append_child(&sw);
+            let _ = swatches.append_child(&sw);
         }
     }
-
-    fn tick(&mut self, app: &mut App, dt: f64) {
-        if !app.ui.playing {
-            return;
-        }
-        let sheet = match selected(app) {
-            Some(s) => s.clone(),
-            None => return,
-        };
-        let before = play_frame(&sheet, app.ui.play_time);
-        app.ui.play_time += dt;
-        let after = play_frame(&sheet, app.ui.play_time);
-        if before != after {
-            draw_frame(&self.preview, &sheet, after, false);
-            self.play_label.set_text_content(Some(&format!(
-                "frame {} of {}",
-                after + 1,
-                sheet.frame_count()
-            )));
-        }
-    }
-}
-
-fn play_frame(sheet: &Sheet, time: f64) -> i32 {
-    let n = sheet.frame_count();
-    if n <= 1 || sheet.fps <= 0.0 {
-        return 0;
-    }
-    ((time * sheet.fps).floor() as i64).rem_euclid(n as i64) as i32
 }

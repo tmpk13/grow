@@ -629,7 +629,11 @@ input[type="checkbox"] {
 
 .mode {
   flex: 1 1 auto;
-  padding: 0.35rem 0.5rem;
+  min-width: 0;
+  padding: 0.35rem 0.4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   background: #0f151e;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
@@ -1016,6 +1020,17 @@ input[type="text"].hex {
 }
 
 /* sprite editor */
+
+/* Drawing on the stage rather than dragging it: the pointer is a brush there,
+   and the middle button or a held control key is what drags. */
+body.painting #world-canvas {
+  cursor: crosshair;
+}
+
+.readout.hint {
+  min-width: 0;
+  opacity: 0.75;
+}
 
 .layer-list {
   display: flex;

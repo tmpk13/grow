@@ -192,12 +192,83 @@ impl Viewport {
         self.present_region(world, buf, all);
     }
 
+    /// A plain buffer of `w` by `h` pixels, through the same camera. The sprite
+    /// editor's surface is not a world - no cells, no sky, no ground plane - so
+    /// it says its own size rather than borrowing a world to carry it.
+    pub fn present_flat(&mut self, w: i32, h: i32, buf: &[u32]) {
+        self.present_buffer(w, buf, Rect { x0: 0, y0: 0, x1: w, y1: h });
+    }
+
+    /// Centers a flat buffer and picks a whole number zoom for it, so a sprite
+    /// is drawn at a whole number of screen pixels per art pixel and its edges
+    /// stay where they were drawn.
+    pub fn fit_flat(&mut self, w: i32, h: i32) {
+        let (rw, rh) = self.rect();
+        if rw <= 0.0 || rh <= 0.0 || w <= 0 || h <= 0 {
+            return;
+        }
+        let margin = 0.85;
+        let fit = (rw / w as f64).min(rh / h as f64) * margin;
+        self.zoom = clamp(fit.floor().max(1.0), 1.0, 64.0);
+        self.pan_x = (rw - w as f64 * self.zoom) / 2.0;
+        self.pan_y = (rh - h as f64 * self.zoom) / 2.0;
+    }
+
+    /// Where a pointer is, as a pixel of a flat buffer. Off the buffer reads as
+    /// nothing rather than as the nearest edge, so a stroke that leaves the art
+    /// stops instead of drawing down the side of it.
+    pub fn flat_cell_at(&self, client_x: f64, client_y: f64, w: i32, h: i32) -> Option<(i32, i32)> {
+        let r = self.canvas.get_bounding_client_rect();
+        if self.zoom <= 0.0 {
+            return None;
+        }
+        let x = ((client_x - r.left() - self.pan_x) / self.zoom).floor() as i32;
+        let y = ((client_y - r.top() - self.pan_y) / self.zoom).floor() as i32;
+        if x < 0 || y < 0 || x >= w || y >= h {
+            return None;
+        }
+        Some((x, y))
+    }
+
+    /// One hairline per art pixel, and a border around the sheet. Drawn only
+    /// once the pixels are large enough for a grid to read as a grid rather
+    /// than as a screen door.
+    pub fn draw_pixel_grid(&self, w: i32, h: i32) {
+        let ctx = &self.ctx;
+        let (x0, y0) = (self.pan_x, self.pan_y);
+        let (x1, y1) = (x0 + w as f64 * self.zoom, y0 + h as f64 * self.zoom);
+        if self.zoom >= 6.0 {
+            ctx.set_stroke_style_str("rgba(255,255,255,0.10)");
+            ctx.set_line_width(1.0);
+            ctx.begin_path();
+            for x in 1..w {
+                let px = (x0 + x as f64 * self.zoom).round() + 0.5;
+                ctx.move_to(px, y0);
+                ctx.line_to(px, y1);
+            }
+            for y in 1..h {
+                let py = (y0 + y as f64 * self.zoom).round() + 0.5;
+                ctx.move_to(x0, py);
+                ctx.line_to(x1, py);
+            }
+            ctx.stroke();
+        }
+        ctx.set_stroke_style_str("rgba(255,201,120,0.5)");
+        ctx.set_line_width(1.0);
+        ctx.stroke_rect(x0.round() + 0.5, y0.round() + 0.5, x1 - x0, y1 - y0);
+    }
+
     /// The same, uploading only one rectangle of the buffer, and below one to
     /// one only one pixel of each block the canvas would collapse. A map big
     /// enough to be worth having has a buffer far too large to push to a canvas
     /// sixty times a second, and zoomed out most of what would be pushed is
     /// thrown away on arrival.
     pub fn present_region(&mut self, world: &World, buf: &[u32], rect: Rect) {
+        self.present_buffer(world.px_w, buf, rect);
+    }
+
+    /// The shared part: the row stride is all a buffer has to say about itself.
+    fn present_buffer(&mut self, px_w: i32, buf: &[u32], rect: Rect) {
         self.resize();
         let ctx = &self.ctx;
         ctx.save();
@@ -227,7 +298,7 @@ impl Viewport {
         }
         self.scratch.resize((w * h) as usize, 0);
         for y in 0..h {
-            let src = ((y0 + y * step) * world.px_w) as usize;
+            let src = ((y0 + y * step) * px_w) as usize;
             let dst = (y * w) as usize;
             let out = &mut self.scratch[dst..dst + w as usize];
             if step == 1 {

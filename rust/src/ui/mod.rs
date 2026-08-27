@@ -377,6 +377,32 @@ pub fn select_field(
     row(label, sel.unchecked_into(), hint)
 }
 
+/// A select with no field row around it, for the stage toolbar, which lays its
+/// own controls out.
+pub fn select_bare(
+    value: &str,
+    options: &[(String, String)],
+    mut on_input: impl FnMut(String) + 'static,
+) -> Element {
+    let sel = document()
+        .create_element("select")
+        .unwrap()
+        .dyn_into::<HtmlSelectElement>()
+        .unwrap();
+    for (v, l) in options {
+        let opt = el("option").attr("value", v).text(l).get();
+        if v == value {
+            let _ = opt.set_attribute("selected", "selected");
+        }
+        let _ = sel.append_child(&opt);
+    }
+    sel.set_value(value);
+    on(sel.unchecked_ref(), "change", Scope::Toolbar, move |e| {
+        on_input(select_value_of(&e));
+    });
+    sel.unchecked_into()
+}
+
 pub fn bool_field(
     label: &str,
     value: bool,

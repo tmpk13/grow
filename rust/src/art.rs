@@ -559,17 +559,25 @@ impl ArtLibrary {
         self.sheets.iter().map(|s| s.bytes()).sum()
     }
 
-    /// The sheets as select options, for the panels that point at one.
+    /// The sheets as select options, described, for a panel choosing between
+    /// them without anything else on screen to say which is which.
     pub fn options(&self) -> Vec<(String, String)> {
         self.sheets
             .iter()
             .map(|s| {
+                let frames = s.frame_count();
+                let plural = if frames == 1 { "frame" } else { "frames" };
                 (
                     s.id.clone(),
-                    format!("{} ({}x{}, {} frames)", s.name, s.w, s.h, s.frame_count()),
+                    format!("{} ({}x{}, {frames} {plural})", s.name, s.w, s.h),
                 )
             })
             .collect()
+    }
+
+    /// The same, by name alone, for a toolbar with a status line under it.
+    pub fn names(&self) -> Vec<(String, String)> {
+        self.sheets.iter().map(|s| (s.id.clone(), s.name.clone())).collect()
     }
 }
 

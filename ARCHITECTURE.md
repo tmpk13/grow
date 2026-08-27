@@ -28,8 +28,9 @@ flowchart LR
 
 ## Module map
 
-The project has two halves that share one state: the plant lab authors species
-and materials, and the settlement runs a world made of them.
+The project has three modes over one state: the plant lab authors species and
+materials, the sprite editor draws the sheets settlers can be drawn from, and
+the settlement runs a world made of all of it.
 
 ```mermaid
 flowchart TD
@@ -40,7 +41,6 @@ flowchart TD
 
   subgraph labpanels [Lab panels]
     matp["ui/materials_panel.rs"]
-    artp["ui/art_panel.rs<br/>sheets, layers, frames, playback"]
     shdp["ui/shading_panel.rs"]
     spp["ui/species_panel.rs"]
     wldp["ui/world_panel.rs"]
@@ -49,6 +49,10 @@ flowchart TD
     dec["ui/decode.rs<br/>dropped files to packed pixels"]
     wheel["ui/color_wheel.rs<br/>the brush control"]
     ctl["ui/mod.rs<br/>schema driven fields"]
+  end
+
+  subgraph artpanels [Sprite editor panels]
+    artp["ui/art_panel.rs<br/>brush, layers, frames, sheets"]
   end
 
   subgraph civpanels [Settlement panels]
@@ -101,6 +105,7 @@ flowchart TD
   main --> sett
   main --> render
   main --> labpanels
+  main --> artpanels
   main --> civpanels
   main --> prefs["ui/prefs.rs<br/>menu fold, text scale"]
   main --> rst["ui/reset.rs<br/>clears every browser store"]
@@ -120,6 +125,7 @@ flowchart TD
   art --> csprites
   artp --> csprites
   labpanels --> ctl
+  artpanels --> ctl
   civpanels --> ctl
   matp --> sampler
   shdp --> shading
@@ -998,10 +1004,34 @@ flowchart TD
 
 ## The sprite editor
 
-Sheets are drawn in the tool itself, in the lab's Sprites tab, and a motion can
-be pointed at one instead of at a dropped image. A sheet is a frame size, a
-stack of layers, and one cel per layer per frame; drawing lands on a single cel,
-and what anything else reads is the flattened frame.
+The sprite editor is a mode of its own, beside the plant lab and the settlement,
+and a settler motion can be pointed at a sheet drawn in it instead of at a
+dropped image. A sheet is a frame size, a stack of layers, and one cel per layer
+per frame; drawing lands on a single cel, and what anything else reads is the
+flattened frame.
+
+Being a mode rather than a tab is what lets the drawing surface be the stage.
+The sheet is composited into a flat buffer - checker, onion skin, art - and
+pushed through the same camera every other mode draws through, so zoom, pan and
+pinch behave the way they do on a map and the art is drawn at a whole number of
+screen pixels per art pixel. The panel keeps what is around a stroke: the brush,
+the layer stack, the frame strip.
+
+```mermaid
+flowchart LR
+  sel["the selected sheet,<br/>layer and frame"] --> comp["one flat buffer:<br/>checker, the frame before this<br/>one faint, the frame itself"]
+  comp --> cam["the camera<br/>present_flat"]
+  cam --> stage["the stage canvas"]
+  ptr["a pointer on the stage"] --> which{"sprite editor,<br/>plain press?"}
+  which -->|yes| brush["a stroke, located through<br/>the camera rather than<br/>against the element"]
+  which -->|no: middle, ctrl,<br/>or another mode| drag["pan and zoom"]
+  brush --> sel
+```
+
+Sharing the stage with the camera is why the editor drives its own stroke rather
+than letting `ui/paint`'s `attach` own the pointer: the same canvas has to drag
+as well as draw. The middle button and a held control key are what drag there,
+since the left one is busy.
 
 ```mermaid
 flowchart TD

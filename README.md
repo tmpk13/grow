@@ -42,11 +42,12 @@ the file directly.
 
 ## Modes
 
-The two buttons above the panel tabs switch modes (or press `m`). Each mode has
-its own tabs, its own toolbar and its own simulation; both read the same
-materials and species, so anything drawn in the lab shows up in the settlement.
+The three buttons above the panel tabs switch modes (or press `m` to go round
+them). Each has its own tabs, its own toolbar and its own stage; all three read
+the same project, so anything drawn in the lab or the sprite editor shows up in
+the settlement.
 
-## Plant lab: the five panels
+## Plant lab: the four panels
 
 ### Materials
 
@@ -74,34 +75,6 @@ texture, leaf edges, stem to leaf) and boxes can be added or removed.
   two pixels stays a highlight rather than taking a third of the range. The
   swatches above it are the palette, one entry per color however little of the
   box it holds.
-
-### Sprites
-
-A pixel editor for animations, and the other way to draw a settler.
-
-* A **sheet** is a frame size, a rate, and a stack of layers. Sheets are named,
-  duplicated and removed from the row of chips at the top.
-* **Layers** stack bottom to top; the row you pick is the one you draw on, the
-  checkbox hides one without throwing it away, and **Merge down** folds one into
-  the layer beneath it. Up to eight.
-* **Frames** run along the strip near the bottom. Add an empty one, duplicate
-  the current one to nudge a pose rather than redraw it, or shuffle one left and
-  right. Up to twenty four.
-* **Drop images** onto the zone under the canvas and they land on the selected
-  layer, scaled down to fit the frame and centered. Several at once fill
-  successive frames, one each, starting from the frame being drawn - so a
-  reference can go on a layer of its own and be drawn over on the one above.
-* **Nudge** shifts the art by a pixel: the selected layer in the selected frame,
-  or the whole sheet with the switch beside the buttons.
-* **Onion skin** shows the frame before this one faintly behind it.
-* **Play** runs the sheet at its own rate in the preview.
-* **Use as settler art** sends the sheet to one of the five settler motions. It
-  is copied rather than followed, so the town does not change under you while
-  you keep drawing. The motion's card in the People panel says which sheet it
-  came from and offers to take that sheet again, which is how a change is
-  pushed.
-* Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
-  the art keeps its place and the new room is empty.
 
 ### Shading
 
@@ -158,6 +131,36 @@ second, redraws per frame). Changing area dimensions restarts the run.
 A cell depth equal to the cell width gives a straight top down grid; smaller
 values tilt the plane toward the viewer. The sky band is the room above the far
 row that tall plants grow into.
+
+## Sprite editor
+
+A pixel editor for animations, and the other way to draw a settler. The sheet is
+drawn on the stage rather than in the panel: left button draws, right erases,
+middle button or a held ctrl drags, wheel or pinch zooms.
+
+* A **sheet** is a frame size, a rate, and a stack of layers. The toolbar picks
+  which one; the **Sheet** tab names, resizes, adds and removes them.
+* **Layers** stack bottom to top; the row you pick is the one you draw on, the
+  checkbox hides one without throwing it away, and **Merge down** folds one into
+  the layer beneath it. Up to eight.
+* **Frames** run along the strip in the panel and are stepped through from the
+  toolbar (or `.`). Add an empty one, duplicate the current one to nudge a pose
+  rather than redraw it, or shuffle one left and right. Up to twenty four.
+* **Onion** shows the frame before this one faintly behind it, and **Play** runs
+  the sheet at its own rate on the stage.
+* **Drop images** onto the zone in the panel and they land on the selected
+  layer, scaled down to fit the frame and centered. Several at once fill
+  successive frames, one each, starting from the frame being drawn - so a
+  reference can go on a layer of its own and be drawn over on the one above.
+* **Nudge** shifts the art by a pixel: the selected layer in the selected frame,
+  or the whole sheet with the switch beside the buttons.
+* **Use as settler art** sends the sheet to one of the five settler motions. It
+  is copied rather than followed, so the town does not change under you while
+  you keep drawing. The motion's card in the settlement's People panel says
+  which sheet it came from and offers to take that sheet again, which is how a
+  change is pushed.
+* Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
+  the art keeps its place and the new room is empty.
 
 ## The grid system
 
@@ -493,11 +496,12 @@ settlement is chaotic enough that one run says nothing about a change, so
 judging one means sweeping a spread of seeds and comparing the distributions,
 not reading a single number.
 
-`uicheck.js` loads the page in headless Chromium, exercises both modes and
-every tab, paints into a sampling box, draws on a sheet and stacks a layer on
-it, plays the animation back and sends it to a settler motion, resizes the
-world, queues a building, folds the menu away and back, checks the text scale
-reaches the root font size, and fails on any console error.
+`uicheck.js` loads the page in headless Chromium, exercises all three modes and
+every tab, paints into a sampling box, draws on a sheet on the stage and stacks
+a layer on it, steps and plays the frames and sends the sheet to a settler
+motion, undoes and redoes both a layer and a panel field, resizes the world,
+queues a building, folds the menu away and back, checks the text scale reaches
+the root font size, and fails on any console error.
 
 ## Layout
 

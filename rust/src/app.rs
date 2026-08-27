@@ -21,14 +21,22 @@ use crate::render::Viewport;
 use crate::sim::{Env, Sim};
 use crate::state::{State, STORAGE_KEY};
 use crate::undo::History;
+use crate::ui::paint::Surface;
 use crate::ui::{self, by_id, clear, clear_scope, document, el, on, on_passive_false, window, Scope};
-use crate::util::{clamp, hex_to_packed};
+use crate::util::{clamp, hex_to_packed, EMPTY_COLOR};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
     Lab,
+    Sprites,
     Settlement,
 }
+
+pub const MODES: [(Mode, &str); 3] = [
+    (Mode::Lab, "Plant lab"),
+    (Mode::Sprites, "Sprite editor"),
+    (Mode::Settlement, "Settlement"),
+];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
@@ -97,16 +105,19 @@ impl App {
         self.sim_settings().tick_hz.max(1.0)
     }
 
+    /// The sprite editor runs no simulation, so it borrows the lab's settings
+    /// for the fields the shell reads unconditionally and never writes to them.
     pub fn sim_settings(&self) -> crate::civ::config::SimSettings {
         match self.mode {
-            Mode::Lab => self.state.sim,
             Mode::Settlement => self.state.civ.sim,
+            _ => self.state.sim,
         }
     }
 
     pub fn set_running(&mut self, running: bool) {
         match self.mode {
             Mode::Lab => self.state.sim.running = running,
+            Mode::Sprites => {}
             Mode::Settlement => self.state.civ.sim.running = running,
         }
     }
@@ -114,8 +125,14 @@ impl App {
     pub fn set_speed(&mut self, speed: f64) {
         match self.mode {
             Mode::Lab => self.state.sim.speed = speed,
+            Mode::Sprites => {}
             Mode::Settlement => self.state.civ.sim.speed = speed,
         }
+    }
+
+    /// The sheet the editor is pointed at, and its size.
+    pub fn sheet_dims(&self) -> Option<(i32, i32)> {
+        self.state.art.find(&self.ui.selected_sheet).map(|s| (s.w, s.h))
     }
 
     pub fn uid(&mut self, prefix: &str) -> String {
@@ -379,16 +396,31 @@ struct TabDef {
     build: Builder,
 }
 
+/// The top of the zoom slider. A map is looked at from far enough away to see
+/// a town; a sprite is looked at a pixel at a time.
+const ZOOM_MAX_WORLD: f64 = 16.0;
+
+/// The two squares of the checker behind a sheet, drawn into the buffer so they
+/// scale with the art.
+const CHECKER_LIGHT: u32 = crate::util::pack_rgba(26, 31, 38, 255);
+const CHECKER_DARK: u32 = crate::util::pack_rgba(20, 25, 32, 255);
+
+const ZOOM_MAX_SPRITE: f64 = 48.0;
+
 /// How often the status line is rewritten. Fast enough to read as live, slow
 /// enough that the walk over the settlement it costs does not land in a frame.
 const STATUS_INTERVAL_MS: f64 = 200.0;
 
 const LAB_TABS: &[TabDef] = &[
     TabDef { id: "materials", label: "Materials", build: ui::materials_panel::build },
-    TabDef { id: "sprites", label: "Sprites", build: ui::art_panel::build },
     TabDef { id: "shading", label: "Shading", build: ui::shading_panel::build },
     TabDef { id: "species", label: "Species", build: ui::species_panel::build },
     TabDef { id: "world", label: "World", build: ui::world_panel::build },
+];
+
+const SPRITE_TABS: &[TabDef] = &[
+    TabDef { id: "draw", label: "Draw", build: ui::art_panel::build_draw },
+    TabDef { id: "sheet", label: "Sheet", build: ui::art_panel::build_sheet },
 ];
 
 const CIV_TABS: &[TabDef] = &[
@@ -402,6 +434,7 @@ const CIV_TABS: &[TabDef] = &[
 fn tabs_for(mode: Mode) -> &'static [TabDef] {
     match mode {
         Mode::Lab => LAB_TABS,
+        Mode::Sprites => SPRITE_TABS,
         Mode::Settlement => CIV_TABS,
     }
 }
@@ -521,7 +554,7 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
     };
     clear(&modes_node);
     clear_scope(Scope::Toolbar);
-    for (id, label) in [(Mode::Lab, "Plant lab"), (Mode::Settlement, "Settlement")] {
+    for (id, label) in MODES {
         let h2 = h.clone();
         let class = if id == mode { "mode active" } else { "mode" };
         let btn = el("button")
@@ -543,11 +576,35 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
         sh.app.pending_bootstrap = true;
     }
 
+    if let Some(body) = document().body() {
+        let list = body.class_list();
+        let _ = if mode == Mode::Sprites {
+            list.add_1("painting")
+        } else {
+            list.remove_1("painting")
+        };
+    }
     build_toolbar(sh, h);
     let first = tabs_for(mode)[0].id;
     show_tab(sh, h, first);
-    let world_fit = active_world_size(&sh.app);
-    sh.app.viewport.fit(&world_fit);
+    fit_view(&mut sh.app);
+    // The toolbar was built before the fit, so its slider is showing whatever
+    // the camera was on in the mode just left.
+    sync_zoom(&sh.app);
+}
+
+/// Frames whatever the mode is showing. A sheet is a handful of pixels across
+/// and wants a whole number zoom; a world is thousands and wants to fill the
+/// stage.
+pub fn fit_view(app: &mut App) {
+    if app.mode == Mode::Sprites {
+        if let Some((w, h)) = app.sheet_dims() {
+            app.viewport.fit_flat(w, h);
+        }
+        return;
+    }
+    let world = active_world_size(app);
+    app.viewport.fit(&world);
 }
 
 fn active_world_size(app: &App) -> crate::world::World {
@@ -638,6 +695,12 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
     };
     clear(&toolbar);
 
+    if sh.app.mode == Mode::Sprites {
+        let controls = sprite_toolbar(sh, h);
+        let _ = toolbar.append_child(&el("div").class("toolbar-row").children(controls).get());
+        return;
+    }
+
     let cfg = sh.app.sim_settings();
     let mut controls: Vec<Element> = Vec::new();
 
@@ -724,45 +787,13 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
             .get(),
     );
 
-    // Zoom
-    let zoom = ui::input_el("range");
-    let _ = zoom.set_attribute("min", "0.5");
-    let _ = zoom.set_attribute("max", "16");
-    let _ = zoom.set_attribute("step", "0.25");
-    zoom.set_attribute("id", "zoom-input").ok();
-    zoom.set_value(&format!("{}", sh.app.viewport.zoom));
-    let zoom_label = el("span")
-        .class("readout")
-        .attr("id", "zoom-readout")
-        .text(&format!("{:.2}x", sh.app.viewport.zoom))
-        .get();
-    {
-        let h2 = h.clone();
-        on(zoom.unchecked_ref(), "input", Scope::Toolbar, move |e| {
-            let target: f64 = ui::value_of(&e).parse().unwrap_or(1.0);
-            let mut sh = h2.borrow_mut();
-            let r = sh.app.viewport.canvas.get_bounding_client_rect();
-            let (cx, cy) = (r.left() + r.width() / 2.0, r.top() + r.height() / 2.0);
-            let factor = target / sh.app.viewport.zoom;
-            sh.app.viewport.zoom_at(cx, cy, factor);
-            sync_zoom(&sh.app);
-        });
-    }
-    controls.push(
-        el("label")
-            .class("inline")
-            .child(&el("span").text("Zoom").get())
-            .child(zoom.unchecked_ref())
-            .child(&zoom_label)
-            .get(),
-    );
+    controls.push(zoom_control(sh, h));
 
     controls.push(ui::button("Fit", Scope::Toolbar, {
         let h2 = h.clone();
         move || {
             let mut sh = h2.borrow_mut();
-            let world = active_world_size(&sh.app);
-            sh.app.viewport.fit(&world);
+            fit_view(&mut sh.app);
             sync_zoom(&sh.app);
         }
     }));
@@ -822,10 +853,150 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
     let _ = toolbar.append_child(&el("div").class("toolbar-row").children(controls).get());
 }
 
+/// The sprite editor's own stage controls: which sheet, playing it back,
+/// stepping through it, and the camera. No simulation, so no speed.
+fn sprite_toolbar(sh: &mut Shell, h: &Handle) -> Vec<Element> {
+    let mut controls: Vec<Element> = Vec::new();
+
+    let options = sh.app.state.art.names();
+    if !options.is_empty() {
+        let picker = ui::select_bare(&sh.app.ui.selected_sheet, &options, {
+            let h2 = h.clone();
+            move |v| {
+                let mut sh = h2.borrow_mut();
+                sh.app.ui.selected_sheet = v;
+                sh.app.ui.sheet_layer = 0;
+                sh.app.ui.sheet_frame = 0;
+                sh.app.ui.playing = false;
+                fit_view(&mut sh.app);
+                sh.app.rebuild_panel();
+            }
+        });
+        controls.push(
+            el("label")
+                .class("inline")
+                .child(&el("span").text("Sheet").get())
+                .child(&picker)
+                .get(),
+        );
+    }
+
+    let play = el("button")
+        .class("btn")
+        .attr("id", "btn-play")
+        .attr("type", "button")
+        .text(if sh.app.ui.playing { "Pause" } else { "Play" })
+        .get();
+    {
+        let h2 = h.clone();
+        let play_node = play.clone();
+        on(play.unchecked_ref(), "click", Scope::Toolbar, move |_| {
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.playing = !sh.app.ui.playing;
+            sh.app.ui.play_time = 0.0;
+            play_node.set_text_content(Some(if sh.app.ui.playing { "Pause" } else { "Play" }));
+            sh.app.redraw_panel = true;
+        });
+    }
+    controls.push(play);
+
+    for (label, delta) in [("Prev", -1), ("Next", 1)] {
+        let h2 = h.clone();
+        controls.push(ui::button(label, Scope::Toolbar, move || {
+            step_frame(&mut h2.borrow_mut().app, delta);
+        }));
+    }
+    controls.push(el("span").class("readout").attr("id", "frame-readout").get());
+
+    let onion = ui::input_el("checkbox");
+    onion.set_checked(sh.app.ui.onion);
+    {
+        let h2 = h.clone();
+        on(onion.unchecked_ref(), "change", Scope::Toolbar, move |e| {
+            h2.borrow_mut().app.ui.onion = ui::checked_of(&e);
+        });
+    }
+    controls.push(
+        el("label")
+            .class("inline")
+            .child(&el("span").text("Onion").get())
+            .child(onion.unchecked_ref())
+            .get(),
+    );
+
+    controls.push(zoom_control(sh, h));
+    controls.push(ui::button("Fit", Scope::Toolbar, {
+        let h2 = h.clone();
+        move || {
+            let mut sh = h2.borrow_mut();
+            fit_view(&mut sh.app);
+            sync_zoom(&sh.app);
+        }
+    }));
+
+    let grid = ui::input_el("checkbox");
+    grid.set_checked(sh.app.viewport.show_grid);
+    {
+        let h2 = h.clone();
+        on(grid.unchecked_ref(), "change", Scope::Toolbar, move |e| {
+            h2.borrow_mut().app.viewport.show_grid = ui::checked_of(&e);
+        });
+    }
+    controls.push(
+        el("label")
+            .class("inline")
+            .child(&el("span").text("Grid").get())
+            .child(grid.unchecked_ref())
+            .get(),
+    );
+    controls.push(note_hint("left draws, right erases, middle or ctrl drags"));
+    controls
+}
+
+/// The camera slider, shared by every mode. A sprite is looked at far closer
+/// than a map, so the top of the range is set by what is being shown.
+fn zoom_control(sh: &Shell, h: &Handle) -> Element {
+    let top = if sh.app.mode == Mode::Sprites { ZOOM_MAX_SPRITE } else { ZOOM_MAX_WORLD };
+    let zoom = ui::input_el("range");
+    let _ = zoom.set_attribute("min", "0.5");
+    let _ = zoom.set_attribute("max", &format!("{top}"));
+    let _ = zoom.set_attribute("step", "0.25");
+    zoom.set_attribute("id", "zoom-input").ok();
+    zoom.set_value(&format!("{}", sh.app.viewport.zoom));
+    let zoom_label = el("span")
+        .class("readout")
+        .attr("id", "zoom-readout")
+        .text(&format!("{:.2}x", sh.app.viewport.zoom))
+        .get();
+    {
+        let h2 = h.clone();
+        on(zoom.unchecked_ref(), "input", Scope::Toolbar, move |e| {
+            let target: f64 = ui::value_of(&e).parse().unwrap_or(1.0);
+            let mut sh = h2.borrow_mut();
+            let r = sh.app.viewport.canvas.get_bounding_client_rect();
+            let (cx, cy) = (r.left() + r.width() / 2.0, r.top() + r.height() / 2.0);
+            let factor = target / sh.app.viewport.zoom;
+            sh.app.viewport.zoom_at(cx, cy, factor);
+            sync_zoom(&sh.app);
+        });
+    }
+    el("label")
+        .class("inline")
+        .child(&el("span").text("Zoom").get())
+        .child(zoom.unchecked_ref())
+        .child(&zoom_label)
+        .get()
+}
+
+fn note_hint(text: &str) -> Element {
+    el("span").class("readout hint").text(text).get()
+}
+
 fn sync_zoom(app: &App) {
+    let top = if app.mode == Mode::Sprites { ZOOM_MAX_SPRITE } else { ZOOM_MAX_WORLD };
     if let Some(node) = by_id("zoom-input") {
         if let Ok(input) = node.dyn_into::<HtmlInputElement>() {
-            input.set_value(&format!("{}", clamp(app.viewport.zoom, 0.5, 16.0)));
+            input.set_value(&format!("{}", clamp(app.viewport.zoom, 0.5, top)));
         }
     }
     if let Some(node) = by_id("zoom-readout") {
@@ -852,6 +1023,10 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
     // two pinch it, and a finger lifting mid-pinch leaves the other one
     // dragging rather than jumping the view.
     let touches: Rc<RefCell<Vec<(i32, f64, f64)>>> = Rc::new(RefCell::new(Vec::new()));
+    // The cell a stroke last reached, when the stage is being drawn on rather
+    // than dragged. The sprite editor shares this canvas with the camera, so
+    // the stroke is driven here rather than by `paint::attach`.
+    let stroke: Rc<RefCell<Option<(i32, i32)>>> = Rc::new(RefCell::new(None));
     // Where two fingers were as of the last move: how far apart, and the point
     // between them. A pinch is read as the change since then rather than since
     // it started, so a finger lifting and landing again carries on from where
@@ -864,6 +1039,8 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
         let span = span.clone();
         let middle = middle.clone();
         let canvas2 = canvas.clone();
+        let h2 = h.clone();
+        let stroke = stroke.clone();
         on(canvas.unchecked_ref(), "pointerdown", Scope::Global, move |e: Event| {
             let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
             let _ = canvas2.set_pointer_capture(pe.pointer_id());
@@ -872,12 +1049,36 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             list.push((pe.pointer_id(), pe.client_x() as f64, pe.client_y() as f64));
             span.set(pinch_span(&list));
             middle.set(pinch_middle(&list));
+            // A second pointer is a pinch, whatever the first one was doing.
+            if list.len() > 1 {
+                end_stroke(&h2, &stroke);
+                return;
+            }
+            let mut sh = h2.borrow_mut();
+            if !paints(&sh.app, pe) {
+                return;
+            }
+            let cell = SHEET_SURFACE.locate(
+                &sh.app,
+                &sh.app.viewport.canvas.clone(),
+                pe.client_x() as f64,
+                pe.client_y() as f64,
+            );
+            if let Some(cell) = cell {
+                if sh.app.ui.tool != Tool::Pick {
+                    sh.app.record("stroke", false);
+                }
+                let erase = pe.buttons() & 2 == 2;
+                ui::paint::apply(&mut sh.app, &SHEET_SURFACE, cell, erase);
+                *stroke.borrow_mut() = Some(cell);
+            }
         });
     }
     {
         let touches = touches.clone();
         let span = span.clone();
         let middle = middle.clone();
+        let stroke = stroke.clone();
         let h2 = h.clone();
         on(canvas.unchecked_ref(), "pointermove", Scope::Global, move |e: Event| {
             let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
@@ -893,6 +1094,29 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                 None => return,
             };
             let mut sh = h2.borrow_mut();
+            if list.len() < 2 && stroke.borrow().is_some() {
+                let cell = SHEET_SURFACE.locate(
+                    &sh.app,
+                    &sh.app.viewport.canvas.clone(),
+                    x,
+                    y,
+                );
+                if let Some(cell) = cell {
+                    let was = *stroke.borrow();
+                    if was != Some(cell) {
+                        let erase = pe.buttons() & 2 == 2;
+                        let freehand = matches!(sh.app.ui.tool, Tool::Pencil | Tool::Eraser);
+                        match was {
+                            Some(prev) if freehand => {
+                                ui::paint::stroke_line(&mut sh.app, &SHEET_SURFACE, prev, cell, erase)
+                            }
+                            _ => ui::paint::apply(&mut sh.app, &SHEET_SURFACE, cell, erase),
+                        }
+                        *stroke.borrow_mut() = Some(cell);
+                    }
+                }
+                return;
+            }
             if list.len() >= 2 {
                 let now = pinch_span(&list);
                 let (mx, my) = pinch_middle(&list);
@@ -916,14 +1140,55 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
         let touches = touches.clone();
         let span = span.clone();
         let middle = middle.clone();
+        let stroke = stroke.clone();
+        let h2 = h.clone();
         on(canvas.unchecked_ref(), event, Scope::Global, move |e: Event| {
             let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
-            let mut list = touches.borrow_mut();
-            list.retain(|(id, _, _)| *id != pe.pointer_id());
-            span.set(pinch_span(&list));
-            middle.set(pinch_middle(&list));
+            {
+                let mut list = touches.borrow_mut();
+                list.retain(|(id, _, _)| *id != pe.pointer_id());
+                span.set(pinch_span(&list));
+                middle.set(pinch_middle(&list));
+            }
+            end_stroke(&h2, &stroke);
         });
     }
+    {
+        // The right button erases, so the menu it would open would land in the
+        // middle of the stroke.
+        let h2 = h.clone();
+        on(canvas.unchecked_ref(), "contextmenu", Scope::Global, move |e: Event| {
+            if h2.borrow().app.mode == Mode::Sprites {
+                e.prevent_default();
+            }
+        });
+    }
+}
+
+/// The sheet, as something to draw on. Held as a constant because the stage
+/// shares one surface for as long as the mode is open, unlike a panel editor
+/// which is rebuilt with its canvas.
+const SHEET_SURFACE: ui::art_panel::SheetSurface = ui::art_panel::SheetSurface;
+
+/// Whether this pointer press is a stroke rather than a drag. Only in the
+/// sprite editor, and only for a plain press: the middle button and a held
+/// control key are how the stage is dragged there, since the left one is busy.
+fn paints(app: &App, pe: &web_sys::PointerEvent) -> bool {
+    app.mode == Mode::Sprites
+        && app.sheet_dims().is_some()
+        && !pe.ctrl_key()
+        && pe.button() != 1
+        && pe.buttons() & 4 == 0
+}
+
+fn end_stroke(h: &Handle, stroke: &Rc<RefCell<Option<(i32, i32)>>>) {
+    if stroke.borrow().is_none() {
+        return;
+    }
+    *stroke.borrow_mut() = None;
+    let mut sh = h.borrow_mut();
+    SHEET_SURFACE.commit(&mut sh.app);
+    sh.app.redraw_panel = true;
 }
 
 /// Distance between the first two pointers down, or nothing if there are not
@@ -985,20 +1250,23 @@ fn bind_keys(h: &Handle) {
             }
             _ => match ke.key().as_str() {
                 "." => {
-                    let dt = 1.0 / sh.app.active_tick_hz();
-                    step_active(&mut sh.app, dt);
+                    // A step is a tick of the simulation, or a frame of the
+                    // sheet where there is no simulation to tick.
+                    if sh.app.mode == Mode::Sprites {
+                        step_frame(&mut sh.app, 1);
+                    } else {
+                        let dt = 1.0 / sh.app.active_tick_hz();
+                        step_active(&mut sh.app, dt);
+                    }
                 }
                 "f" => {
-                    let world = active_world_size(&sh.app);
-                    sh.app.viewport.fit(&world);
+                    fit_view(&mut sh.app);
                     sync_zoom(&sh.app);
                 }
                 "m" => {
-                    let next = if sh.app.mode == Mode::Lab {
-                        Mode::Settlement
-                    } else {
-                        Mode::Lab
-                    };
+                    // Round the row of modes, in the order they are shown.
+                    let at = MODES.iter().position(|(m, _)| *m == sh.app.mode).unwrap_or(0);
+                    let next = MODES[(at + 1) % MODES.len()].0;
                     let sh = &mut *sh;
                     show_mode(sh, &h2, next);
                 }
@@ -1225,6 +1493,7 @@ fn export_json(json: &str) {
 
 fn step_active(app: &mut App, dt: f64) {
     match app.mode {
+        Mode::Sprites => {}
         Mode::Lab => {
             let App { sim, state, .. } = app;
             sim.step(state, dt, None);
@@ -1285,9 +1554,20 @@ fn frame(h: &Handle, ts: f64) {
         }
     }
 
+    if sh.app.mode == Mode::Sprites {
+        if sh.app.ui.playing {
+            sh.app.ui.play_time += dt_real;
+        }
+        if let Some(node) = by_id("frame-readout") {
+            let sheet = sh.app.state.art.find(&sh.app.ui.selected_sheet);
+            let count = sheet.map(|s| s.frame_count()).unwrap_or(1);
+            node.set_text_content(Some(&format!("{}/{count}", active_frame(&sh.app) + 1)));
+        }
+    }
+
     let cfg = sh.app.sim_settings();
     let civ_ready = sh.app.settlement.as_ref().is_some_and(|c| c.ready);
-    if cfg.running && (sh.app.mode == Mode::Lab || civ_ready) {
+    if cfg.running && (sh.app.mode == Mode::Lab || (sh.app.mode == Mode::Settlement && civ_ready)) {
         let step_dt = 1.0 / cfg.tick_hz.max(1.0);
         sh.app.accumulator += dt_real * cfg.speed;
         let mut steps = 0;
@@ -1333,6 +1613,7 @@ fn frame(h: &Handle, ts: f64) {
 
 fn draw(app: &mut App, budget: usize) {
     match app.mode {
+        Mode::Sprites => draw_sheet(app),
         Mode::Lab => {
             {
                 let App { sim, state, .. } = app;
@@ -1396,12 +1677,113 @@ fn draw(app: &mut App, budget: usize) {
     }
 }
 
+/// The sheet on the stage: a checker, the frame before this one behind it when
+/// onion skin is on, and the frame itself. Built as a flat buffer and pushed
+/// through the same camera as a world, so zoom, pan and pinch all work the way
+/// they do everywhere else.
+fn draw_sheet(app: &mut App) {
+    let sheet = match app.state.art.find(&app.ui.selected_sheet) {
+        Some(s) => s,
+        None => return,
+    };
+    let (w, h) = (sheet.w.max(1), sheet.h.max(1));
+    let frame = active_frame(app);
+    let flat = sheet.flatten(frame);
+    let ghost = if app.ui.onion && sheet.frame_count() > 1 {
+        let before = (frame + sheet.frame_count() - 1) % sheet.frame_count();
+        Some(sheet.flatten(before))
+    } else {
+        None
+    };
+
+    let mut buf = vec![0u32; (w * h) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) as usize;
+            // The checker is drawn into the buffer rather than under it, so it
+            // scales with the art and reads as one square per pixel.
+            let mut c = if (x + y) % 2 == 0 { CHECKER_LIGHT } else { CHECKER_DARK };
+            if let Some(ghost) = &ghost {
+                if ghost[i] != EMPTY_COLOR {
+                    c = crate::util::mix_packed(c, ghost[i], 0.3);
+                }
+            }
+            if flat[i] != EMPTY_COLOR {
+                c = flat[i];
+            }
+            buf[i] = c;
+        }
+    }
+    app.viewport.present_flat(w, h, &buf);
+    if app.viewport.show_grid {
+        app.viewport.draw_pixel_grid(w, h);
+    }
+    app.viewport.finish();
+}
+
+/// Which frame the stage is showing: the one being drawn, or wherever the
+/// playback has got to.
+fn active_frame(app: &App) -> i32 {
+    let sheet = match app.state.art.find(&app.ui.selected_sheet) {
+        Some(s) => s,
+        None => return 0,
+    };
+    if !app.ui.playing {
+        return app.ui.sheet_frame.clamp(0, sheet.frame_count() - 1);
+    }
+    let n = sheet.frame_count();
+    if n <= 1 || sheet.fps <= 0.0 {
+        return 0;
+    }
+    ((app.ui.play_time * sheet.fps).floor() as i64).rem_euclid(n as i64) as i32
+}
+
+/// Moves to another frame of the sheet, stopping playback: stepping and
+/// playing at once is two things trying to say which frame is showing.
+fn step_frame(app: &mut App, delta: i32) {
+    let frames = match app.state.art.find(&app.ui.selected_sheet) {
+        Some(s) => s.frame_count(),
+        None => return,
+    };
+    app.ui.playing = false;
+    app.ui.sheet_frame = (app.ui.sheet_frame + delta).rem_euclid(frames);
+    app.rebuild_panel();
+}
+
+fn sheet_status(app: &App) -> String {
+    let sheet = match app.state.art.find(&app.ui.selected_sheet) {
+        Some(s) => s,
+        None => return "no sheet".to_string(),
+    };
+    let layer = sheet
+        .layers
+        .get(app.ui.sheet_layer)
+        .map(|l| l.name.clone())
+        .unwrap_or_default();
+    [
+        sheet.name.clone(),
+        format!("{}x{}", sheet.w, sheet.h),
+        format!("frame {}/{}", active_frame(app) + 1, sheet.frame_count()),
+        format!("layer {} of {}", app.ui.sheet_layer + 1, sheet.layers.len()),
+        layer,
+        format!("{} fps", sheet.fps),
+        format!("{:.0}x zoom", app.viewport.zoom),
+        format!("{:.0} fps", app.fps),
+    ]
+    .iter()
+    .filter(|part| !part.is_empty())
+    .cloned()
+    .collect::<Vec<_>>()
+    .join("   ")
+}
+
 fn update_status(app: &App) {
     let status = match by_id("statusbar") {
         Some(n) => n,
         None => return,
     };
     let text = match app.mode {
+        Mode::Sprites => sheet_status(app),
         Mode::Settlement => match &app.settlement {
             Some(civ) if civ.ready => settlement_status(app, civ),
             _ => "growing the wilderness...".to_string(),

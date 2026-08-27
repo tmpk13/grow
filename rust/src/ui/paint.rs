@@ -24,6 +24,29 @@ pub trait Surface: 'static {
     fn set(&self, app: &mut App, x: i32, y: i32, v: u32);
     /// Once per stroke, after the pointer lifts.
     fn commit(&self, app: &mut App);
+    /// Where a pointer at these client coordinates lands in the buffer. The
+    /// default reads the element as though the buffer filled it exactly, which
+    /// is what an editor sitting in a panel does. A surface drawn through the
+    /// camera answers for itself.
+    fn locate(
+        &self,
+        app: &App,
+        canvas: &HtmlCanvasElement,
+        client_x: f64,
+        client_y: f64,
+    ) -> Option<(i32, i32)> {
+        let (w, h) = self.dims(app)?;
+        let r = canvas.get_bounding_client_rect();
+        if r.width() == 0.0 || r.height() == 0.0 {
+            return None;
+        }
+        let x = ((client_x - r.left()) / r.width() * w as f64).floor() as i32;
+        let y = ((client_y - r.top()) / r.height() * h as f64).floor() as i32;
+        if x < 0 || y < 0 || x >= w || y >= h {
+            return None;
+        }
+        Some((x, y))
+    }
     /// What the pick tool reads. The same as `get` for a surface with one
     /// buffer; a stack of layers answers with what is on show instead, because
     /// that is the color the pointer is over.
@@ -60,7 +83,10 @@ fn flood_fill(app: &mut App, s: &dyn Surface, x: i32, y: i32, value: u32) {
     }
 }
 
-fn apply(app: &mut App, s: &dyn Surface, cell: (i32, i32), erase: bool) {
+/// What the current tool does at one cell. Exported because the sprite editor
+/// draws on the stage, where the pointer is shared with the camera and the
+/// stroke is driven by whoever owns it rather than by `attach`.
+pub fn apply(app: &mut App, s: &dyn Surface, cell: (i32, i32), erase: bool) {
     match app.ui.tool {
         Tool::Pick => {
             let v = s.pick(app, cell.0, cell.1);
@@ -86,7 +112,9 @@ fn apply(app: &mut App, s: &dyn Surface, cell: (i32, i32), erase: bool) {
     }
 }
 
-fn stroke_line(app: &mut App, s: &dyn Surface, a: (i32, i32), b: (i32, i32), erase: bool) {
+/// The cells between two pointer positions, so a fast drag draws a line rather
+/// than a dotted one.
+pub fn stroke_line(app: &mut App, s: &dyn Surface, a: (i32, i32), b: (i32, i32), erase: bool) {
     let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs());
     for i in 1..=steps {
         let t = i as f64 / steps as f64;
@@ -94,26 +122,6 @@ fn stroke_line(app: &mut App, s: &dyn Surface, a: (i32, i32), b: (i32, i32), era
         let y = (a.1 as f64 + (b.1 - a.1) as f64 * t).round() as i32;
         apply(app, s, (x, y), erase);
     }
-}
-
-fn cell_at(
-    canvas: &HtmlCanvasElement,
-    app: &App,
-    s: &dyn Surface,
-    client_x: f64,
-    client_y: f64,
-) -> Option<(i32, i32)> {
-    let (w, h) = s.dims(app)?;
-    let r = canvas.get_bounding_client_rect();
-    if r.width() == 0.0 || r.height() == 0.0 {
-        return None;
-    }
-    let x = ((client_x - r.left()) / r.width() * w as f64).floor() as i32;
-    let y = ((client_y - r.top()) / r.height() * h as f64).floor() as i32;
-    if x < 0 || y < 0 || x >= w || y >= h {
-        return None;
-    }
-    Some((x, y))
 }
 
 /// Binds a canvas to a surface. The canvas keeps drawing itself through `draw`,
@@ -136,10 +144,9 @@ pub fn attach(canvas: &HtmlCanvasElement, h: &Handle, surface: Rc<dyn Surface>, 
             };
             let _ = canvas2.set_pointer_capture(pe.pointer_id());
             let mut sh = h2.borrow_mut();
-            let cell = cell_at(
-                &canvas2,
+            let cell = surface.locate(
                 &sh.app,
-                surface.as_ref(),
+                &canvas2,
                 pe.client_x() as f64,
                 pe.client_y() as f64,
             );
@@ -175,10 +182,9 @@ pub fn attach(canvas: &HtmlCanvasElement, h: &Handle, surface: Rc<dyn Surface>, 
                 None => return,
             };
             let mut sh = h2.borrow_mut();
-            let cell = match cell_at(
-                &canvas2,
+            let cell = match surface.locate(
                 &sh.app,
-                surface.as_ref(),
+                &canvas2,
                 pe.client_x() as f64,
                 pe.client_y() as f64,
             ) {
