@@ -194,6 +194,27 @@ const WILD_JOB: HarvestJob = HarvestJob {
     regrow: 0.35,
 };
 
+/// Being out after dark with no lamp in sight wears on somebody. Daylight, a
+/// roof and a lit street all settle it again; what is left is what decides
+/// whether they would rather spend their coin on a lamp post than keep it.
+fn tick_fear(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
+    let pcfg = &state.civ.people;
+    let dark = sim.daylight(state) < 0.35;
+    let exposed = dark && !sim.people[pi].indoors() && {
+        let (c, r) = (sim.people[pi].cell_col(), sim.people[pi].cell_row());
+        !sim.lit_at(c, r)
+    };
+    let p = &mut sim.people[pi];
+    // A hardy settler takes longer to be worn down: the same night is not the
+    // same night to everybody.
+    let nerve = 1.0 - p.traits.hardiness * 0.6;
+    p.fear = clamp01(if exposed {
+        p.fear + pcfg.fear_gain * nerve * dt
+    } else {
+        p.fear - pcfg.fear_ease * dt
+    });
+}
+
 pub fn update_person(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
     let pcfg = &state.civ.people;
     {
@@ -214,6 +235,10 @@ pub fn update_person(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
             return;
         }
     }
+
+    // What the dark is doing to them. Read before anything else moves, so it
+    // is about where they have been standing rather than where they end up.
+    tick_fear(sim, state, pi, dt);
 
     // Anyone at sea is the boat's problem until it ties up again.
     if sim.people[pi].aboard != 0 {

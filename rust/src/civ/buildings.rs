@@ -666,6 +666,9 @@ pub static BUILDINGS: &[BuildingDef] = &[
         label: "Lamp post",
         category: Category::Civic,
         structure: Structure::Lamp,
+        // Never planned by the town. A lamp goes up because somebody who has
+        // been walking home in the dark decides to pay for one.
+        planned: false,
         wall_h: 1.05,
         roof_h: 0.0,
         palette: Palette { wall: "mat-timber", roof: "mat-metal", trim: "mat-metal" },
@@ -919,6 +922,12 @@ pub struct BuildConfig {
     /// out of the housing stock, so a town that starts them all at once stops
     /// having children and then starves.
     pub max_home_rebuilds: i32,
+    /// Whether a settler who has come to dread the dark pays for a lamp post
+    /// outside their own house. Off leaves the town to plan them.
+    pub lamps_by_fear: bool,
+    /// Coin an owner puts up for one. The same for everybody, which is what
+    /// makes it the rich who light their street first.
+    pub lamp_coin: f64,
     /// Whether a crowded colony sends settlers out to found another.
     pub expeditions: bool,
     pub max_colonies: i32,
@@ -976,6 +985,8 @@ impl Default for BuildConfig {
             upgrade_scale: 1.0,
             upgrade_salvage: 0.35,
             max_home_rebuilds: 1,
+            lamps_by_fear: true,
+            lamp_coin: 5.0,
             expeditions: true,
             max_colonies: 4,
             expedition_interval: 1800.0,

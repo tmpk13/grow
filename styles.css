@@ -864,6 +864,10 @@ input[type="checkbox"] {
   background: #e2a4c8;
 }
 
+.bar-fill.calm {
+  background: #8fb8c8;
+}
+
 /* Who a settler knows, strongest feeling first either way. */
 .bonds {
   display: flex;

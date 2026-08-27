@@ -159,6 +159,16 @@ pub struct PeopleConfig {
     /// Needs are expressed per simulated second; a day is `day_length` seconds,
     /// so a hunger rate of 0.008 means half a day from a full meal to hungry.
     pub day_length: f64,
+    /// How fast the dark works on somebody walking home with no lamp in sight,
+    /// per second of it. Slow on purpose: this is a memory of nights, not a
+    /// mood, and the decision it feeds is taken once a day.
+    pub fear_gain: f64,
+    /// How fast it eases in daylight, indoors, or under a lamp. Slower still,
+    /// so a settler who is out most nights stays wary through the days.
+    pub fear_ease: f64,
+    /// Fear at which a settler with the coin for it pays for a lamp outside
+    /// their own house.
+    pub fear_to_light: f64,
     pub work_start: f64,
     pub work_end: f64,
     pub hunger_rate: f64,
@@ -201,6 +211,9 @@ impl Default for PeopleConfig {
             carry_capacity: 12.0,
             work_rate: 1.0,
             day_length: 120.0,
+            fear_gain: 0.004,
+            fear_ease: 0.0008,
+            fear_to_light: 0.6,
             work_start: 0.2,
             work_end: 0.8,
             hunger_rate: 0.008,
@@ -273,6 +286,10 @@ pub struct Person {
     pub aboard: i32,
     pub profession: Profession,
     pub carry: Carry,
+    /// How much the dark has come to worry this settler, from not at all to
+    /// enough to spend money on. It grows on nights spent walking home unlit
+    /// and eases in daylight, indoors, and under a lamp.
+    pub fear: f64,
     pub task: Option<Task>,
     pub path: Vec<(i32, i32)>,
     pub path_at: usize,
@@ -348,6 +365,7 @@ impl Person {
             aboard: 0,
             profession: Profession::Laborer,
             carry: Carry::default(),
+            fear: 0.0,
             task: None,
             path: Vec::new(),
             path_at: 0,

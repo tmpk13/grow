@@ -219,6 +219,20 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         work_num(h, "Smallest plant worth cutting", w.min_harvest_mass, 0.5, 20.0, 0.5, None, |c, v| c.min_harvest_mass = v),
     ]));
 
+    append(root, section("The dark", vec![
+        note("Walking home with no lamp in sight wears on somebody. Daylight, a roof and a lit \
+              street all settle it again. A settler frightened enough, and with the coin for it, \
+              pays for a lamp post outside their own house - the cost is the same for everybody, \
+              so it is the rich who light their street first."),
+        people_num(h, "Fear per second in the dark", p.fear_gain, 0.0, 0.05, 0.001,
+            Some("a memory of nights rather than a mood; less again for a hardy settler"),
+            |c, v| c.fear_gain = v),
+        people_num(h, "Fear eased per second", p.fear_ease, 0.0, 0.02, 0.0005,
+            Some("in daylight, indoors, or under a lamp"), |c, v| c.fear_ease = v),
+        people_num(h, "Frightened enough to pay", p.fear_to_light, 0.0, 1.0, 0.05, None,
+            |c, v| c.fear_to_light = v),
+    ]));
+
     append(root, section("Watering the fields", vec![
         note("A field dries out as it is worked. Damp ground within reach of a river or a lake \
               fills it back up on its own; anywhere else, whoever works the farm walks to the \
@@ -462,6 +476,11 @@ impl PeoplePanel {
             ("fed", 1.0 - p.hunger),
             ("rested", p.energy),
             ("content", p.happiness),
+            // Read the other way round from the rest: a full bar is somebody
+            // the dark is not working on, which is the good end. The label is
+            // one word because it is also the class the stylesheet colors it
+            // by.
+            ("calm", 1.0 - p.fear),
         ] {
             let _ = bars.append_child(
                 &el("div")

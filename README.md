@@ -555,6 +555,26 @@ was drawn in, which is the whole point of keeping it separately, and a button
 for clearing a stuck page is not a reason to lose it; a kept sheet goes when it
 is deleted from the sprite editor's Sheet tab.
 
+### Fear of the dark
+
+A town used to raise lamp posts the way it raised anything else: the planner
+decided it wanted one. It does not any more. Walking home after dark with no
+lamp in sight wears on a settler - slowly, and less on a hardy one - and
+daylight, a roof and a lit street all settle it again. What is left is a memory
+of nights rather than a mood, and it is what makes somebody would rather spend
+their coin on a lamp post outside where they sleep than keep it.
+
+The price is the same for everybody, which is the point: the settlers most
+afraid of the dark are the ones sleeping rough, and the ones who can act on it
+are the ones with money. A lamp goes up because a well off settler has had
+enough of the walk home, and the fear it was raised against comes down with it
+for everybody who passes under it. The Register shows how calm each settler is,
+and the smoke run reports the town's fear of the dark beside its lamps.
+
+Turning **Start over if everyone dies** and the rest of the settlement's
+switches aside, this is the one place a building is raised by a person rather
+than by a plan - the other being a house rebuilt one rung larger by its owner.
+
 ### Farms and water
 
 A farm's yield follows the fertility under its fields, and now also how wet

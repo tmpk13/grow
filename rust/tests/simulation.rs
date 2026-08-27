@@ -1395,3 +1395,142 @@ fn the_nearest_bank_is_somewhere_to_stand() {
     }
     assert!(touches, "and has to be able to reach the water from there");
 }
+
+// ---- fear of the dark ---------------------------------------------------
+
+/// A settlement stepped to a given hour of the day, so what the dark does can
+/// be watched without waiting for it.
+fn at_hour(hour: f64) -> (Settlement, State) {
+    let (mut sim, state) = peopled(48, 24);
+    let len = state.civ.people.day_length;
+    let want = len * (hour / 24.0);
+    sim.time = want;
+    (sim, state)
+}
+
+#[test]
+fn the_dark_works_on_somebody_out_in_it() {
+    let (mut sim, state) = at_hour(1.0);
+    assert!(sim.daylight(&state) < 0.35, "one in the morning should be dark");
+
+    // Somebody outdoors, away from any lamp, with nothing on.
+    let pi = sim.people.live_indices()[0];
+    sim.people[pi].step_outside();
+    sim.people[pi].fear = 0.0;
+    let (c, r) = (sim.people[pi].cell_col(), sim.people[pi].cell_row());
+    assert!(!sim.lit_at(c, r), "the founding party has no lamps yet");
+
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..200 {
+        sim.step(&state, dt);
+    }
+    let worried = sim.people.get(sim.people[pi].id).map(|p| p.fear).unwrap_or(0.0);
+    assert!(worried > 0.0, "a night out with no lamp should tell on somebody");
+}
+
+#[test]
+fn daylight_settles_it_again() {
+    let (mut sim, state) = at_hour(12.0);
+    assert!(sim.daylight(&state) > 0.35, "noon should be daylight");
+    for pi in sim.people.live_indices() {
+        sim.people[pi].fear = 1.0;
+    }
+    let pi = sim.people.live_indices()[0];
+    let id = sim.people[pi].id;
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..200 {
+        sim.step(&state, dt);
+    }
+    assert!(sim.people.get(id).expect("still on file").fear < 1.0, "daylight should ease it");
+}
+
+#[test]
+fn a_lit_street_is_as_good_as_daylight() {
+    let (mut sim, state) = at_hour(1.0);
+    let pi = sim.people.live_indices()[0];
+    sim.people[pi].step_outside();
+    let (c, r) = (sim.people[pi].cell_col(), sim.people[pi].cell_row());
+    // A lamp where they are standing.
+    let at = sim.free_spot_near(c, r).unwrap_or((c, r));
+    sim.place_building(&state, 0, "lamp", at.0, at.1, true).expect("a lamp went up");
+    assert!(sim.lit_at(c, r), "a lamp on top of somebody should light them");
+
+    sim.people[pi].fear = 0.5;
+    let id = sim.people[pi].id;
+    let before = sim.people[pi].fear;
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..100 {
+        sim.step(&state, dt);
+    }
+    let now = sim.people.get(id).expect("still on file");
+    if now.cell_col() == c && now.cell_row() == r {
+        assert!(now.fear <= before, "standing under a lamp should not make it worse");
+    }
+}
+
+#[test]
+fn a_frightened_owner_with_coin_pays_for_a_lamp() {
+    let (mut sim, state) = at_hour(1.0);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    // Long enough that somebody holds a deed.
+    for _ in 0..3000 {
+        sim.step(&state, dt);
+    }
+    let owner = sim.people.live_indices().into_iter().find(|&pi| sim.people[pi].owns != 0);
+    let owner = match owner {
+        Some(o) => o,
+        None => return,
+    };
+    let lamps = |sim: &Settlement| sim.buildings.iter().filter(|b| b.def.id == "lamp").count();
+    let before = lamps(&sim);
+
+    // The decision is taken once a day, so this has to see a day go by. Fear
+    // and coin are topped up through it: the point is what the town does with
+    // somebody frightened and able to pay, not how they got that way.
+    let price = state.civ.build.lamp_coin * state.civ.build.upgrade_scale;
+    let steps = (state.civ.people.day_length / dt) as usize * 3;
+    for _ in 0..steps {
+        sim.people[owner].coin = price * 3.0;
+        sim.people[owner].fear = 1.0;
+        sim.step(&state, dt);
+    }
+    assert!(lamps(&sim) > before, "a frightened owner with the coin should have paid for one");
+}
+
+#[test]
+fn fear_alone_buys_nothing() {
+    let (mut sim, state) = at_hour(1.0);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..3000 {
+        sim.step(&state, dt);
+    }
+    let before = sim.buildings.iter().filter(|b| b.def.id == "lamp").count();
+    // Everybody terrified and penniless: the cost is the same for everybody,
+    // which is what makes it the rich who light their street.
+    for pi in sim.people.live_indices() {
+        sim.people[pi].fear = 1.0;
+        sim.people[pi].coin = 0.0;
+    }
+    let steps = (state.civ.people.day_length / dt) as usize * 3;
+    for _ in 0..steps {
+        sim.step(&state, dt);
+        for pi in sim.people.live_indices() {
+            sim.people[pi].fear = 1.0;
+            sim.people[pi].coin = 0.0;
+        }
+    }
+    assert_eq!(
+        sim.buildings.iter().filter(|b| b.def.id == "lamp").count(),
+        before,
+        "nobody with nothing should have paid for anything"
+    );
+}
+
+#[test]
+fn the_town_no_longer_plans_lamps_itself() {
+    let lamp = grow::civ::buildings::BUILDINGS
+        .iter()
+        .find(|d| d.id == "lamp")
+        .expect("the catalog has a lamp");
+    assert!(!lamp.planned, "a lamp goes up because somebody wanted one, not because a town did");
+}

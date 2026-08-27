@@ -2750,6 +2750,38 @@
     "mode_label": "Settlement",
     "tab": "people",
     "tab_label": "People",
+    "group": "The dark",
+    "label": "Fear per second in the dark",
+    "hint": "a memory of nights rather than a mood; less again for a hardy settler",
+    "anchor": "fear-per-second-in-the-dark",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "The dark",
+    "label": "Fear eased per second",
+    "hint": "in daylight, indoors, or under a lamp",
+    "anchor": "fear-eased-per-second",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "The dark",
+    "label": "Frightened enough to pay",
+    "anchor": "frightened-enough-to-pay",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
     "group": "Watering the fields",
     "label": "Water used per second",
     "hint": "how fast working a field dries it out",

@@ -3,6 +3,12 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Lamps are raised by people rather than by plans. Walking home after dark with
+  no lamp in sight wears on a settler and daylight, a roof and a lit street
+  settle it again; a settler frightened enough, and with the coin for it, pays
+  for a lamp outside where they sleep. The price is the same for everybody, so
+  it is the well off who light their street, and the fear the lamp was raised
+  against comes down for everybody who passes under it.
 - Farms need water as well as workers. Working a field dries it out; damp
   ground near a river or lake fills it back up, and a farm out in the dry sends
   one worker at a time to the nearest bank with a bucket. A parched field is

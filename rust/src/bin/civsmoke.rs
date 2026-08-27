@@ -386,6 +386,21 @@ fn main() {
         standing(Structure::Stall)
     );
 
+    // How the dark is treating people, and what that has bought.
+    let lamps = sim.buildings.iter().filter(|b| b.def.id == "lamp").count();
+    let lit = sim.buildings.iter().filter(|b| b.def.id == "lamp" && b.built).count();
+    let living: Vec<f64> = sim.people.iter().map(|p| p.fear).collect();
+    let worst = living.iter().cloned().fold(0.0f64, f64::max);
+    let mean = if living.is_empty() {
+        0.0
+    } else {
+        living.iter().sum::<f64>() / living.len() as f64
+    };
+    println!(
+        "  lamps {lit} lit of {lamps}, fear of the dark {:.2} on average, {:.2} at worst",
+        mean, worst
+    );
+
     let mut bonds = 0usize;
     let mut friendships = 0usize;
     let mut feuds = 0usize;

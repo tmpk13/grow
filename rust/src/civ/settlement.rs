@@ -1516,6 +1516,102 @@ impl Settlement {
         }
     }
 
+    /// A settler who has come to dread the dark, and has the coin for it, pays
+    /// for a lamp post outside their own house.
+    ///
+    /// The cost is the same for everybody, which is the whole point: it is the
+    /// rich who light their street first, not the frightened. Fear is what
+    /// makes somebody want one; coin is what lets them have it.
+    fn light_by_fear(&mut self, state: &State, ci: usize) {
+        let cfg = &state.civ.build;
+        if !cfg.lamps_by_fear {
+            return;
+        }
+        let lamp = match building_by_id("lamp") {
+            Some(d) => d,
+            None => return,
+        };
+        if !lamp.base && !self.colonies[ci].unlocked.contains(lamp.id) {
+            return;
+        }
+        let colony = self.colonies[ci].id;
+        let want = state.civ.people.fear_to_light;
+        let price = cfg.lamp_coin * cfg.upgrade_scale;
+
+        let mut candidates: Vec<usize> = self
+            .people
+            .live_indices()
+            .into_iter()
+            .filter(|&pi| {
+                let p = &self.people[pi];
+                // Whoever sleeps under the roof, not only whoever holds the
+                // deed: the settlers the dark actually gets to are the ones
+                // walking home to somebody else's house.
+                p.colony == colony && p.home != 0 && p.fear >= want && p.coin >= price
+            })
+            .collect();
+        // The most frightened first, so a town that can only afford one post
+        // puts it where it is wanted most.
+        candidates.sort_by(|a, b| self.people[*b].fear.total_cmp(&self.people[*a].fear));
+
+        for pi in candidates {
+            let home = match self.building_index(self.people[pi].home) {
+                Some(bi) if self.buildings[bi].built => bi,
+                _ => continue,
+            };
+            // A house already on a lit street needs no second lamp, and the
+            // fear it was raised against goes with it.
+            let (hc, hr) = (self.buildings[home].col, self.buildings[home].row);
+            if self.lit_at(hc, hr) {
+                self.people[pi].fear = 0.0;
+                continue;
+            }
+            let at = match self.lamp_spot(state, home, lamp) {
+                Some(a) => a,
+                None => continue,
+            };
+            if self.place_building(state, ci, lamp.id, at.0, at.1, false).is_none() {
+                continue;
+            }
+            let paid = self.people[pi].spend(price);
+            self.colonies[ci].econ.coin += paid;
+            let day = self.day;
+            let name = self.people[pi].name.clone();
+            self.people[pi].fear = 0.0;
+            self.people[pi].log(day, "paid for a lamp post outside".to_string());
+            self.colonies[ci]
+                .econ
+                .log_event(format!("{name} paid for a lamp post"), day);
+            return;
+        }
+    }
+
+    /// Somewhere just outside a house to stand a lamp. Close in first, so the
+    /// post lights the door rather than the field behind it.
+    fn lamp_spot(&self, state: &State, home: usize, lamp: &BuildingDef) -> Option<(i32, i32)> {
+        let (col, row, w, h) = {
+            let b = &self.buildings[home];
+            (b.col, b.row, b.w, b.h)
+        };
+        let _ = state;
+        for ring in 1..=3 {
+            for dr in -ring..=h - 1 + ring {
+                for dc in -ring..=w - 1 + ring {
+                    let outside = dc < 0 || dr < 0 || dc >= w || dr >= h;
+                    let on_ring = dc == -ring || dr == -ring || dc == w - 1 + ring || dr == h - 1 + ring;
+                    if !outside || !on_ring {
+                        continue;
+                    }
+                    let (c, r) = (col + dc, row + dr);
+                    if crate::civ::planner::fits(self, lamp, c, r, 0, 0) {
+                        return Some((c, r));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Where the bigger house can stand. The old footprint is preferred, then
     /// the shifts that keep a corner of it, so a manor grows out of the house
     /// that was there rather than appearing across the road.
@@ -2340,6 +2436,7 @@ impl Settlement {
             self.match_couples(state, ci);
             self.population_tick(state, ci);
             self.upgrade_homes(state, ci);
+            self.light_by_fear(state, ci);
             self.open_stalls(state, ci);
             self.decay_food(state, ci);
             self.expedition_tick(state, ci);
@@ -3447,6 +3544,21 @@ impl Settlement {
 
     pub fn daylight(&self, state: &State) -> f64 {
         daylight(self.time, &state.civ.people)
+    }
+
+    /// Whether a lamp reaches this cell. Only built lamps count: a post going
+    /// up is not lighting anything yet.
+    pub fn lit_at(&self, col: i32, row: i32) -> bool {
+        self.buildings.iter().any(|b| {
+            if !b.built || b.def.light <= 0.0 {
+                return false;
+            }
+            let cx = b.col as f64 + b.w as f64 / 2.0;
+            let cy = b.row as f64 + b.h as f64 / 2.0;
+            let dx = col as f64 + 0.5 - cx;
+            let dy = row as f64 + 0.5 - cy;
+            dx * dx + dy * dy <= b.def.light * b.def.light
+        })
     }
 
     /// Windows are lit once it is dark enough to want them.
