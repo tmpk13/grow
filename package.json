@@ -8,6 +8,7 @@
     "build": "cd rust && cargo build --release --target wasm32-unknown-unknown --lib && wasm-bindgen target/wasm32-unknown-unknown/release/grow.wasm --out-dir ../pkg --target web --no-typescript",
     "index:menu": "bun run tools/menuindex.js",
     "index:terms": "cd tools/menu-terms && cargo run --release --quiet",
+    "index:made": "cd tools/menu-terms && cargo run --release --quiet -- --made --threshold 0.30",
     "dev": "bun run build && bun run serve.js",
     "start": "bun run serve.js",
     "test": "cd rust && cargo test --profile reltest",

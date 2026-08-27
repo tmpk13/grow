@@ -120,6 +120,12 @@ pub struct UiState {
     /// The corners a marquee was dragged between, in sheet pixels, kept raw so
     /// the anchor survives the drag. Read through `marquee_rect`.
     pub marquee: Option<(i32, i32, i32, i32)>,
+    /// What is typed into the picture panel's own search box, and its two
+    /// switches. How somebody is using that panel, not anything about the
+    /// project.
+    pub made_search: String,
+    pub made_all: bool,
+    pub made_meaning: bool,
     /// Sheets left out of the next zip. Empty means all of them, so a project
     /// that has just gained a sheet includes it without anybody saying so.
     pub zip_skip: Vec<String>,
@@ -672,6 +678,9 @@ pub fn start() -> Result<(), JsValue> {
         play_time: 0.0,
         move_people: false,
         marquee: None,
+        made_search: String::new(),
+        made_all: false,
+        made_meaning: false,
         zip_skip: Vec::new(),
         zip_frames: false,
         shade_preview_sampler: state

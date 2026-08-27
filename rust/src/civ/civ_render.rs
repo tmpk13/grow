@@ -470,21 +470,42 @@ pub fn made_box(world: &World, def: &crate::civ::buildings::BuildingDef) -> (i32
     (w, h)
 }
 
+/// `working` says somebody is at it right now, which is a state a picture can
+/// be drawn for. The caller works it out because it takes the clock, which a
+/// sprite has no business holding.
+#[allow(clippy::too_many_arguments)]
 pub fn building_sprite(
     cache: &mut SpriteCache,
     state: &State,
     world: &World,
     b: &Building,
     night: bool,
+    working: bool,
     detail: Detail,
 ) -> Rc<Sprite> {
-    // A picture stands in only for a finished building: what is half built is
-    // drawn rising out of the ground, which one image cannot say.
-    if b.built {
-        if let Some(clip) = state.civ.made.clip(b.def.id) {
-            let (w, h) = made_box(world, b.def);
-            return made_sprite(cache, clip, b.def.id, 0, w, h, 0, state.civ.made.rev);
-        }
+    // Which state to draw it in, most particular first. A building still
+    // going up only takes a picture if one was drawn for that: the generator
+    // draws a wall rising out of the ground, which the finished picture cannot
+    // say.
+    let want = if !b.built {
+        "site"
+    } else if night {
+        "night"
+    } else if working || b.occupants > 0 {
+        "working"
+    } else {
+        ""
+    };
+    let picked = if b.built {
+        state.civ.made.clip_in(b.def.id, want)
+    } else {
+        // No falling back to the finished picture for a site.
+        state.civ.made.slot_ready(&crate::civ::sprites::made_key(b.def.id, "site"))
+    };
+    if let Some(clip) = picked {
+        let (w, h) = made_box(world, b.def);
+        let key = crate::civ::sprites::made_key(b.def.id, want);
+        return made_sprite(cache, clip, &key, 0, w, h, 0, state.civ.made.rev);
     }
     let key = building_key(state, world, b, night, detail);
     if let Some(hit) = cache.map.get(&key) {
@@ -1049,9 +1070,11 @@ pub fn boat_sprite(
     let hull_w = ((world.cell_px as f64 * 1.5).round() as i32).max(4);
     let hull_h = ((world.cell_px as f64 * 0.4).round() as i32).max(2);
     let mast_h = ((world.cell_px as f64 * 1.1).round() as i32).max(3);
-    if let Some(clip) = state.civ.made.clip("boat") {
+    let want = if boat.cargo.iter().sum::<f64>() > 0.0 { "laden" } else { "" };
+    if let Some(clip) = state.civ.made.clip_in("boat", want) {
         let (w, h) = (hull_w, hull_h + mast_h);
-        return made_sprite(cache, clip, "boat", 0, w, h, w / 2, state.civ.made.rev);
+        let key = crate::civ::sprites::made_key("boat", want);
+        return made_sprite(cache, clip, &key, 0, w, h, w / 2, state.civ.made.rev);
     }
     let key = SpriteKey::Boat {
         seed: (boat.seed & 255) as u8,
@@ -1612,7 +1635,10 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                     continue;
                 }
                 let lit = night && detail.flourishes();
-                let sprite = building_sprite(&mut sprites, state, world, b, lit, detail);
+                // Stamped by whoever is at the bench; a couple of seconds of
+                // grace so the picture does not flicker between swings.
+                let busy = b.active > 0.0 && time - b.active < 2.0;
+                let sprite = building_sprite(&mut sprites, state, world, b, lit, busy, detail);
                 blit(&mut buf, world, &sprite, sx + sprite.ox, sy, false);
                 if detail.flourishes() {
                     draw_occupancy(&mut buf, world, b, sx + b.w * world.cell_px / 2, sy);

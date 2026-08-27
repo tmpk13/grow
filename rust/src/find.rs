@@ -25,6 +25,11 @@ pub const INDEX_JSON: &str = include_str!("../../assets/menu-index.json");
 /// way search works.
 pub const TERMS_JSON: &str = include_str!("../../assets/menu-terms.json");
 
+/// The same, for the picture slots in the Build panel. A separate table
+/// because it is a separate list of entries: a table points at what it was
+/// built against by position.
+pub const MADE_TERMS_JSON: &str = include_str!("../../assets/made-terms.json");
+
 /// Below this nothing is worth showing; a match this weak is noise.
 pub const FLOOR: f64 = 0.24;
 

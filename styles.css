@@ -1545,3 +1545,29 @@ kbd.key {
 .made-group > summary::-webkit-details-marker {
   display: none;
 }
+
+/* The search box over the picture slots, and its two switches. */
+.made-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0;
+}
+
+.made-search input[type="search"] {
+  flex: 1 1 8rem;
+  min-width: 0;
+  padding: 0.25rem 0.4rem;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.made-slot .field-label {
+  display: flex;
+  flex-direction: column;
+}

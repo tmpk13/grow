@@ -18,8 +18,9 @@ use web_sys::{
 
 use crate::app::{App, Handle};
 use crate::civ::sprites::{
-    guess_frames, made_slots, Clip, Frame, FromSheet, Motion, MAX_FRAMES, MOTIONS,
+    guess_frames, Clip, Frame, FromSheet, Motion, MAX_FRAMES, MOTIONS,
 };
+use crate::find::{Entry, Index, Search};
 use crate::ui::{
     app_bool, button, danger_button, document, el, input_el, note, number_field, on, section,
     select_field, NumOpts, Scope, Tap,
@@ -80,16 +81,18 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
     section("Settler sprites", rows)
 }
 
-/// Pictures for the things people make, grouped the way the catalog groups
-/// them and folded away: there are thirty odd slots and most projects will
-/// fill none of them.
+/// Pictures for the things people make, one per state of each. There are forty
+/// odd things and four states apiece, so the list is not simply shown: it is
+/// searched, and the whole of it is behind a switch.
 pub fn made_section(app: &App, h: &Handle) -> Element {
     let made = &app.state.civ.made;
     let mut rows = vec![
         note(
             "Buildings, walls, boats and the loads people carry are drawn out of the sampling \
              boxes unless there is a picture for them. A picture is scaled to the box the \
-             generator would have filled, so art and generated things stand together.",
+             generator would have filled, so art and generated things stand together. A thing \
+             with a picture for one state only is drawn from it in that state and generated the \
+             rest of the time.",
         ),
         app_bool(
             h,
@@ -101,39 +104,45 @@ pub fn made_section(app: &App, h: &Handle) -> Element {
                 app.sprites_changed();
             },
         ),
+        made_search(app, h),
     ];
 
-    let slots = made_slots();
-    let mut groups: Vec<&'static str> = slots.iter().map(|s| s.group).collect();
-    groups.dedup();
-    for group in groups {
-        let body = el("div").class("group-body").get();
-        let mut filled = 0;
-        for slot in slots.iter().filter(|s| s.group == group) {
-            let clip = made.slot(&slot.id);
-            if clip.is_some_and(|c| c.ready()) {
-                filled += 1;
+    let query = app.ui.made_search.clone();
+    // With nothing typed and the switch off, only what has been given a
+    // picture is listed: a wall of empty slots is not a menu.
+    let show_all = app.ui.made_all || !query.is_empty();
+    let list = el("div").class("group-body").get();
+    let (shown, hidden) = with_made_index(|index| {
+        let hits = index.search(Search {
+            query: &query,
+            by_meaning: app.ui.made_meaning,
+            here: ("", ""),
+            limit: if query.is_empty() { usize::MAX } else { 40 },
+        });
+        let (mut shown, mut hidden) = (0, 0);
+        for hit in hits {
+            let entry = &index.entries[hit.idx];
+            if !show_all && made.slot(&entry.anchor).is_none() {
+                hidden += 1;
+                continue;
             }
-            let _ = body.append_child(&made_row(app, h, slot));
+            shown += 1;
+            let _ = list.append_child(&made_row(app, h, entry));
         }
-        let head = if filled > 0 {
-            format!("{group} ({filled})")
+        (shown, hidden)
+    });
+    if shown == 0 {
+        rows.push(note(if query.is_empty() {
+            "Nothing has a picture yet. Turn on Every slot, or search for the thing you want one \
+             for."
         } else {
-            group.to_string()
-        };
-        rows.push(
-            el("details")
-                .class("group made-group")
-                .attr("data-group", group)
-                .child(
-                    &el("summary")
-                        .class("group-head")
-                        .child(&el("h3").text(&head).get())
-                        .get(),
-                )
-                .child(&body)
-                .get(),
-        );
+            "Nothing by that name."
+        }));
+    } else {
+        rows.push(list);
+    }
+    if hidden > 0 {
+        rows.push(note(&format!("{hidden} more without a picture, behind Every slot.")));
     }
 
     let bytes = made.bytes();
@@ -143,24 +152,89 @@ pub fn made_section(app: &App, h: &Handle) -> Element {
     section("Pictures for made things", rows)
 }
 
-/// One thing, its picture and the way to change it.
-fn made_row(app: &App, h: &Handle, slot: &crate::civ::sprites::MadeSlot) -> Element {
-    let id = slot.id.clone();
-    let clip = app.state.civ.made.slot(&id);
-    let key = Slot::Made(id.clone());
+/// The box that narrows the list, and the two switches beside it. None of this
+/// is the project, so none of it is recorded for undo.
+fn made_search(app: &App, h: &Handle) -> Element {
+    let box_ = input_el("search");
+    box_.set_value(&app.ui.made_search);
+    let _ = box_.set_attribute("placeholder", "Search the things");
+    {
+        let h2 = h.clone();
+        on(box_.unchecked_ref(), "input", Scope::Panel, move |e| {
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.made_search = crate::ui::value_of(&e);
+            sh.app.rebuild_panel();
+        });
+    }
+    let row = el("div").class("made-search").child(box_.unchecked_ref()).get();
+
+    let h2 = h.clone();
+    let _ = row.append_child(&crate::ui::toggle_button(
+        "Every slot",
+        app.ui.made_all,
+        Scope::Panel,
+        move |on| {
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.made_all = on;
+            sh.app.rebuild_panel();
+        },
+    ));
+    if with_made_index(|index| index.has_terms()) {
+        let h3 = h.clone();
+        let _ = row.append_child(&crate::ui::toggle_button(
+            "Meaning",
+            app.ui.made_meaning,
+            Scope::Panel,
+            move |on| {
+                let mut sh = h3.borrow_mut();
+                sh.app.ui.made_meaning = on;
+                sh.app.rebuild_panel();
+            },
+        ));
+    }
+    row
+}
+
+thread_local! {
+    /// Every thing and state as something the menu ranker can search. Built
+    /// once: the catalog does not change while the page is open.
+    static MADE_INDEX: Index = build_made_index();
+}
+
+fn with_made_index<R>(f: impl FnOnce(&Index) -> R) -> R {
+    MADE_INDEX.with(f)
+}
+
+fn build_made_index() -> Index {
+    let mut index = Index::new(crate::civ::sprites::made_entries());
+    if let Ok(terms) = serde_json::from_str::<crate::find::Terms>(crate::find::MADE_TERMS_JSON) {
+        index.set_terms(terms);
+    }
+    index
+}
+
+/// One thing in one state: its picture and the way to change it.
+fn made_row(app: &App, h: &Handle, entry: &Entry) -> Element {
+    let key = entry.anchor.clone();
+    let clip = app.state.civ.made.slot(&key);
     let row = el("div")
         .class("made-slot")
-        .attr("data-find", &crate::ui::slug(&slot.label))
-        .child(&el("span").class("field-label").text(&slot.label).get())
-        .child(&drop_zone(h, key, clip))
+        .attr("data-find", &crate::ui::slug(&entry.label))
+        .child(
+            &el("span")
+                .class("field-label")
+                .text(&entry.label)
+                .child(&el("span").class("field-hint").text(&entry.group).get())
+                .get(),
+        )
+        .child(&drop_zone(h, Slot::Made(key.clone()), clip))
         .get();
     if clip.is_some() {
         let h2 = h.clone();
-        let id2 = id.clone();
         let _ = row.append_child(&crate::ui::danger_button("Clear", Scope::Panel, move || {
             let mut sh = h2.borrow_mut();
             sh.app.record("made art", false);
-            sh.app.state.civ.made.clear(&id2);
+            sh.app.state.civ.made.clear(&key);
             sh.app.sprites_changed();
             sh.app.rebuild_panel();
         }));

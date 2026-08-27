@@ -22,6 +22,10 @@ use model2vec_rs::model::StaticModel;
 const MODEL: &str = "minishlab/potion-base-8M";
 
 struct Args {
+    /// Build the table for the picture slots in the Build panel instead of for
+    /// the menus. That list comes from the catalog rather than from a file, so
+    /// there is nothing to read in.
+    made: bool,
     index: PathBuf,
     out: PathBuf,
     model: String,
@@ -36,11 +40,15 @@ struct Args {
 fn main() -> Result<()> {
     let args = parse_args()?;
 
-    let raw = std::fs::read_to_string(&args.index)
-        .with_context(|| format!("reading {}", args.index.display()))?;
-    let entries: Vec<Entry> = serde_json::from_str(&raw).context("parsing the menu index")?;
+    let entries: Vec<Entry> = if args.made {
+        grow::civ::sprites::made_entries()
+    } else {
+        let raw = std::fs::read_to_string(&args.index)
+            .with_context(|| format!("reading {}", args.index.display()))?;
+        serde_json::from_str(&raw).context("parsing the menu index")?
+    };
     if entries.is_empty() {
-        anyhow::bail!("the menu index is empty; run tools/menuindex.js first");
+        anyhow::bail!("nothing to build a table for; run tools/menuindex.js first");
     }
     let index = Index::new(entries);
     eprintln!("{} entries, stamp {}", index.entries.len(), index.stamp());
@@ -182,6 +190,7 @@ fn parse_args() -> Result<Args> {
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let assets = here.join("../../assets");
     let mut args = Args {
+        made: false,
         index: assets.join("menu-index.json"),
         out: assets.join("menu-terms.json"),
         model: MODEL.to_string(),
@@ -193,6 +202,10 @@ fn parse_args() -> Result<Args> {
     while let Some(arg) = it.next() {
         let mut value = || it.next().with_context(|| format!("{arg} wants a value"));
         match arg.as_str() {
+            "--made" => {
+                args.made = true;
+                args.out = assets.join("made-terms.json");
+            }
             "--index" => args.index = value()?.into(),
             "--out" => args.out = value()?.into(),
             "--model" => args.model = value()?,
@@ -200,7 +213,7 @@ fn parse_args() -> Result<Args> {
             "--threshold" => args.threshold = value()?.parse().context("--threshold")?,
             "--top" => args.top = value()?.parse().context("--top")?,
             "-h" | "--help" => {
-                println!("menu-terms [--index P] [--out P] [--model ID|DIR] [--words P] [--threshold F] [--top N]");
+                println!("menu-terms [--made] [--index P] [--out P] [--model ID|DIR] [--words P] [--threshold F] [--top N]");
                 std::process::exit(0);
             }
             other => anyhow::bail!("unknown argument {other}"),

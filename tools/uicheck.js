@@ -468,13 +468,52 @@ if (!/people \d+/.test(civStats)) problems.push('settlement status line has no p
 // hunted for in a canvas.
 await page.click('.tab[data-tab="build"]');
 await page.waitForTimeout(600);
-const slotCount = await page.locator('.made-slot').count();
-if (slotCount < 30) problems.push(`only ${slotCount} things can be given a picture`);
-const homesHead = () => page.textContent('.made-group[data-group="Homes"] summary');
-if ((await homesHead()).includes('(')) problems.push('a picture is filled before anything was sent');
-await page.locator('.made-group').first().evaluate((n) => n.scrollIntoView());
+await page.locator('.made-search').evaluate((n) => n.scrollIntoView());
 await page.waitForTimeout(200);
 await page.screenshot({ path: `${outDir}/10e-made-slots.png` });
+
+// The list is searched rather than shown: forty odd things with four states
+// apiece is not a menu to scroll.
+if ((await page.locator('.made-slot').count()) !== 0) {
+  problems.push('picture slots are listed before anything is searched for or filled');
+}
+const madeLabels = () =>
+  page.$$eval('.made-slot .field-label', (n) => n.map((x) => x.firstChild.textContent.trim()));
+await page.fill('.made-search input', 'smithy');
+await page.waitForTimeout(400);
+const smithy = await madeLabels();
+if (smithy.length < 2 || !smithy[0].startsWith('Smithy')) {
+  problems.push(`searching the pictures for "smithy" gave ${JSON.stringify(smithy.slice(0, 3))}`);
+}
+if (!smithy.some((l) => l.includes('after dark'))) {
+  problems.push('a thing offers no picture for after dark');
+}
+await page.screenshot({ path: `${outDir}/10g-made-search.png` });
+// Meaning, if a table was built for this list.
+if ((await page.locator('.made-search .btn.toggle:has-text("Meaning")').count()) > 0) {
+  await page.fill('.made-search input', 'lantern');
+  await page.waitForTimeout(300);
+  if ((await madeLabels()).length !== 0) {
+    problems.push('"lantern" is spelled like nothing here and should find nothing by letters');
+  }
+  await page.click('.made-search .btn.toggle:has-text("Meaning")');
+  await page.waitForTimeout(400);
+  const meant = await madeLabels();
+  if (!meant.some((l) => l.startsWith('Lamp post'))) {
+    problems.push(`"lantern" by meaning gave ${JSON.stringify(meant.slice(0, 3))}`);
+  }
+  console.log(`made pictures: lantern -> ${meant[0]}`);
+  await page.click('.made-search .btn.toggle:has-text("Meaning")');
+}
+await page.fill('.made-search input', '');
+await page.waitForTimeout(300);
+await page.click('.made-search .btn.toggle:has-text("Every slot")');
+await page.waitForTimeout(700);
+if ((await page.locator('.made-slot').count()) < 100) {
+  problems.push('Every slot did not list them all');
+}
+await page.click('.made-search .btn.toggle:has-text("Every slot")');
+await page.waitForTimeout(400);
 
 await page.click('.mode[data-mode="sprites"]');
 await page.waitForTimeout(800);
@@ -491,8 +530,10 @@ await page.click('.mode[data-mode="settlement"]');
 await page.waitForTimeout(3000);
 await page.click('.tab[data-tab="build"]');
 await page.waitForTimeout(600);
-if (!(await homesHead()).includes('(1)')) {
-  problems.push(`the homes group reads "${(await homesHead()).trim()}" after filling one`);
+await page.fill('.made-search input', 'hut');
+await page.waitForTimeout(400);
+if ((await page.locator('.made-slot .btn.danger').count()) === 0) {
+  problems.push('the hut has no picture after one was sent to it');
 }
 const picturesOn = await page.evaluate(() => {
   const label = [...document.querySelectorAll('#panel-body .field-label')].find((n) =>
@@ -503,11 +544,13 @@ const picturesOn = await page.evaluate(() => {
 if (picturesOn !== true) problems.push('sending a picture did not turn pictures on');
 await page.screenshot({ path: `${outDir}/10f-made-filled.png` });
 // Clear it again, so the rest of the run looks like the rest of the run.
-await page.click('.made-group[data-group="Homes"] summary');
-await page.waitForTimeout(200);
-await page.click('.made-slot[data-find="hut"] .btn.danger');
+await page.click('.made-slot .btn.danger');
 await page.waitForTimeout(500);
-if ((await homesHead()).includes('(')) problems.push('clearing a picture left it filled');
+if ((await page.locator('.made-slot .btn.danger').count()) !== 0) {
+  problems.push('clearing a picture left it filled');
+}
+await page.fill('.made-search input', '');
+await page.waitForTimeout(300);
 
 // Foliage over a settler: three ways, and the amount only shows for the one it
 // means anything for.

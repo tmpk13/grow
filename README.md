@@ -318,17 +318,29 @@ warms, and where the friendship and feud lines sit.
 
 **Pictures for made things.** Buildings, walls, gates, stalls, boats and the
 loads people carry are all drawn out of the sampling boxes unless there is a
-picture for them. Under **Pictures for made things** in the Build panel there
-is a slot per thing - one per catalog entry, plus the boat and one per resource
-in hand - grouped the way the catalog groups them and folded away. Drop images
-on a slot, or send a sheet to one from the sprite editor with **Use for that**.
+picture for them. **Pictures for made things** in the Build panel has a slot
+per thing per state: one per catalog entry, plus the boat and one per resource
+in hand, each of them offering *Always*, *Going up*, *With somebody at it* and
+*After dark* - a boat offers *Carrying cargo* instead, and a load in hand is
+only ever itself. Drop images on a slot, or send a sheet to one from the sprite
+editor with **Use for that**.
+
+A thing with a picture for one state only is drawn from it in that state and
+generated the rest of the time, the way a settler motion with nothing on it
+borrows from a related one. A building still going up is the exception in the
+other direction: it never falls back to the finished picture, because one image
+cannot say how far a wall has got.
 
 A picture is scaled to the box the generator would have filled: as wide as the
 footprint, as tall as the walls and roof over the depth of it, standing on the
-front edge, so art and generated things stand together on the same map. A
-building that is still going up keeps the generated drawing, because one image
-cannot say how far a wall has got. **Draw made things from pictures** turns the
-lot off without losing any of them.
+front edge, so art and generated things stand together on the same map. **Draw
+made things from pictures** turns the lot off without losing any of them.
+
+That is a hundred and thirty slots, so the list is searched rather than shown.
+The box over it runs the same ranking the menu search does, over its own index
+and its own meaning table: with nothing typed only what has a picture is
+listed, **Every slot** shows the rest, and **Meaning** finds the lamp post from
+"lantern" and the inn from "tavern".
 
 **Foliage over people.** A settler walking behind a bush is behind it, which is
 right and also makes them hard to follow through a wood. **Foliage over people**
@@ -698,12 +710,15 @@ After changing a panel:
 ```sh
 bun run build && bun run index:menu && bun run build   # re-read the menus
 bun run index:terms                                    # only if the menus moved
+bun run index:made                                     # only if the catalog moved
 ```
 
 `index:menu` reads the built page, so it wants a build before it and a build
-after it, the second to bake the new index in. `index:terms` needs the
-embedding model, which it downloads once and caches; it prints nothing the app
-depends on, and skipping it costs only the Meaning switch.
+after it, the second to bake the new index in. `index:terms` and `index:made`
+need the embedding model, which they download once and cache; they print
+nothing the app depends on, and skipping them costs only the Meaning switches.
+`index:made` builds its list out of the catalog rather than out of a file, so
+it needs no harvest first - only a rerun when a building is added.
 
 `civsmoke` founds a settlement, runs it for the given number of days and checks
 the bookkeeping: no building on water or off its own footprint, no worker a

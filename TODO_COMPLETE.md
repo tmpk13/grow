@@ -3,6 +3,12 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- A picture per state of every made thing: Always, Going up, With somebody at
+  it, After dark, and Carrying cargo for a boat. A thing with a picture for one
+  state only is drawn from it in that state and generated the rest of the time.
+  The hundred and thirty slots are searched rather than listed, using the same
+  ranking the menus use over an index and a meaning table of their own, behind
+  an Every slot switch.
 - Lamps are raised by people rather than by plans. Walking home after dark with
   no lamp in sight wears on a settler and daylight, a roof and a lit street
   settle it again; a settler frightened enough, and with the coin for it, pays
