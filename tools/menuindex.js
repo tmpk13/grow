@@ -110,6 +110,26 @@ for (const { id: mode, label: modeLabel } of modes) {
   // thread; nothing is in the panel until it is done.
   await page.waitForTimeout(mode === 'settlement' ? 3000 : 400);
 
+  // The view menu sits beside the tabs and belongs to the mode, not to any one
+  // of them, so it is read once per mode.
+  entries.push(
+    ...(await page.evaluate(
+      ([mode, modeLabel]) =>
+        [...document.querySelectorAll('#view-body [data-find]')].map((node) => ({
+          mode,
+          mode_label: modeLabel,
+          tab: '',
+          tab_label: '',
+          group: 'View',
+          label: node.textContent.trim(),
+          hint: node.getAttribute('title') || '',
+          anchor: node.getAttribute('data-find'),
+          kind: 'view',
+        })),
+      [mode, modeLabel],
+    )),
+  );
+
   const tabs = await page.$$eval('#tabs .tab', (nodes) =>
     nodes.map((n) => ({ id: n.getAttribute('data-tab'), label: n.textContent.trim() })),
   );

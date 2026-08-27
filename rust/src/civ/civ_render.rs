@@ -19,6 +19,7 @@ use std::rc::Rc;
 
 use crate::civ::boats::Boat;
 use crate::civ::buildings::{Grain, Structure};
+use crate::civ::config::ViewConfig;
 use crate::civ::people::Person;
 use crate::civ::settlement::{Building, Rect, Settlement};
 use crate::civ::sprites::{motion_of, Clip, Motion};
@@ -1584,10 +1585,14 @@ fn draw_person_dot(buf: &mut [u32], world: &World, p: &Person, sx: i32, sy: i32,
 }
 
 /// Where a building label belongs on screen, in world pixels, and what it says.
-pub fn building_labels(sim: &Settlement) -> Vec<(f64, f64, String)> {
+/// Every building label the view is asking for. Filtered here rather than at
+/// the drawing end so a map walled all the way round costs nothing for the
+/// hundred palisade labels nobody wanted.
+pub fn building_labels(sim: &Settlement, view: &ViewConfig) -> Vec<(f64, f64, String)> {
     let world = sim.world();
     sim.buildings
         .iter()
+        .filter(|b| view.label_on(Some(b.def.category)))
         .map(|b| {
             let x = (b.col * world.cell_px) as f64 + (b.w * world.cell_px) as f64 / 2.0;
             let y = (world.sky_px + (b.row + b.h) * world.depth_px) as f64;

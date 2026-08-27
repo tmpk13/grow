@@ -92,8 +92,8 @@ await page.waitForTimeout(800);
 await page.screenshot({ path: `${outDir}/05-shared-grid.png` });
 
 // Overlays on, then resize the world from the World panel (restarts the sim).
-await page.locator('.toolbar-row input[type=checkbox]').first().check();
-await page.locator('.toolbar-row input[type=checkbox]').last().check();
+await page.click('#view-body [data-find="grid"]');
+await page.click('#view-body [data-find="occupancy"]');
 await page.waitForTimeout(500);
 await page.screenshot({ path: `${outDir}/07-overlays.png` });
 
@@ -246,6 +246,41 @@ const civStats = await page.evaluate(() => document.getElementById('statusbar').
 console.log(`settlement status: ${civStats}`);
 if (!/people \d+/.test(civStats)) problems.push('settlement status line has no population');
 
+// The view menu: what the stage draws over the map is in the side panel now,
+// and the label switches are one per category with walls on their own.
+const pressed = (find) =>
+  page.evaluate((f) => {
+    const node = document.querySelector(`#view-body [data-find="${f}"]`);
+    return node ? node.getAttribute('aria-pressed') : null;
+  }, find);
+const press = (find) => page.click(`#view-body [data-find="${find}"]`);
+
+if (await page.evaluate(() => /Occupancy|Labels/.test(document.getElementById('stage-toolbar').textContent))) {
+  problems.push('the view switches are still in the stage toolbar');
+}
+if ((await pressed('labels')) !== 'false') problems.push('labels should start off');
+if ((await pressed('walls-and-gates')) !== 'false') problems.push('wall labels should start off');
+await press('labels');
+await page.waitForTimeout(150);
+if ((await pressed('labels')) !== 'true') problems.push('the labels toggle did not press');
+await press('all');
+await page.waitForTimeout(200);
+for (const kind of ['homes', 'stores', 'gathering', 'crafts', 'civic', 'walls-and-gates', 'town-names']) {
+  if ((await pressed(kind)) !== 'true') problems.push(`All left ${kind} off`);
+}
+if ((await pressed('all')) !== 'true') problems.push('All did not read as pressed once every kind was on');
+await page.waitForTimeout(600);
+await page.screenshot({ path: `${outDir}/11d-labels-all.png` });
+// Walls back off on their own: a ring of palisade is a hundred labels.
+await press('walls-and-gates');
+await page.waitForTimeout(200);
+if ((await pressed('walls-and-gates')) !== 'false') problems.push('turning wall labels off did not take');
+if ((await pressed('all')) !== 'false') problems.push('All still read as pressed with a kind turned off');
+if ((await pressed('homes')) !== 'true') problems.push('turning walls off took the other kinds with it');
+await page.screenshot({ path: `${outDir}/11e-labels-some.png` });
+await press('labels');
+await page.waitForTimeout(150);
+
 // Moving people: with the switch on, a press on a settler picks them up and
 // the pointer carries them until it is let go. Where the settlers are on
 // screen is not knowable from out here, so the stage is swept from inside the
@@ -255,6 +290,12 @@ await page.click('#move-people');
 await page.waitForTimeout(200);
 if (!(await page.evaluate(() => document.body.classList.contains('moving-people')))) {
   problems.push('the move people switch did not change what a press on the stage does');
+}
+if (
+  (await page.evaluate(() => document.getElementById('move-people').getAttribute('aria-pressed'))) !==
+  'true'
+) {
+  problems.push('the move people button does not show that it is on');
 }
 const sweepStage = () => page.evaluate(() => {
   const canvas = document.getElementById('world-canvas');

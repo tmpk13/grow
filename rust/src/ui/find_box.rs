@@ -12,12 +12,27 @@ use wasm_bindgen::JsCast;
 use web_sys::{Element, Event, HtmlElement, HtmlInputElement};
 
 use crate::app::{self, Handle, Mode};
-use crate::find::{Entry, Hit, Index};
+use crate::find::{Entry, Hit, Index, Search};
 use crate::ui::{by_id, clear, document, el, on, Scope};
 
 /// How many rows the list shows. Long enough to hold the answer, short enough
 /// to read without scrolling past the fold.
 const LIMIT: usize = 12;
+
+/// Which mode and tab are showing, read out of the page rather than out of the
+/// app. Search runs from listeners that fire while a panel is mid-borrow, and
+/// the buttons carry the ids anyway.
+fn here() -> (String, String) {
+    let of = |selector: &str, attr: &str| {
+        document()
+            .query_selector(selector)
+            .ok()
+            .flatten()
+            .and_then(|n| n.get_attribute(attr))
+            .unwrap_or_default()
+    };
+    (of("#modes .mode.active", "data-mode"), of("#tabs .tab.active", "data-tab"))
+}
 
 thread_local! {
     static INDEX: RefCell<Option<Index>> = const { RefCell::new(None) };
@@ -184,8 +199,14 @@ fn refresh() {
         .map(|i| i.checked())
         .unwrap_or(false);
 
+    let (mode, tab) = here();
     let rows = with_index(|index| {
-        let hits = index.search(&query, by_meaning, LIMIT);
+        let hits = index.search(Search {
+            query: &query,
+            by_meaning,
+            here: (&mode, &tab),
+            limit: LIMIT,
+        });
         hits.iter()
             .map(|hit| (*hit, index.entries[hit.idx].clone()))
             .collect::<Vec<_>>()
@@ -259,14 +280,21 @@ fn reveal(anchor: &str) {
     if anchor.is_empty() {
         return;
     }
-    let selector = if let Some(id) = anchor.strip_prefix('#') {
-        format!("#{id}")
+    let node = if let Some(id) = anchor.strip_prefix('#') {
+        document().query_selector(&format!("#{id}")).ok().flatten()
     } else {
-        format!("#panel-body [data-find=\"{anchor}\"]")
+        // The panel first, because a control in the panel is what most of the
+        // index is; the view menu and the toolbar keep their stamps too.
+        let stamped = format!("[data-find=\"{anchor}\"]");
+        document()
+            .query_selector(&format!("#panel-body {stamped}"))
+            .ok()
+            .flatten()
+            .or_else(|| document().query_selector(&stamped).ok().flatten())
     };
-    let node = match document().query_selector(&selector) {
-        Ok(Some(n)) => n,
-        _ => return,
+    let node = match node {
+        Some(n) => n,
+        None => return,
     };
     if let Some(old) = document().query_selector(".found").ok().flatten() {
         let _ = old.class_list().remove_1("found");

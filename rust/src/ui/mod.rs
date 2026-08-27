@@ -30,6 +30,7 @@ pub mod species_panel;
 pub mod sprite_drop;
 pub mod sprite_store;
 pub mod tech_panel;
+pub mod view_menu;
 pub mod world_panel;
 
 pub fn window() -> Window {
@@ -61,6 +62,9 @@ pub enum Scope {
     Toolbar,
     Panel,
     List,
+    /// The view menu in the side panel, which outlives a tab change but is
+    /// rebuilt whenever one of its own switches changes what the rest show.
+    View,
 }
 
 /// A listener, kept alive for as long as the node it is attached to.
@@ -71,6 +75,7 @@ thread_local! {
     static TOOLBAR_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
     static PANEL_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
     static LIST_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
+    static VIEW_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
 }
 
 fn with_bag<R>(scope: Scope, f: impl FnOnce(&mut Vec<Listener>) -> R) -> R {
@@ -79,6 +84,7 @@ fn with_bag<R>(scope: Scope, f: impl FnOnce(&mut Vec<Listener>) -> R) -> R {
         Scope::Toolbar => TOOLBAR_BAG.with(|b| f(&mut b.borrow_mut())),
         Scope::Panel => PANEL_BAG.with(|b| f(&mut b.borrow_mut())),
         Scope::List => LIST_BAG.with(|b| f(&mut b.borrow_mut())),
+        Scope::View => VIEW_BAG.with(|b| f(&mut b.borrow_mut())),
     }
 }
 
@@ -473,6 +479,30 @@ pub fn button(text: &str, scope: Scope, mut on_click: impl FnMut() + 'static) ->
         .text(text)
         .on("click", scope, move |_| on_click())
         .get()
+}
+
+/// A button that stays pressed. Used where a checkbox beside a word would be
+/// a switch you have to read to know the state of: this one you can see.
+pub fn toggle_button(
+    text: &str,
+    pressed: bool,
+    scope: Scope,
+    mut on_click: impl FnMut(bool) + 'static,
+) -> Element {
+    let button = el("button")
+        .class("btn toggle")
+        .attr("type", "button")
+        .attr("aria-pressed", if pressed { "true" } else { "false" })
+        .attr("data-find", &slug(text))
+        .text(text)
+        .get();
+    let node = button.clone();
+    on(button.unchecked_ref::<EventTarget>(), "click", scope, move |_| {
+        let next = node.get_attribute("aria-pressed").as_deref() != Some("true");
+        let _ = node.set_attribute("aria-pressed", if next { "true" } else { "false" });
+        on_click(next);
+    });
+    button
 }
 
 pub fn danger_button(text: &str, scope: Scope, mut on_click: impl FnMut() + 'static) -> Element {

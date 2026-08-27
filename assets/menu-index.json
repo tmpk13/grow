@@ -2,6 +2,22 @@
   {
     "mode": "lab",
     "mode_label": "Plant lab",
+    "group": "View",
+    "label": "Grid",
+    "anchor": "grid",
+    "kind": "view"
+  },
+  {
+    "mode": "lab",
+    "mode_label": "Plant lab",
+    "group": "View",
+    "label": "Occupancy",
+    "anchor": "occupancy",
+    "kind": "view"
+  },
+  {
+    "mode": "lab",
+    "mode_label": "Plant lab",
     "tab": "materials",
     "tab_label": "Materials",
     "label": "Materials",
@@ -1042,6 +1058,22 @@
   {
     "mode": "sprites",
     "mode_label": "Sprite editor",
+    "group": "View",
+    "label": "Grid",
+    "anchor": "grid",
+    "kind": "view"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "group": "View",
+    "label": "Occupancy",
+    "anchor": "occupancy",
+    "kind": "view"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
     "tab": "draw",
     "tab_label": "Draw",
     "label": "Draw",
@@ -1441,6 +1473,94 @@
     "label": "Keep these now",
     "anchor": "keep-these-now",
     "kind": "button"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Grid",
+    "anchor": "grid",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Occupancy",
+    "anchor": "occupancy",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Labels",
+    "anchor": "labels",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "All",
+    "anchor": "all",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Homes",
+    "anchor": "homes",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Stores",
+    "anchor": "stores",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Gathering",
+    "anchor": "gathering",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Crafts",
+    "anchor": "crafts",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Civic",
+    "anchor": "civic",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Walls and gates",
+    "anchor": "walls-and-gates",
+    "kind": "view"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "group": "View",
+    "label": "Town names",
+    "anchor": "town-names",
+    "kind": "view"
   },
   {
     "mode": "settlement",

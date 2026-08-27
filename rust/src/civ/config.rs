@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::civ::boats::BoatConfig;
-use crate::civ::buildings::BuildConfig;
+use crate::civ::buildings::{BuildConfig, Category};
 use crate::civ::economy::EconomyConfig;
 use crate::civ::people::PeopleConfig;
 use crate::civ::resources::{stock_map, Res, Stock, RES_COUNT};
@@ -111,7 +111,19 @@ pub struct ViewConfig {
     pub paths: bool,
     pub deposits: bool,
     pub people: bool,
+    /// The master switch for every label over the map. The per category
+    /// switches below hang off it, so turning names off is one click and
+    /// turning them back on restores whatever was showing before.
     pub labels: bool,
+    pub label_homes: bool,
+    pub label_stores: bool,
+    pub label_gather: bool,
+    pub label_craft: bool,
+    pub label_civic: bool,
+    /// Walls and the gates through them, which are the labels most worth
+    /// turning off on their own: a ring of palisade is a hundred of them.
+    pub label_walls: bool,
+    pub label_towns: bool,
     pub smoke: bool,
     pub water_top: String,
     pub water_deep: String,
@@ -128,6 +140,59 @@ pub struct ViewConfig {
     pub cull: bool,
 }
 
+/// The label switches, in the order they are shown. `None` is the town names,
+/// which are not a building category but read as one in the menu.
+pub const LABEL_KINDS: [(Option<Category>, &str); 7] = [
+    (Some(Category::Home), "Homes"),
+    (Some(Category::Store), "Stores"),
+    (Some(Category::Gather), "Gathering"),
+    (Some(Category::Craft), "Crafts"),
+    (Some(Category::Civic), "Civic"),
+    (Some(Category::Defense), "Walls and gates"),
+    (None, "Town names"),
+];
+
+impl ViewConfig {
+    /// Whether labels of this kind are drawn. Every kind is off while the
+    /// master switch is, so one click clears the map.
+    pub fn label_on(&self, kind: Option<Category>) -> bool {
+        self.labels && self.label_flag(kind)
+    }
+
+    /// The kind's own switch, ignoring the master one. This is what the menu
+    /// shows, so a checkbox does not appear to clear itself when labels are
+    /// turned off as a whole.
+    pub fn label_flag(&self, kind: Option<Category>) -> bool {
+        match kind {
+            Some(Category::Home) => self.label_homes,
+            Some(Category::Store) => self.label_stores,
+            Some(Category::Gather) => self.label_gather,
+            Some(Category::Craft) => self.label_craft,
+            Some(Category::Civic) => self.label_civic,
+            Some(Category::Defense) => self.label_walls,
+            None => self.label_towns,
+        }
+    }
+
+    pub fn set_label(&mut self, kind: Option<Category>, on: bool) {
+        let slot = match kind {
+            Some(Category::Home) => &mut self.label_homes,
+            Some(Category::Store) => &mut self.label_stores,
+            Some(Category::Gather) => &mut self.label_gather,
+            Some(Category::Craft) => &mut self.label_craft,
+            Some(Category::Civic) => &mut self.label_civic,
+            Some(Category::Defense) => &mut self.label_walls,
+            None => &mut self.label_towns,
+        };
+        *slot = on;
+    }
+
+    /// Whether every kind is showing, which is what the All switch reads.
+    pub fn all_labels(&self) -> bool {
+        LABEL_KINDS.iter().all(|(kind, _)| self.label_flag(*kind))
+    }
+}
+
 impl Default for ViewConfig {
     fn default() -> Self {
         ViewConfig {
@@ -136,6 +201,13 @@ impl Default for ViewConfig {
             deposits: true,
             people: true,
             labels: false,
+            label_homes: true,
+            label_stores: true,
+            label_gather: true,
+            label_craft: true,
+            label_civic: true,
+            label_walls: false,
+            label_towns: true,
             smoke: true,
             water_top: "#2b4f63".into(),
             water_deep: "#16303f".into(),

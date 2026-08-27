@@ -3,6 +3,17 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- View menu: Grid, Occupancy and the label switches left the top bar for a
+  fold-out block in the side panel, reachable from any tab of the mode. Labels
+  are one switch per building category with walls and gates on their own and an
+  All that sets the lot; the master switch clears the map without forgetting
+  what was showing.
+- Move people is a toggle button that stays pressed, not a checkbox beside a
+  word.
+- Menu search ranks what is on the screen first: a match in the mode you are in
+  beats the same match elsewhere, and one on the tab you are on beats the rest
+  of the mode. The nudge is small enough that it can only settle a tie, never
+  lift a weak match over a better one somewhere else.
 - Menu search: a box in the top bar, `/` from anywhere, that ranks every
   control in every panel of every mode and takes you to the one you pick,
   switching mode and tab, scrolling to it and flashing it. Fuzzy by default,

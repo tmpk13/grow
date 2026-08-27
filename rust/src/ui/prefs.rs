@@ -31,11 +31,13 @@ pub struct Prefs {
     /// Keep a copy of every sheet in the sprite store as the project saves, so
     /// art outlives the project it was drawn in.
     pub keep_sprites: bool,
+    /// The view menu in the side panel is unfolded.
+    pub view_open: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { collapsed: false, scale: 1.0, keep_sprites: true }
+        Prefs { collapsed: false, scale: 1.0, keep_sprites: true, view_open: true }
     }
 }
 

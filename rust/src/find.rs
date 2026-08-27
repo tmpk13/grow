@@ -28,6 +28,15 @@ pub const TERMS_JSON: &str = include_str!("../../assets/menu-terms.json");
 /// Below this nothing is worth showing; a match this weak is noise.
 pub const FLOOR: f64 = 0.24;
 
+/// How many rows a search hands back when nobody says otherwise.
+pub const DEFAULT_LIMIT: usize = 12;
+
+/// What being on the screen already is worth. Small on purpose: it settles
+/// which of two equally good matches comes first, and it does not let a hint
+/// match on this tab climb over a label match on another one.
+const NEAR_MODE: f64 = 0.06;
+const NEAR_TAB: f64 = 0.04;
+
 /// One place somebody can be sent: a control in a panel, a tab, or a fixed
 /// button in the chrome that is there whatever mode is showing.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -71,6 +80,36 @@ impl Entry {
             .map(|p| p.as_str())
             .collect::<Vec<_>>()
             .join(" / ")
+    }
+}
+
+/// One search. Everything but the query has a sensible nothing, so a caller
+/// with no context can leave it out and still get the plain ranking.
+#[derive(Clone, Copy, Debug)]
+pub struct Search<'a> {
+    pub query: &'a str,
+    /// Fold in the offline meaning table as well as the letters typed.
+    pub by_meaning: bool,
+    /// The mode and tab showing right now. Matches there are nudged up: what
+    /// somebody is looking at is the likeliest thing they mean.
+    pub here: (&'a str, &'a str),
+    pub limit: usize,
+}
+
+impl<'a> Search<'a> {
+    pub fn new(query: &'a str) -> Search<'a> {
+        Search { query, ..Search::default() }
+    }
+
+    pub fn from(mut self, mode: &'a str, tab: &'a str) -> Search<'a> {
+        self.here = (mode, tab);
+        self
+    }
+}
+
+impl Default for Search<'_> {
+    fn default() -> Self {
+        Search { query: "", by_meaning: false, here: ("", ""), limit: DEFAULT_LIMIT }
     }
 }
 
@@ -176,25 +215,31 @@ impl Index {
         self.terms.is_some()
     }
 
-    /// Ranks the whole index for `query`, best first. An empty query yields
-    /// every entry in index order, so the box with nothing typed in it is a
-    /// browsable outline of the menus rather than a blank.
+    /// Ranks the whole index, best first. An empty query yields every entry in
+    /// index order, so the box with nothing typed in it is a browsable outline
+    /// of the menus rather than a blank.
     ///
     /// `by_meaning` turns on the offline table; with no table loaded it is
     /// ignored and the ranking is the fuzzy one.
-    pub fn search(&self, query: &str, by_meaning: bool, limit: usize) -> Vec<Hit> {
-        let words = query_words(query);
+    pub fn search(&self, s: Search) -> Vec<Hit> {
+        let words = query_words(s.query);
         if words.is_empty() {
-            return self
-                .entries
-                .iter()
-                .enumerate()
-                .take(limit)
-                .map(|(idx, _)| Hit { idx, score: 0.0, by_meaning: false })
+            // With nothing typed there is nothing to rank, but there is still
+            // somewhere to start: what is on the screen already.
+            let mut order: Vec<usize> = (0..self.entries.len()).collect();
+            order.sort_by(|a, b| {
+                self.near(&self.entries[*b], s.here)
+                    .total_cmp(&self.near(&self.entries[*a], s.here))
+                    .then_with(|| a.cmp(b))
+            });
+            return order
+                .into_iter()
+                .take(s.limit)
+                .map(|idx| Hit { idx, score: 0.0, by_meaning: false })
                 .collect();
         }
 
-        let meaning = match (by_meaning, &self.terms) {
+        let meaning = match (s.by_meaning, &self.terms) {
             (true, Some(t)) => t.scores(&words, self.entries.len()),
             _ => Vec::new(),
         };
@@ -210,6 +255,9 @@ impl Index {
             if score < FLOOR {
                 continue;
             }
+            // The nudge is added after the floor, so being on this tab cannot
+            // drag something in that was not worth showing at all.
+            let score = score + self.near(&self.entries[idx], s.here);
             hits.push(Hit { idx, score, by_meaning: sense > fuzzy });
         }
         hits.sort_by(|a, b| {
@@ -218,8 +266,23 @@ impl Index {
                 .then_with(|| self.entries[a.idx].label.len().cmp(&self.entries[b.idx].label.len()))
                 .then_with(|| a.idx.cmp(&b.idx))
         });
-        hits.truncate(limit);
+        hits.truncate(s.limit);
         hits
+    }
+
+    /// What this entry is worth for being where somebody already is. Chrome
+    /// belongs to no mode and is equally near from everywhere, so it gets
+    /// nothing rather than being pushed down from every screen.
+    fn near(&self, entry: &Entry, here: (&str, &str)) -> f64 {
+        let (mode, tab) = here;
+        if entry.mode.is_empty() || entry.mode != mode {
+            return 0.0;
+        }
+        if entry.tab == tab {
+            NEAR_MODE + NEAR_TAB
+        } else {
+            NEAR_MODE
+        }
     }
 }
 

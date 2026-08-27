@@ -562,6 +562,7 @@ pub fn start() -> Result<(), JsValue> {
     let handle: Handle = Rc::new(RefCell::new(Shell { app, panel: None }));
 
     bind_view_actions(&handle);
+    ui::view_menu::bind_fold();
     ui::find_box::mount(&handle);
     bind_canvas(&handle, &canvas);
     bind_keys(&handle);
@@ -622,6 +623,7 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
     }
     sync_grab_cursor(&sh.app);
     build_toolbar(sh, h);
+    ui::view_menu::build(&mut sh.app, h);
     let first = tabs_for(mode)[0].id;
     show_tab(sh, h, first);
     fit_view(&mut sh.app);
@@ -853,84 +855,34 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
         }
     }));
 
-    let grid = ui::input_el("checkbox");
-    grid.set_checked(sh.app.viewport.show_grid);
-    {
-        let h2 = h.clone();
-        on(grid.unchecked_ref(), "change", Scope::Toolbar, move |e| {
-            h2.borrow_mut().app.viewport.show_grid = ui::checked_of(&e);
-        });
-    }
-    controls.push(
-        el("label")
-            .class("inline")
-            .child(&el("span").text("Grid").get())
-            .child(grid.unchecked_ref())
-            .get(),
-    );
-
-    let occ = ui::input_el("checkbox");
-    occ.set_checked(sh.app.viewport.show_occupancy);
-    {
-        let h2 = h.clone();
-        on(occ.unchecked_ref(), "change", Scope::Toolbar, move |e| {
-            h2.borrow_mut().app.viewport.show_occupancy = ui::checked_of(&e);
-        });
-    }
-    controls.push(
-        el("label")
-            .class("inline")
-            .child(&el("span").text("Occupancy").get())
-            .child(occ.unchecked_ref())
-            .get(),
-    );
-
+    // What the stage draws over the map is in the view menu in the side panel;
+    // what the stage does with a press belongs here, next to the map.
     if sh.app.mode == Mode::Settlement {
-        let labels = ui::input_el("checkbox");
-        labels.set_checked(sh.app.state.civ.view.labels);
-        {
-            let h2 = h.clone();
-            on(labels.unchecked_ref(), "change", Scope::Toolbar, move |e| {
-                let mut sh = h2.borrow_mut();
-                sh.app.state.civ.view.labels = ui::checked_of(&e);
-                sh.app.request_save();
-            });
-        }
-        controls.push(
-            el("label")
-                .class("inline")
-                .child(&el("span").text("Labels").get())
-                .child(labels.unchecked_ref())
-                .get(),
-        );
-
         // Picking settlers up is a way of using the stage rather than a
-        // setting, so it sits with the other stage switches and is not saved.
-        let move_people = ui::input_el("checkbox");
-        move_people.set_checked(sh.app.ui.move_people);
-        let _ = move_people.set_attribute("id", "move-people");
-        {
-            let h2 = h.clone();
-            on(move_people.unchecked_ref(), "change", Scope::Toolbar, move |e| {
+        // setting of the project, so it is not saved with one.
+        let h2 = h.clone();
+        let move_people = ui::toggle_button(
+            "Move people",
+            sh.app.ui.move_people,
+            Scope::Toolbar,
+            move |on| {
                 let mut sh = h2.borrow_mut();
-                sh.app.ui.move_people = ui::checked_of(&e);
+                sh.app.ui.move_people = on;
                 sync_grab_cursor(&sh.app);
-                let note = if sh.app.ui.move_people {
+                let note = if on {
                     "drag a settler to put them somewhere else - ctrl or middle drag moves the map"
                 } else {
                     "the stage moves the map again"
                 };
                 sh.app.set_note(note);
-            });
-        }
-        controls.push(
-            el("label")
-                .class("inline")
-                .attr("title", "drag settlers about; ctrl or the middle button still moves the map")
-                .child(&el("span").text("Move people").get())
-                .child(move_people.unchecked_ref())
-                .get(),
+            },
         );
+        let _ = move_people.set_attribute("id", "move-people");
+        let _ = move_people.set_attribute(
+            "title",
+            "drag settlers about; ctrl or the middle button still moves the map",
+        );
+        controls.push(move_people);
     }
 
     let _ = toolbar.append_child(&el("div").class("toolbar-row").children(controls).get());
@@ -1503,6 +1455,7 @@ fn bind_resize(h: &Handle, canvas: &HtmlCanvasElement) {
 fn bind_view_actions(h: &Handle) {
     let prefs = ui::prefs::Prefs::load();
     prefs.apply();
+    ui::view_menu::restore_fold(prefs.view_open);
     bind_fullscreen(h);
 
     if let Some(node) = by_id("btn-panel") {

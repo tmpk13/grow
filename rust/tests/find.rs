@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use grow::find::{query_words, Entry, Index, Terms, FLOOR};
+use grow::find::{query_words, Entry, Index, Search, Terms, FLOOR};
 
 fn index() -> Index {
     Index::builtin()
@@ -13,17 +13,24 @@ fn index() -> Index {
 /// floor.
 fn best(index: &Index, query: &str) -> Option<String> {
     index
-        .search(query, false, 8)
+        .search(Search::new(query))
         .first()
         .map(|hit| index.entries[hit.idx].label.clone())
 }
 
 fn labels(index: &Index, query: &str) -> Vec<String> {
     index
-        .search(query, false, 8)
+        .search(Search::new(query))
         .iter()
         .map(|hit| index.entries[hit.idx].label.clone())
         .collect()
+}
+
+/// Where the best match for a query is, searching from a given mode and tab.
+fn best_from(index: &Index, query: &str, mode: &str, tab: &str) -> (String, String, String) {
+    let hit = index.search(Search::new(query).from(mode, tab));
+    let e = &index.entries[hit.first().expect("something should match").idx];
+    (e.mode.clone(), e.tab.clone(), e.label.clone())
 }
 
 #[test]
@@ -74,7 +81,7 @@ fn the_index_covers_every_mode_and_tab() {
     let mut tabs: Vec<(String, String)> = index
         .entries
         .iter()
-        .filter(|e| !e.mode.is_empty())
+        .filter(|e| !e.mode.is_empty() && !e.tab.is_empty())
         .map(|e| (e.mode.clone(), e.tab.clone()))
         .collect();
     tabs.sort();
@@ -103,6 +110,11 @@ fn every_entry_can_be_pointed_at() {
         if e.kind == "chrome" {
             assert!(e.anchor.starts_with('#'), "chrome is addressed by id: {e:?}");
             assert!(e.mode.is_empty(), "chrome belongs to no mode: {e:?}");
+        } else if e.kind == "view" {
+            // The view menu belongs to a mode but sits beside the tabs, so it
+            // is reachable from every one of them.
+            assert!(!e.mode.is_empty(), "a view switch needs a mode: {e:?}");
+            assert!(e.tab.is_empty(), "a view switch belongs to no tab: {e:?}");
         } else {
             assert!(!e.mode.is_empty(), "a panel control needs a mode: {e:?}");
             assert!(!e.tab.is_empty(), "a panel control needs a tab: {e:?}");
@@ -122,7 +134,7 @@ fn an_anchor_is_unique_within_its_tab() {
         if e.anchor.is_empty() {
             continue;
         }
-        let key = (e.mode.clone(), e.tab.clone(), e.anchor.clone());
+        let key = (e.mode.clone(), e.tab.clone(), e.kind.clone(), e.anchor.clone());
         assert!(seen.insert(key), "two controls answer to the same anchor: {e:?}");
     }
 }
@@ -152,30 +164,82 @@ fn half_a_label_is_enough() {
 fn every_word_typed_has_to_land() {
     let index = index();
     // Both words are in the index, but never on the same control.
-    let hits = index.search("octaves treasury", false, 8);
+    let hits = index.search(Search::new("octaves treasury"));
     assert!(hits.is_empty(), "an unmatchable pair should find nothing, got {hits:?}");
 }
 
 #[test]
 fn a_second_word_narrows_the_list() {
     let index = index();
-    let one = index.search("cell", false, 30).len();
-    let two = index.search("cell depth", false, 30).len();
+    let one = index.search(Search { query: "cell", limit: 30, ..Search::default() }).len();
+    let two = index.search(Search { query: "cell depth", limit: 30, ..Search::default() }).len();
     assert!(two < one, "cell -> {one} hits, cell depth -> {two}");
     assert_eq!(best(&index, "cell depth").as_deref(), Some("Cell depth (px)"));
 }
 
 #[test]
+fn a_match_on_the_screen_you_are_looking_at_comes_first() {
+    let index = index();
+    // Seed is a setting of the plant world and of the settlement map both.
+    assert_eq!(
+        best_from(&index, "seed", "lab", "world"),
+        ("lab".into(), "world".into(), "Seed".into())
+    );
+    assert_eq!(
+        best_from(&index, "seed", "settlement", "land"),
+        ("settlement".into(), "land".into(), "Seed".into())
+    );
+    // And the brush is a control of two different modes.
+    assert_eq!(best_from(&index, "brush color", "sprites", "draw").0, "sprites");
+    assert_eq!(best_from(&index, "brush color", "lab", "materials").0, "lab");
+}
+
+#[test]
+fn the_tab_you_are_on_beats_another_tab_of_the_same_mode() {
+    let index = index();
+    // Name is a box's, a species' and a sheet's.
+    assert_eq!(best_from(&index, "name", "lab", "species").1, "species");
+    assert_eq!(best_from(&index, "name", "lab", "materials").1, "materials");
+}
+
+#[test]
+fn being_on_a_tab_cannot_outrank_a_better_match_elsewhere() {
+    let index = index();
+    // Sitting on the tab that owns "Octaves" must not make its neighbours beat
+    // an exact hit somewhere else.
+    let (_, _, label) = best_from(&index, "roughness", "settlement", "land");
+    assert_eq!(label, "Roughness");
+    let (_, _, label) = best_from(&index, "meander", "lab", "materials");
+    assert_eq!(label, "Meander");
+}
+
+#[test]
+fn where_you_are_cannot_drag_in_what_did_not_match() {
+    let index = index();
+    let plain = index.search(Search::new("qqzzxx"));
+    let local = index.search(Search::new("qqzzxx").from("settlement", "land"));
+    assert!(plain.is_empty() && local.is_empty());
+}
+
+#[test]
+fn an_empty_box_starts_where_you_are() {
+    let index = index();
+    let hits = index.search(Search::new("").from("settlement", "economy"));
+    let first = &index.entries[hits[0].idx];
+    assert_eq!((first.mode.as_str(), first.tab.as_str()), ("settlement", "economy"));
+}
+
+#[test]
 fn nonsense_finds_nothing() {
     let index = index();
-    assert!(index.search("qqzzxx", false, 8).is_empty());
-    assert!(index.search("zzzzzzzzzz", false, 8).is_empty());
+    assert!(index.search(Search::new("qqzzxx")).is_empty());
+    assert!(index.search(Search::new("zzzzzzzzzz")).is_empty());
 }
 
 #[test]
 fn an_empty_query_lists_the_menus() {
     let index = index();
-    let hits = index.search("", false, 12);
+    let hits = index.search(Search::new(""));
     assert_eq!(hits.len(), 12, "an empty box should be an outline, not a blank");
     assert!(hits.iter().all(|h| h.score == 0.0));
     assert_eq!(hits[0].idx, 0, "in index order, so the list does not jump about");
@@ -185,10 +249,25 @@ fn an_empty_query_lists_the_menus() {
 fn the_chrome_is_reachable_from_anywhere() {
     let index = index();
     for (query, want) in [("undo", "Undo"), ("fullscreen", "Fullscreen"), ("export", "Export")] {
-        let hit = index.search(query, false, 8);
+        let hit = index.search(Search { query, limit: 8, ..Search::default() });
         let found = hit.iter().any(|h| index.entries[h.idx].label == want);
         assert!(found, "searching {query} should offer {want}, got {:?}", labels(&index, query));
     }
+}
+
+#[test]
+fn the_view_menu_is_reachable_from_any_tab_of_its_mode() {
+    let index = index();
+    let walls = index
+        .entries
+        .iter()
+        .find(|e| e.kind == "view" && e.label == "Walls and gates")
+        .expect("the wall labels have a switch of their own");
+    assert_eq!(walls.mode, "settlement");
+    assert!(walls.tab.is_empty());
+    // Reachable while standing on a tab that knows nothing about it.
+    let (_, _, label) = best_from(&index, "walls and gates", "settlement", "economy");
+    assert_eq!(label, "Walls and gates");
 }
 
 #[test]
@@ -258,9 +337,9 @@ fn meaning_finds_what_the_letters_cannot() {
     let terms = terms_for(&index, &[("salary", 1, 230)]);
     assert!(index.set_terms(terms));
 
-    assert!(index.search("salary", false, 8).is_empty(), "no letters of salary are in the index");
+    assert!(index.search(Search::new("salary")).is_empty(), "no letters of salary are in the index");
 
-    let hits = index.search("salary", true, 8);
+    let hits = index.search(Search { query: "salary", by_meaning: true, ..Search::default() });
     assert_eq!(hits.len(), 1);
     assert_eq!(index.entries[hits[0].idx].label, "Pays wages");
     assert!(hits[0].by_meaning, "the row should say the letters did not find it");
@@ -274,7 +353,7 @@ fn meaning_never_pushes_an_exact_label_down() {
     let terms = terms_for(&index, &[("water", 1, 255)]);
     assert!(index.set_terms(terms));
 
-    let hits = index.search("water level", true, 8);
+    let hits = index.search(Search { query: "water level", by_meaning: true, ..Search::default() });
     assert_eq!(index.entries[hits[0].idx].label, "Water level");
     assert!(!hits[0].by_meaning);
 }
@@ -283,10 +362,10 @@ fn meaning_never_pushes_an_exact_label_down() {
 fn the_switch_does_nothing_without_a_table() {
     let index = tiny();
     assert!(!index.has_terms());
-    assert_eq!(index.search("salary", true, 8).len(), 0);
+    assert_eq!(index.search(Search { query: "salary", by_meaning: true, ..Search::default() }).len(), 0);
     assert_eq!(
-        index.search("water", true, 8).len(),
-        index.search("water", false, 8).len()
+        index.search(Search { query: "water", by_meaning: true, ..Search::default() }).len(),
+        index.search(Search::new("water")).len()
     );
 }
 

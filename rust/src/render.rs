@@ -463,13 +463,17 @@ impl Viewport {
         if !state.civ.view.labels {
             return;
         }
+        let labels = building_labels(sim, &state.civ.view);
+        if labels.is_empty() {
+            return;
+        }
         let size = (7.0 * self.zoom.min(3.0)).round().max(9.0);
         ctx.set_font(&format!("{size}px ui-monospace, monospace"));
         ctx.set_text_align("center");
         ctx.set_fill_style_str("rgba(230, 236, 245, 0.85)");
         ctx.set_stroke_style_str("rgba(6, 10, 16, 0.9)");
         ctx.set_line_width(3.0);
-        for (x, y, text) in building_labels(sim) {
+        for (x, y, text) in labels {
             let sx = self.pan_x + x * self.zoom;
             let sy = self.pan_y + y * self.zoom + 10.0;
             let _ = ctx.stroke_text(&text, sx, sy);
@@ -518,7 +522,7 @@ impl Viewport {
     /// Town names over their centers, when labels are on and there is more than
     /// one town to tell apart.
     pub fn draw_colony_labels(&self, sim: &Settlement, state: &State) {
-        if !state.civ.view.labels || sim.colonies.len() < 2 {
+        if !state.civ.view.label_on(None) || sim.colonies.len() < 2 {
             return;
         }
         let ctx = &self.ctx;
