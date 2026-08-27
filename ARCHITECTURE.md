@@ -52,7 +52,7 @@ flowchart TD
   end
 
   subgraph artpanels [Sprite editor panels]
-    artp["ui/art_panel.rs<br/>brush, layers, frames, sheets"]
+    artp["ui/art_panel.rs<br/>brush, layers, frames, sheets, downloads"]
   end
 
   subgraph civpanels [Settlement panels]
@@ -61,7 +61,7 @@ flowchart TD
     bldp["ui/build_panel.rs"]
     ecop["ui/economy_panel.rs"]
     tchp["ui/tech_panel.rs"]
-    sdrop["ui/sprite_drop.rs<br/>image drop zones, one per motion"]
+    sdrop["ui/sprite_drop.rs<br/>drop zones: settler motions and made things"]
   end
 
   subgraph core [Simulation core, no browser]
@@ -72,6 +72,7 @@ flowchart TD
     sampler["sampler.rs<br/>sampling boxes, weighted tone ramps"]
     art["art.rs<br/>sprite sheets: layers, frames, cels"]
     undo["undo.rs<br/>snapshots of what an edit is about to change"]
+    zip["zip.rs<br/>stored archives, for getting art out"]
     shading["shading.rs<br/>tone curve"]
     rng["rng.rs"]
     util["util.rs<br/>color, distance transform, labels"]
@@ -86,7 +87,7 @@ flowchart TD
     people["civ/people.rs<br/>record, needs, movement"]
     pdb["civ/people_db.rs<br/>the register of settlers"]
     social["civ/social.rs<br/>who has met whom, and what they made of it"]
-    csprites["civ/sprites.rs<br/>dropped settler clips, one per motion"]
+    csprites["civ/sprites.rs<br/>clips per settler motion and per made thing's state"]
     boats["civ/boats.rs<br/>hulls, cargoes, voyages"]
     path["civ/pathing.rs<br/>A* over land and water"]
     econ["civ/economy.rs<br/>prices, wages, caravans"]
@@ -108,16 +109,21 @@ flowchart TD
   main --> artpanels
   main --> civpanels
   main --> fbox["ui/find_box.rs<br/>the search box and where it sends you"]
-  fbox --> findc["find.rs<br/>menu index, ranking"]
+  fbox --> findc["find.rs<br/>ranking: letters, then meaning"]
   findc --> midx[("assets/menu-index.json<br/>harvested from the page")]
   findc --> mterms[("assets/menu-terms.json<br/>word to setting, built offline")]
+  findc --> dterms[("assets/made-terms.json<br/>word to picture slot")]
   ctl -.stamps every control.-> midx
+  sdrop --> findc
+  main --> vmenu["ui/view_menu.rs<br/>grid, occupancy, label kinds"]
+  main --> rbar["ui/restart_bar.rs<br/>what is waiting on Apply"]
   main --> prefs["ui/prefs.rs<br/>menu fold, text scale"]
   main --> rst["ui/reset.rs<br/>clears every browser store"]
   state --> cfg
   state --> art
   matp --> ge
   artp --> art
+  artp --> zip
   artp --> pnt
   artp --> wheel
   artp --> dec
@@ -699,6 +705,34 @@ flowchart TD
   rough --> morning
 ```
 
+## What a person does that a plan does not
+
+Almost everything on the map is put there by the planner: it weighs what the
+town is short of and sites the next building. Two things are not, and both are
+somebody spending their own coin.
+
+```mermaid
+flowchart TD
+  own["a settler owns a house"] --> coin{"has the coin<br/>for the next rung?"}
+  coin -- yes --> up["their house is rebuilt one rung larger"]
+  dark["walking home after dark<br/>with no lamp in sight"] --> fear["fear builds, slowly"]
+  day["daylight, a roof, a lit street"] --> ease["fear eases, slower"]
+  fear --> want{"frightened enough,<br/>and can pay?"}
+  ease --> want
+  want -- yes --> lamp["a lamp post outside where they sleep"]
+  lamp --> ease
+```
+
+Fear is deliberately slow at both ends. The decision it feeds is taken once a
+day in `day_tick`, so anything that resets between one dawn and the next could
+never reach it. And the buyer is whoever *sleeps* under the roof rather than
+whoever holds its deed: the settlers the dark gets to are the ones walking home
+to somebody else's house, and with the deed holder as the only candidate no
+lamp was ever built.
+
+The price is the same for everybody, which is the point of it. Fear says who
+wants a lamp; coin says who can have one.
+
 ## Picking a settler up
 
 The stage is one canvas and a press on it can mean three things. The mode
@@ -1125,6 +1159,37 @@ TLS and a filesystem. A page compiled to WebAssembly has none of those. So
 entry once, keeps the three or four entries each word is closest to, throws
 away every word that is close to nothing (which is most of them), and ships
 about eighty kilobytes of answers instead.
+
+## Art instead of generation
+
+Everything on the settlement map is generated from the sampling boxes unless
+there is a picture for it. Two families of slot take pictures, and they resolve
+the same way: most particular first, falling back to the general.
+
+```mermaid
+flowchart TD
+  subgraph settlers [A settler]
+    motion["what they are doing"] --> chain["Motion::chain<br/>swim to walk to stand"]
+    chain --> clip["the first clip that has art"]
+  end
+  subgraph made [A thing people made]
+    state["going up / at work / after dark"] --> key["id:state"]
+    key --> fall["falls back to id"]
+    fall --> box["scaled into the box<br/>the generator would have filled"]
+  end
+  clip --> draw["drawn on the map"]
+  box --> draw
+  none["no picture"] --> gen["generated from the sampling boxes"]
+  gen --> draw
+```
+
+A site is the one place the fallback does not apply: a half built thing never
+borrows the finished picture, because one image cannot say how far a wall has
+got.
+
+The box is the footprint's width by the walls and roof over its depth. Sizing
+it from the art instead would let a picture change where people can walk, which
+is the map's business rather than the art's.
 
 ## The sprite editor
 

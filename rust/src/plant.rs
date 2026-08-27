@@ -925,10 +925,10 @@ impl Plant {
                 n += 1;
             }
         }
-        self.tint = if n == 0 {
-            0
-        } else {
-            pack_rgba((r / n) as i32, (g / n) as i32, (bl / n) as i32, 255)
+        self.tint = match r.checked_div(n) {
+            Some(r) => pack_rgba(r as i32, (g / n) as i32, (bl / n) as i32, 255),
+            // Nothing drawn, so there is no color to stand for it.
+            None => 0,
         };
     }
 }

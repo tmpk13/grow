@@ -470,12 +470,12 @@ pub fn abandon_task(sim: &mut Settlement, pi: usize) {
                 sim.buildings[bi].builders = (sim.buildings[bi].builders - 1).max(0);
             }
         }
-        Task::Sleep { building_id, hired, .. } => {
-            if hired {
-                if let Some(bi) = sim.building_index(building_id) {
-                    let id = sim.people[pi].id;
-                    sim.buildings[bi].guests.retain(|&g| g != id);
-                }
+        // Only a room that was paid for is given up; a bed at home is still
+        // theirs whatever they walk off to do.
+        Task::Sleep { building_id, hired: true, .. } => {
+            if let Some(bi) = sim.building_index(building_id) {
+                let id = sim.people[pi].id;
+                sim.buildings[bi].guests.retain(|&g| g != id);
             }
         }
         _ => {}

@@ -745,7 +745,7 @@ fn wall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
     }
 
     // The lintel over a gate, and the coping line along the top of any wall.
-    if gate && lintel - 1 >= floor && lintel - 1 >= 0 {
+    if gate && lintel > floor && lintel > 0 {
         for x in door_x - 1..door_x + door_w + 1 {
             if x < 0 || x >= w {
                 continue;
@@ -758,7 +758,7 @@ fn wall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
             }
         }
     }
-    if top - 1 >= floor && top - 1 >= 0 {
+    if top > floor && top > 0 {
         for x in 0..w {
             px[((top - 1) * w + x) as usize] = shade(&trim, 0.24, top - 1, h);
         }
@@ -1738,10 +1738,10 @@ pub fn building_labels(sim: &Settlement, view: &ViewConfig) -> Vec<(f64, f64, St
         .map(|b| {
             let x = (b.col * world.cell_px) as f64 + (b.w * world.cell_px) as f64 / 2.0;
             let y = (world.sky_px + (b.row + b.h) * world.depth_px) as f64;
+            // A rebuild and a first raising read the same from outside: a
+            // shell with a number on it.
             let text = if b.built {
                 b.label()
-            } else if b.upgrading {
-                format!("{} {}%", b.def.label, ((b.work_done / b.work) * 100.0).round())
             } else {
                 format!("{} {}%", b.def.label, ((b.work_done / b.work) * 100.0).round())
             };

@@ -3,6 +3,9 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) The eight clippy warnings that had been standing in `civ_render`,
+  `tasks` and `plant`: two identical branches of an if, four `x - 1 >= y`
+  comparisons, a collapsible match arm and a hand written checked division.
 - A picture per state of every made thing: Always, Going up, With somebody at
   it, After dark, and Carrying cargo for a boat. A thing with a picture for one
   state only is drawn from it in that state and generated the rest of the time.
