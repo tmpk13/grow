@@ -17,6 +17,7 @@ pub mod build_panel;
 pub mod color_wheel;
 pub mod decode;
 pub mod economy_panel;
+pub mod find_box;
 pub mod grid_editor;
 pub mod land_panel;
 pub mod materials_panel;
@@ -232,9 +233,27 @@ fn num(v: f64) -> String {
     }
 }
 
+/// A label reduced to something that can be looked up in the page: lowercase,
+/// with every run of anything else turned into one dash.
+pub fn slug(text: &str) -> String {
+    let mut out = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+        } else if !out.ends_with('-') && !out.is_empty() {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').to_string()
+}
+
 pub fn row(label: &str, control: Element, hint: Option<&str>) -> Element {
+    // The stamp is what menu search jumps to. Every labeled control gets one
+    // by passing through here, so the index can never name a row the page
+    // does not have.
     el("label")
         .class("field")
+        .attr("data-find", &slug(label))
         .child(&el("span").class("field-label").text(label).get())
         .child(&control)
         .maybe(hint.map(|h| el("span").class("field-hint").text(h).get()))
@@ -450,6 +469,7 @@ pub fn button(text: &str, scope: Scope, mut on_click: impl FnMut() + 'static) ->
     el("button")
         .class("btn")
         .attr("type", "button")
+        .attr("data-find", &slug(text))
         .text(text)
         .on("click", scope, move |_| on_click())
         .get()
@@ -459,6 +479,7 @@ pub fn danger_button(text: &str, scope: Scope, mut on_click: impl FnMut() + 'sta
     el("button")
         .class("btn danger")
         .attr("type", "button")
+        .attr("data-find", &slug(text))
         .text(text)
         .on("click", scope, move |_| on_click())
         .get()
@@ -511,6 +532,7 @@ pub fn note(text: &str) -> Element {
 pub fn section(title: &str, children: Vec<Element>) -> Element {
     el("section")
         .class("group")
+        .attr("data-group", title)
         .child(
             &el("header")
                 .class("group-head")

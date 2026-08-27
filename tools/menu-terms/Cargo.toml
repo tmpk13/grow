@@ -1,0 +1,26 @@
+# Builds the meaning table menu search folds in when the Meaning switch is on.
+#
+# This is a build-time tool and deliberately not part of the app: the embedding
+# model is thirty megabytes and its crates want threads, native TLS and a
+# filesystem, none of which a page compiled to WebAssembly has. So the matching
+# is done here, once, and only the answers ship.
+
+[package]
+name = "menu-terms"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "menu-terms"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+grow = { path = "../../rust" }
+hf-hub = { version = "0.4", default-features = false, features = ["ureq"] }
+model2vec-rs = "0.2"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3

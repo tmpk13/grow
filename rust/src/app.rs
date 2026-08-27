@@ -38,6 +38,26 @@ pub const MODES: [(Mode, &str); 3] = [
     (Mode::Settlement, "Settlement"),
 ];
 
+impl Mode {
+    /// A short name that survives being written to a file, unlike the enum
+    /// and unlike the label, which is prose and free to change.
+    pub fn id(self) -> &'static str {
+        match self {
+            Mode::Lab => "lab",
+            Mode::Sprites => "sprites",
+            Mode::Settlement => "settlement",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Mode> {
+        MODES.iter().map(|(m, _)| *m).find(|m| m.id() == id)
+    }
+
+    pub fn label(self) -> &'static str {
+        MODES.iter().find(|(m, _)| *m == self).map(|(_, l)| *l).unwrap_or("")
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
     Pencil,
@@ -438,6 +458,12 @@ const CIV_TABS: &[TabDef] = &[
     TabDef { id: "tech", label: "Tech", build: ui::tech_panel::build },
 ];
 
+/// The tab of `mode` with this id, as the static string the tab machinery
+/// wants. Menu search carries ids as text, having read them out of the page.
+pub fn tab_id_of(mode: Mode, id: &str) -> Option<&'static str> {
+    tabs_for(mode).iter().find(|t| t.id == id).map(|t| t.id)
+}
+
 fn tabs_for(mode: Mode) -> &'static [TabDef] {
     match mode {
         Mode::Lab => LAB_TABS,
@@ -536,6 +562,7 @@ pub fn start() -> Result<(), JsValue> {
     let handle: Handle = Rc::new(RefCell::new(Shell { app, panel: None }));
 
     bind_view_actions(&handle);
+    ui::find_box::mount(&handle);
     bind_canvas(&handle, &canvas);
     bind_keys(&handle);
     bind_project_actions(&handle);
@@ -568,6 +595,7 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
         let btn = el("button")
             .class(class)
             .attr("type", "button")
+            .attr("data-mode", id.id())
             .text(label)
             .on("click", Scope::Toolbar, move |_| {
                 let mut sh = h2.borrow_mut();
@@ -657,6 +685,7 @@ pub fn show_tab(sh: &mut Shell, h: &Handle, id: &'static str) {
         let btn = el("button")
             .class(class)
             .attr("type", "button")
+            .attr("data-tab", t.id)
             .text(t.label)
             .on("click", Scope::Toolbar, move |_| {
                 let mut sh = h2.borrow_mut();
@@ -1382,6 +1411,13 @@ fn bind_keys(h: &Handle) {
             if matches!(target.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT") {
                 return;
             }
+        }
+        if ke.key() == "/" && !ke.ctrl_key() && !ke.meta_key() && !ke.alt_key() {
+            // Search is the one thing worth a bare key: it is how somebody who
+            // does not know where a setting lives gets to it.
+            e.prevent_default();
+            ui::find_box::focus();
+            return;
         }
         let mut sh = h2.borrow_mut();
         if ke.code() == "Escape" && stage_only() && document().fullscreen_element().is_none() {

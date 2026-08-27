@@ -368,6 +368,90 @@ if ((await page.locator('#btn-full').textContent()).trim() !== 'Fullscreen') {
   problems.push('the fullscreen button kept its leaving label');
 }
 
+// Menu search: typing a setting's name and pressing enter has to land on that
+// setting, wherever in the menus it lives.
+const findRows = () =>
+  page.$$eval('#find-results .find-hit', (rows) =>
+    rows.map((r) => ({
+      label: r.querySelector('.find-label').firstChild.textContent.trim(),
+      path: r.querySelector('.find-path').textContent.trim(),
+      meaning: !!r.querySelector('.find-why'),
+    })),
+  );
+
+await page.click('.mode[data-mode="lab"]');
+await page.waitForTimeout(600);
+// The slash key reaches the box from anywhere that is not already a text field.
+await page.click('#panel-body');
+await page.keyboard.press('/');
+await page.waitForTimeout(150);
+if (!(await page.evaluate(() => document.activeElement.id === 'find-box'))) {
+  problems.push('slash did not put the cursor in the search box');
+  await page.click('#find-box');
+}
+await page.type('#find-box', 'wilderness warmup', { delay: 12 });
+await page.waitForTimeout(250);
+const found = await findRows();
+if (!found.length || found[0].label !== 'Wilderness warmup (s)') {
+  problems.push(`searching "wilderness warmup" ranked ${JSON.stringify(found.slice(0, 3))}`);
+}
+await page.screenshot({ path: `${outDir}/15-search.png` });
+
+await page.keyboard.press('Enter');
+await page.waitForTimeout(3000);
+const landed = await page.evaluate(() => {
+  const node = document.querySelector('#panel-body [data-find="wilderness-warmup-s"]');
+  return {
+    mode: document.querySelector('.mode.active')?.getAttribute('data-mode'),
+    tab: document.querySelector('.tab.active')?.getAttribute('data-tab'),
+    there: !!node,
+    flashed: node ? node.classList.contains('found') : false,
+    focused: node ? node.contains(document.activeElement) : false,
+    listOpen: !document.getElementById('find-results').hasAttribute('hidden'),
+  };
+});
+if (landed.mode !== 'settlement' || landed.tab !== 'land') {
+  problems.push(`search landed on ${landed.mode}/${landed.tab}, not settlement/land`);
+}
+if (!landed.there) problems.push('search did not reach the control it named');
+if (!landed.flashed) problems.push('search did not mark where it sent you');
+if (!landed.focused) problems.push('search left the keyboard somewhere else');
+if (landed.listOpen) problems.push('the results list stayed open after jumping');
+await page.screenshot({ path: `${outDir}/16-search-landed.png` });
+
+// The meaning switch, if a table was built for this index. Without one the
+// switch is not offered, and search is the fuzzy one only.
+const hasMeaning = await page.evaluate(
+  () => !document.getElementById('find-meaning-row').hasAttribute('hidden'),
+);
+if (hasMeaning) {
+  await page.fill('#find-box', '');
+  await page.type('#find-box', 'salary', { delay: 12 });
+  await page.waitForTimeout(200);
+  if ((await findRows()).length) {
+    problems.push('"salary" is spelled like nothing in the menus and should find nothing');
+  }
+  await page.click('#find-meaning');
+  await page.waitForTimeout(200);
+  const bymeaning = await findRows();
+  if (!bymeaning.length) {
+    problems.push('the meaning switch found nothing for "salary"');
+  } else {
+    if (!bymeaning[0].meaning) problems.push('a meaning match was not marked as one');
+    console.log(`meaning: salary -> ${bymeaning[0].label} (${bymeaning[0].path})`);
+  }
+  await page.screenshot({ path: `${outDir}/17-search-meaning.png` });
+  await page.click('#find-meaning');
+} else {
+  console.log('meaning: no table built, switch hidden');
+}
+await page.fill('#find-box', '');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(150);
+if (await page.evaluate(() => !document.getElementById('find-results').hasAttribute('hidden'))) {
+  problems.push('escape did not put the results list away');
+}
+
 // Text scale reaches the whole page through the root font size.
 const scaled = await page.evaluate(() => {
   const input = document.getElementById('ui-scale');

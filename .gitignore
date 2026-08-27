@@ -117,6 +117,7 @@ NOTES.md
 
 # rust build output
 rust/target/
+tools/menu-terms/target/
 pkg/
 *.ppm
 *.png

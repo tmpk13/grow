@@ -6,6 +6,8 @@
   "description": "Pixel art plant lab and a procedural settlement that has to gather what it builds",
   "scripts": {
     "build": "cd rust && cargo build --release --target wasm32-unknown-unknown --lib && wasm-bindgen target/wasm32-unknown-unknown/release/grow.wasm --out-dir ../pkg --target web --no-typescript",
+    "index:menu": "bun run tools/menuindex.js",
+    "index:terms": "cd tools/menu-terms && cargo run --release --quiet",
     "dev": "bun run build && bun run serve.js",
     "start": "bun run serve.js",
     "test": "cd rust && cargo test --profile reltest",
@@ -13,7 +15,8 @@
     "check:civ": "cd rust && cargo run --release --quiet --bin civsmoke --",
     "check:ui": "bun run tools/uicheck.js",
     "check:perf": "bun run tools/perfbench.js",
-    "check:render": "cd rust && cargo run --release --quiet --bin renderbench --"
+    "check:render": "cd rust && cargo run --release --quiet --bin renderbench --",
+    "check:menu": "bun run tools/menuindex.js --check"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"

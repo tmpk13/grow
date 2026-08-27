@@ -107,6 +107,11 @@ flowchart TD
   main --> labpanels
   main --> artpanels
   main --> civpanels
+  main --> fbox["ui/find_box.rs<br/>the search box and where it sends you"]
+  fbox --> findc["find.rs<br/>menu index, ranking"]
+  findc --> midx[("assets/menu-index.json<br/>harvested from the page")]
+  findc --> mterms[("assets/menu-terms.json<br/>word to setting, built offline")]
+  ctl -.stamps every control.-> midx
   main --> prefs["ui/prefs.rs<br/>menu fold, text scale"]
   main --> rst["ui/reset.rs<br/>clears every browser store"]
   state --> cfg
@@ -1070,6 +1075,56 @@ flowchart TD
   pick -->|yes| frame
   frame --> night["night tint and labels<br/>drawn on the canvas, not the buffer"]
 ```
+
+## Finding a setting
+
+There are eleven panels between the three modes and a few hundred controls
+across them. The search box in the top bar is the way to one without knowing
+which panel it is in.
+
+Nothing about the index is written by hand. Every labeled control passes
+through `ui::row`, and every button through `ui::button`, so stamping there
+means the page carries a `data-find` for each of them and can be read back:
+
+```mermaid
+flowchart LR
+  panels["panels build rows"] --> stamp["ui::row stamps data-find"]
+  stamp --> page["the running page"]
+  page --> harvest["tools/menuindex.js<br/>visits every mode and tab"]
+  harvest --> midx[("assets/menu-index.json")]
+  midx --> baked["include_str! into the wasm"]
+  midx --> terms["tools/menu-terms<br/>embedding model, offline"]
+  terms --> mterms[("assets/menu-terms.json")]
+  mterms --> baked
+  baked --> rank["find.rs ranks a query"]
+  rank --> jump["find_box.rs: mode, tab, scroll, flash, focus"]
+  jump --> page
+```
+
+The index is baked into the binary rather than fetched, so it can never be a
+version behind the build it describes, and `bun run check:menu` fails if the
+committed file has drifted from what the page draws.
+
+Ranking is fuzzy by default and lives entirely in `find.rs`: a query is split
+into words, each word is scored against the label, the section, the tab and the
+hint at falling weights, and **every** word has to land somewhere or the entry
+is dropped, so a second word narrows the list. A label the query is a prefix of
+is pushed to the top whatever else happens to contain the same letters.
+
+The **Meaning** switch adds a second score from a table of word to entry built
+ahead of time. It is deliberately worth a shade less than the letters, so it can
+only ever add rows, never reorder an exact match down. The table points at
+entries by position, so it carries a stamp over the index it was built for and
+is dropped whole if the menus have moved since; with no table the switch is not
+offered at all.
+
+Why a table and not a model: the matching is done by a static embedding model
+(`potion-base-8M`, about thirty megabytes) whose crates want threads, native
+TLS and a filesystem. A page compiled to WebAssembly has none of those. So
+`tools/menu-terms` scores every word of the model's vocabulary against every
+entry once, keeps the three or four entries each word is closest to, throws
+away every word that is close to nothing (which is most of them), and ships
+about eighty kilobytes of answers instead.
 
 ## The sprite editor
 

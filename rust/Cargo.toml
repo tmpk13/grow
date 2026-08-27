@@ -41,6 +41,7 @@ features = [
   "HtmlAnchorElement",
   "HtmlButtonElement",
   "HtmlCanvasElement",
+  "HtmlCollection",
   "HtmlElement",
   "HtmlImageElement",
   "HtmlInputElement",

@@ -3,6 +3,12 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Menu search: a box in the top bar, `/` from anywhere, that ranks every
+  control in every panel of every mode and takes you to the one you pick,
+  switching mode and tab, scrolling to it and flashing it. Fuzzy by default,
+  with a Meaning switch that also matches on what a setting is for. The index
+  is harvested out of the running page, and the meaning table is built ahead of
+  time by an embedding model that stays a build tool.
 - (LLM) Move people: a switch above the map turns a press on a settler into
   picking them up. The pointer carries them, letting go puts them down on the
   nearest ground they can stand in, what they were doing is given up the way any

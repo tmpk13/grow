@@ -485,6 +485,36 @@ was drawn in, which is the whole point of keeping it separately, and a button
 for clearing a stuck page is not a reason to lose it; a kept sheet goes when it
 is deleted from the sprite editor's Sheet tab.
 
+## Finding a setting
+
+There are eleven panels and a few hundred settings across them, so the top bar
+has a search box. Press `/` from anywhere in the page, type a few letters, and
+the list under it ranks every control in every panel of every mode, each with
+the path to where it lives. Arrow keys move, enter goes; the tool switches
+mode and tab for you, scrolls the control into view, flashes it and puts the
+keyboard on it. Every word typed has to land somewhere on a match, so a second
+word narrows rather than widens.
+
+The index is not written by hand. Every labeled control the panels build gets a
+stamp as it is built, and `tools/menuindex.js` walks the running page reading
+them, so search cannot offer a control the build does not have. `bun run
+check:menu` fails if the committed index has drifted from the page.
+
+**Meaning** next to the box is off by default and matches on what a setting is
+for rather than how it is spelled: "salary" finds **Pay wages**, "money" finds
+the treasury, "colour" finds the brush color. Rows found that way are marked,
+so an answer that no amount of squinting at the letters explains says where it
+came from.
+
+The switch is answering out of a table built ahead of time, not a model running
+in the page. `tools/menu-terms` scores every word in a static embedding model's
+vocabulary against every entry in the menu index and keeps the few entries each
+word is closest to; only those answers ship. The model itself is thirty
+megabytes and its crates want threads, native TLS and a filesystem, none of
+which a page compiled to WebAssembly has, so it stays a build step. The table
+is tied to the index it was built against and is ignored if the menus have
+moved since, in which case the switch is simply not offered.
+
 ## Window
 
 Two controls in the top bar belong to the browser rather than to the project,
@@ -516,7 +546,21 @@ GROW_SEED=909       bun run check:civ 200 town.ppm
 CHROMIUM_PATH=/path/to/chrome bun run check:ui /tmp/shots
 bun run check:perf  512 256               # frame time in a browser, zoom by zoom
 bun run check:render 60                   # the same drawing timed headless, phase by phase
+CHROMIUM_PATH=/path/to/chrome bun run check:menu   # is the menu index still the page?
 ```
+
+The menu index and the meaning table are generated, and both are committed.
+After changing a panel:
+
+```sh
+bun run build && bun run index:menu && bun run build   # re-read the menus
+bun run index:terms                                    # only if the menus moved
+```
+
+`index:menu` reads the built page, so it wants a build before it and a build
+after it, the second to bake the new index in. `index:terms` needs the
+embedding model, which it downloads once and caches; it prints nothing the app
+depends on, and skipping it costs only the Meaning switch.
 
 `civsmoke` founds a settlement, runs it for the given number of days and checks
 the bookkeeping: no building on water or off its own footprint, no worker a
@@ -538,9 +582,10 @@ not reading a single number.
 every tab, paints into a sampling box, draws on a sheet on the stage and stacks
 a layer on it, steps and plays the frames and sends the sheet to a settler
 motion, undoes and redoes both a layer and a panel field, resizes the world,
-queues a building, folds the menu away and back, goes fullscreen and leaves it
-again, checks the text scale reaches the root font size, and fails on any
-console error.
+queues a building, picks a settler up off the map and puts them down again,
+searches the menus for a setting and follows the result to it, folds the menu
+away and back, goes fullscreen and leaves it again, checks the text scale
+reaches the root font size, and fails on any console error.
 
 ## Layout
 

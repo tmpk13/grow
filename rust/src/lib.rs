@@ -7,6 +7,7 @@
 
 pub mod art;
 pub mod civ;
+pub mod find;
 pub mod plant;
 pub mod rng;
 pub mod sampler;
