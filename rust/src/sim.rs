@@ -42,7 +42,7 @@ impl Env {
         }
         let mut ramps = empty_ramps();
         for mat in Mat::all() {
-            ramps[mat as usize] = materials.ramp(species.slot(mat));
+            ramps[mat as usize] = materials.tone_lut(species.slot(mat));
         }
         self.cache.insert(species.id.clone(), ramps.clone());
         ramps
@@ -389,7 +389,7 @@ impl Sim {
         // The ground plane is dithered out of the soil ramp rather than tiled,
         // so the sampler art does not show up as stripes, and lifted toward the
         // light end of the ramp with distance so far rows read as further away.
-        let ramp = state.materials.ramp(&cfg.soil_sampler);
+        let ramp = state.materials.tone_lut(&cfg.soil_sampler);
         let fallback = pack_rgba(52, 38, 28, 255);
         let fade = cfg.depth_fade;
         for y in w.sky_px..w.px_h {

@@ -1,15 +1,15 @@
 //! Drawable pixel grid used for every sampling box (and for the single shared
 //! atlas). Works on whatever buffer the current materials mode exposes.
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, Event, HtmlCanvasElement, PointerEvent};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-use crate::app::{App, Handle, Tool};
+use crate::app::{App, Handle};
 use crate::sampler::MaterialMode;
-use crate::ui::{on, window, Scope};
+use crate::ui::paint::{self, Surface};
+use crate::ui::window;
 use crate::util::{packed_to_hex, EMPTY_COLOR};
 
 /// The grid the editor is pointed at right now.
@@ -54,78 +54,24 @@ pub fn grid_set(app: &mut App, x: i32, y: i32, v: u32) {
     }
 }
 
-fn flood_fill(app: &mut App, x: i32, y: i32, value: u32) {
-    let (w, h) = match grid_dims(app) {
-        Some(d) => d,
-        None => return,
-    };
-    let target = grid_get(app, x, y);
-    if target == value {
-        return;
-    }
-    let mut stack = vec![(x, y)];
-    while let Some((cx, cy)) = stack.pop() {
-        if cx < 0 || cy < 0 || cx >= w || cy >= h {
-            continue;
-        }
-        if grid_get(app, cx, cy) != target {
-            continue;
-        }
-        grid_set(app, cx, cy, value);
-        stack.push((cx - 1, cy));
-        stack.push((cx + 1, cy));
-        stack.push((cx, cy - 1));
-        stack.push((cx, cy + 1));
-    }
-}
+/// The selected sampling box, or the shared atlas when that is the mode.
+struct GridSurface;
 
-fn cell_at(canvas: &HtmlCanvasElement, app: &App, client_x: f64, client_y: f64) -> Option<(i32, i32)> {
-    let (w, h) = grid_dims(app)?;
-    let r = canvas.get_bounding_client_rect();
-    if r.width() == 0.0 || r.height() == 0.0 {
-        return None;
+impl Surface for GridSurface {
+    fn dims(&self, app: &App) -> Option<(i32, i32)> {
+        grid_dims(app)
     }
-    let x = ((client_x - r.left()) / r.width() * w as f64).floor() as i32;
-    let y = ((client_y - r.top()) / r.height() * h as f64).floor() as i32;
-    if x < 0 || y < 0 || x >= w || y >= h {
-        return None;
-    }
-    Some((x, y))
-}
 
-fn apply(app: &mut App, cell: (i32, i32), erase: bool) {
-    match app.ui.tool {
-        Tool::Pick => {
-            let v = grid_get(app, cell.0, cell.1);
-            if v != EMPTY_COLOR {
-                app.ui.brush_color = v;
-                app.redraw_panel = true;
-            }
-        }
-        Tool::Fill => {
-            let value = if erase { EMPTY_COLOR } else { app.ui.brush_color };
-            flood_fill(app, cell.0, cell.1, value);
-        }
-        _ => {
-            let erase = erase || app.ui.tool == Tool::Eraser;
-            let value = if erase { EMPTY_COLOR } else { app.ui.brush_color };
-            grid_set(app, cell.0, cell.1, value);
-            if app.ui.mirror_x {
-                if let Some((w, _)) = grid_dims(app) {
-                    grid_set(app, w - 1 - cell.0, cell.1, value);
-                }
-            }
-        }
+    fn get(&self, app: &App, x: i32, y: i32) -> u32 {
+        grid_get(app, x, y)
     }
-}
 
-fn stroke_line(app: &mut App, a: (i32, i32), b: (i32, i32), erase: bool) {
-    let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs());
-    for i in 1..=steps {
-        let t = i as f64 / steps as f64;
-        let x = (a.0 as f64 + (b.0 - a.0) as f64 * t).round() as i32;
-        let y = (a.1 as f64 + (b.1 - a.1) as f64 * t).round() as i32;
-        apply(app, (x, y), erase);
+    fn set(&self, app: &mut App, x: i32, y: i32, v: u32) {
+        grid_set(app, x, y, v)
+    }
+
+    fn commit(&self, app: &mut App) {
+        app.materials_changed();
     }
 }
 
@@ -135,79 +81,12 @@ pub struct GridEditor {
 
 impl GridEditor {
     pub fn attach(canvas: HtmlCanvasElement, h: &Handle) -> GridEditor {
-        let last: Rc<RefCell<Option<(i32, i32)>>> = Rc::new(RefCell::new(None));
-        let drawing = Rc::new(RefCell::new(false));
-
-        {
-            let h2 = h.clone();
-            let canvas2 = canvas.clone();
-            let last = last.clone();
-            let drawing = drawing.clone();
-            on(canvas.unchecked_ref(), "pointerdown", Scope::Panel, move |e: Event| {
-                let pe = e.dyn_ref::<PointerEvent>().unwrap();
-                let _ = canvas2.set_pointer_capture(pe.pointer_id());
-                let mut sh = h2.borrow_mut();
-                let cell = cell_at(&canvas2, &sh.app, pe.client_x() as f64, pe.client_y() as f64);
-                *drawing.borrow_mut() = true;
-                *last.borrow_mut() = cell;
-                if let Some(cell) = cell {
-                    let erase = pe.buttons() & 2 == 2;
-                    apply(&mut sh.app, cell, erase);
-                    draw(&canvas2, &sh.app);
-                }
-            });
-        }
-        {
-            let h2 = h.clone();
-            let canvas2 = canvas.clone();
-            let last = last.clone();
-            let drawing = drawing.clone();
-            on(canvas.unchecked_ref(), "pointermove", Scope::Panel, move |e: Event| {
-                if !*drawing.borrow() {
-                    return;
-                }
-                let pe = e.dyn_ref::<PointerEvent>().unwrap();
-                let mut sh = h2.borrow_mut();
-                let cell = match cell_at(&canvas2, &sh.app, pe.client_x() as f64, pe.client_y() as f64) {
-                    Some(c) => c,
-                    None => return,
-                };
-                let previous = *last.borrow();
-                if previous == Some(cell) {
-                    return;
-                }
-                let erase = pe.buttons() & 2 == 2;
-                let freehand = matches!(sh.app.ui.tool, Tool::Pencil | Tool::Eraser);
-                match previous {
-                    Some(prev) if freehand => stroke_line(&mut sh.app, prev, cell, erase),
-                    _ => apply(&mut sh.app, cell, erase),
-                }
-                *last.borrow_mut() = Some(cell);
-                draw(&canvas2, &sh.app);
-            });
-        }
-        for event in ["pointerup", "pointercancel", "pointerleave"] {
-            let h2 = h.clone();
-            let last = last.clone();
-            let drawing = drawing.clone();
-            on(canvas.unchecked_ref(), event, Scope::Panel, move |_| {
-                if !*drawing.borrow() {
-                    return;
-                }
-                *drawing.borrow_mut() = false;
-                *last.borrow_mut() = None;
-                let mut sh = h2.borrow_mut();
-                sh.app.materials_changed();
-                sh.app.redraw_panel = true;
-            });
-        }
-        {
-            let canvas2 = canvas.clone();
-            on(canvas2.unchecked_ref(), "contextmenu", Scope::Panel, move |e: Event| {
-                e.prevent_default();
-            });
-        }
-
+        paint::attach(
+            &canvas,
+            h,
+            Rc::new(GridSurface),
+            Rc::new(draw),
+        );
         GridEditor { canvas }
     }
 
@@ -255,22 +134,7 @@ pub fn draw(canvas: &HtmlCanvasElement, app: &App) {
         }
     }
 
-    if cw.min(ch) >= 7.0 {
-        ctx.set_stroke_style_str("rgba(255,255,255,0.07)");
-        ctx.set_line_width(1.0);
-        ctx.begin_path();
-        for x in 1..gw {
-            let px = (x as f64 * cw).round() + 0.5;
-            ctx.move_to(px, 0.0);
-            ctx.line_to(px, rh);
-        }
-        for y in 1..gh {
-            let py = (y as f64 * ch).round() + 0.5;
-            ctx.move_to(0.0, py);
-            ctx.line_to(rw, py);
-        }
-        ctx.stroke();
-    }
+    paint::cell_grid(&ctx, rw, rh, gw, gh, cw, ch);
 
     if app.state.materials.mode != MaterialMode::Single {
         return;

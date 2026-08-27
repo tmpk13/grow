@@ -46,7 +46,7 @@ The two buttons above the panel tabs switch modes (or press `m`). Each mode has
 its own tabs, its own toolbar and its own simulation; both read the same
 materials and species, so anything drawn in the lab shows up in the settlement.
 
-## Plant lab: the four panels
+## Plant lab: the five panels
 
 ### Materials
 
@@ -59,11 +59,37 @@ texture, leaf edges, stem to leaf) and boxes can be added or removed.
   grid copies the boxes into it; the two sync buttons copy in either direction
   at any time.
 * Pencil, eraser, fill and pick; right click erases; mirror X paints both sides.
+* **Brush color** is a plain color box, and **Wheel** opens an HSV wheel beside
+  it: hue around, saturation out from the middle, value on the slider under it,
+  and a hex field for a color you already know.
 * **Make ramp** fills the box with a gradient between two colors, **Clear**
   empties it. In shared grid mode both act on the selected region only.
-* The strip under the editor is the *resolved ramp*: the unique colors of that
-  box sorted dark to light. Shading indexes into this, so a box with six tones
-  gives six tone steps regardless of how they are arranged in the grid.
+* The strip under the editor is the *tone lookup*: the colors of that box, dark
+  to light, each holding as much of the strip as it covers of the box. A box
+  that is mostly one green shades mostly that green, and a highlight drawn as
+  two pixels stays a highlight rather than taking a third of the range. The
+  swatches above it are the palette, one entry per color however little of the
+  box it holds.
+
+### Sprites
+
+A pixel editor for animations, and the other way to draw a settler.
+
+* A **sheet** is a frame size, a rate, and a stack of layers. Sheets are named,
+  duplicated and removed from the row of chips at the top.
+* **Layers** stack bottom to top; the row you pick is the one you draw on, the
+  checkbox hides one without throwing it away, and **Merge down** folds one into
+  the layer beneath it. Up to eight.
+* **Frames** run along the strip near the bottom. Add an empty one, duplicate
+  the current one to nudge a pose rather than redraw it, or shuffle one left and
+  right. Up to twenty four.
+* **Onion skin** shows the frame before this one faintly behind it.
+* **Play** runs the sheet at its own rate in the preview.
+* **Use as settler art** sends the sheet to one of the five settler motions. It
+  is copied rather than followed, so the town does not change under you while
+  you keep drawing; send it again to push a change.
+* Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
+  the art keeps its place and the new room is empty.
 
 ### Shading
 
@@ -372,8 +398,9 @@ population. Pick any available tech to make it the target.
 
 ## Test window
 
-Play/pause (space), single step (`.`), fit (`f`), a speed multiplier up to 32x,
-wheel to zoom, drag to pan, plus grid and occupancy overlays. The status bar
+Play/pause (space), single step (`.`), fit (`f`), a speed multiplier up to 200x
+on a logarithmic slider, wheel or pinch to zoom, drag to pan, plus grid and
+occupancy overlays. The status bar
 shows tick count, simulation time, plant counts per species, the redraw queue
 and frame rate; in the settlement it shows the day and hour, the towns, the
 population, what is built, the stores, the fleet and the current drawing detail.
@@ -405,6 +432,22 @@ State auto saves to localStorage; **Export** writes a JSON project and
 A project holds every parameter, including all of the settlement's, but not a
 running settlement: reloading the page keeps the land and the rules and founds
 it again.
+
+**Reset all** goes further than New: it empties every store the page has in this
+browser - the saved project, the window settings, the session store, any cached
+files and any indexed databases - and reloads, so what comes back is the tool as
+it was the first time it was opened. It asks first, and it cannot be undone.
+
+## Window
+
+Two controls in the top bar belong to the browser rather than to the project,
+and are remembered separately from it:
+
+* **Text** scales every label, control and panel. Everything in the stylesheet
+  is sized in `rem` or fractions, and the root size is itself relative to the
+  browser's own font setting, so a reader who has raised that keeps the increase.
+* **Hide menu** folds the panel away and gives the map the whole window. What
+  was in the middle of the view stays there.
 
 ## Checks
 
@@ -439,8 +482,10 @@ judging one means sweeping a spread of seeds and comparing the distributions,
 not reading a single number.
 
 `uicheck.js` loads the page in headless Chromium, exercises both modes and
-every tab, paints into a sampling box, resizes the world, queues a building,
-and fails on any console error.
+every tab, paints into a sampling box, draws on a sheet and stacks a layer on
+it, plays the animation back and sends it to a settler motion, resizes the
+world, queues a building, folds the menu away and back, checks the text scale
+reaches the root font size, and fails on any console error.
 
 ## Layout
 
@@ -450,9 +495,9 @@ and fails on any console error.
 | `styles.css`        | theme and layout                                 |
 | `rust/src/*.rs`     | plant simulation core (no browser) plus the shell |
 | `rust/src/civ/*.rs` | settlement: terrain, towns, people, boats, draw   |
-| `rust/src/ui/*.rs`  | panels and the pixel grid editor                  |
+| `rust/src/ui/*.rs`  | panels, the two pixel editors, browser settings   |
 | `rust/src/bin/*.rs` | headless smoke checks                             |
-| `rust/tests/*.rs`   | determinism, grid invariants, project format      |
+| `rust/tests/*.rs`   | determinism, invariants, sheets, ramps, format    |
 | `tools/uicheck.js`  | headless browser pass over every panel            |
 | `pkg/`              | build output: the wasm module and its loader      |
 | `ARCHITECTURE.md`   | module map, data model and pipeline diagrams      |

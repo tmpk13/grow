@@ -5,6 +5,7 @@
 //! with no browser dependency: the simulation runs headless in the smoke test
 //! binaries, and the same code drives the page in a browser.
 
+pub mod art;
 pub mod civ;
 pub mod plant;
 pub mod rng;

@@ -154,7 +154,7 @@ impl SpriteCache {
 }
 
 fn ramp_of(materials: &Materials, sampler_id: &str) -> Rc<Vec<u32>> {
-    let ramp = materials.ramp(sampler_id);
+    let ramp = materials.tone_lut(sampler_id);
     if ramp.is_empty() {
         Rc::new(vec![pack_rgba(90, 90, 90, 255), pack_rgba(150, 150, 150, 255)])
     } else {

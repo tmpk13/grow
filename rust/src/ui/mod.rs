@@ -12,12 +12,17 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, Element, Event, EventTarget, HtmlInputElement, HtmlSelectElement, Window};
 
+pub mod art_panel;
 pub mod build_panel;
+pub mod color_wheel;
 pub mod economy_panel;
 pub mod grid_editor;
 pub mod land_panel;
 pub mod materials_panel;
+pub mod paint;
 pub mod people_panel;
+pub mod prefs;
+pub mod reset;
 pub mod shading_panel;
 pub mod species_panel;
 pub mod sprite_drop;

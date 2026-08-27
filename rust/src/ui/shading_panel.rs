@@ -250,7 +250,7 @@ fn draw_shapes(canvas: &HtmlCanvasElement, app: &App) {
     } else {
         app.state.materials.samplers.first().map(|s| s.id.clone()).unwrap_or_default()
     };
-    let ramp = app.state.materials.ramp(&sampler);
+    let ramp = app.state.materials.tone_lut(&sampler);
     let core = app.ui.shade_preview_core;
     let tones = app.ui.shade_preview_tones;
 

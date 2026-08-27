@@ -43,22 +43,33 @@ if ((await page.locator('.tab').count()) === 0) {
   process.exit(1);
 }
 
+// The speed slider is logarithmic from a quarter to two hundred, so a
+// multiplier has to be converted to a position on it.
+const SPEED_MIN = 0.25;
+const SPEED_MAX = 200;
+const SPEED_STEPS = 400;
+const speedPos = (x) =>
+  String(Math.round((Math.log(x / SPEED_MIN) / Math.log(SPEED_MAX / SPEED_MIN)) * SPEED_STEPS));
+const setSpeed = (pos) =>
+  page.evaluate((value) => {
+    const slider = document.querySelectorAll('.toolbar-row input[type=range]')[0];
+    slider.value = value;
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  }, pos);
+
 // Run the simulation for a few seconds at speed so the stage has content.
 const playBtn = page.locator('.toolbar-row .btn').first();
 if ((await playBtn.textContent()).trim() === 'Play') await playBtn.click();
 await page.waitForTimeout(300);
-await page.evaluate(() => {
-  const slider = document.querySelectorAll('.toolbar-row input[type=range]')[0];
-  slider.value = '16';
-  slider.dispatchEvent(new Event('input', { bubbles: true }));
-});
+await setSpeed(speedPos(16));
 await page.waitForTimeout(4000);
 await page.screenshot({ path: `${outDir}/01-materials.png` });
 
-for (const tab of ['Shading', 'Species', 'World']) {
+const labTabs = ['Sprites', 'Shading', 'Species', 'World'];
+for (const tab of labTabs) {
   await page.click(`.tab:text-is("${tab}")`);
   await page.waitForTimeout(1200);
-  await page.screenshot({ path: `${outDir}/0${['Shading', 'Species', 'World'].indexOf(tab) + 2}-${tab.toLowerCase()}.png` });
+  await page.screenshot({ path: `${outDir}/0${labTabs.indexOf(tab) + 2}-${tab.toLowerCase()}.png` });
 }
 
 // Grow one specimen in the species preview.
@@ -95,6 +106,43 @@ await page.screenshot({ path: `${outDir}/08-resized.png` });
 const stats = await page.evaluate(() => document.getElementById('statusbar').textContent);
 console.log(`lab status: ${stats}`);
 
+// The top of the slider is the highest speed the tool offers, and the readout
+// beside it is what says so.
+await setSpeed(String(SPEED_STEPS));
+await page.waitForTimeout(300);
+const topSpeed = (await page.locator('.toolbar-row .readout').first().textContent()).trim();
+if (topSpeed !== `${SPEED_MAX}x`) problems.push(`top speed reads ${topSpeed}, not ${SPEED_MAX}x`);
+await setSpeed(speedPos(4));
+
+// The sprite editor: draw on a layer, stack another one, add a frame, play it
+// back, and send the sheet to a settler motion.
+await page.click('.tab:text-is("Sprites")');
+await page.waitForTimeout(500);
+const sheet = await page.locator('.editor-wrap .grid-canvas').boundingBox();
+await page.mouse.move(sheet.x + sheet.width * 0.3, sheet.y + sheet.height * 0.3);
+await page.mouse.down();
+await page.mouse.move(sheet.x + sheet.width * 0.7, sheet.y + sheet.height * 0.7, { steps: 10 });
+await page.mouse.up();
+await page.click('.btn:text-is("Add layer")');
+await page.waitForTimeout(300);
+if ((await page.locator('.layer-row').count()) < 2) problems.push('adding a layer did nothing');
+await page.click('.btn:text-is("Duplicate frame")');
+await page.waitForTimeout(300);
+if ((await page.locator('.frame-cell').count()) < 2) problems.push('duplicating a frame did nothing');
+await page.click('.btn:text-is("Wheel")');
+await page.waitForTimeout(300);
+if ((await page.locator('.wheel-canvas').count()) === 0) problems.push('the color wheel did not open');
+const wheel = await page.locator('.wheel-canvas').boundingBox();
+await page.mouse.click(wheel.x + wheel.width * 0.65, wheel.y + wheel.height * 0.5);
+// Scoped to the section: the stage toolbar has its own Play and Pause.
+const transport = '.group:has-text("Animation") .btn';
+await page.click(`${transport}:text-is("Play")`);
+await page.waitForTimeout(900);
+await page.screenshot({ path: `${outDir}/08b-sprites.png` });
+await page.click(`${transport}:text-is("Pause")`);
+await page.click('.group:has-text("Use as settler art") .btn:text-is("Walking")');
+await page.waitForTimeout(400);
+
 // Settlement mode: founding the settlement runs the wilderness warmup, which
 // takes a moment, so give it room before touching the panels.
 await page.click('.mode:text-is("Settlement")');
@@ -110,6 +158,21 @@ for (const tab of ['People', 'Build', 'Economy', 'Tech']) {
 // also the one that would leak a listener per row if the scopes were wrong.
 await page.click('.tab:text-is("People")');
 await page.waitForTimeout(600);
+// Paused first: the register rebuilds twice a second and its rows reorder as
+// settlers change what they are doing, so a click on a live list races the
+// redraw that replaces the row under it.
+const pause = async () => {
+  if ((await page.locator('#btn-play').textContent()).trim() === 'Pause') {
+    await page.click('#btn-play');
+  }
+};
+const resume = async () => {
+  if ((await page.locator('#btn-play').textContent()).trim() === 'Play') {
+    await page.click('#btn-play');
+  }
+};
+await pause();
+await page.waitForTimeout(300);
 await page.locator('.roster-name.link').first().click();
 await page.waitForTimeout(700);
 if ((await page.locator('.person-card .stat').count()) === 0) {
@@ -120,14 +183,11 @@ await page.click('.chip:text-is("Coin")');
 await page.click('.chip:text-is("Include the dead")');
 await page.waitForTimeout(700);
 await page.screenshot({ path: `${outDir}/10c-register.png` });
+await resume();
 
 await page.click('.tab:text-is("Build")');
 await page.locator('.cat-row:not(.locked) .btn:text-is("Build")').first().click();
-await page.evaluate(() => {
-  const slider = document.querySelectorAll('.toolbar-row input[type=range]')[0];
-  slider.value = '16';
-  slider.dispatchEvent(new Event('input', { bubbles: true }));
-});
+await setSpeed(speedPos(16));
 await page.waitForTimeout(6000);
 await page.screenshot({ path: `${outDir}/11-settlement-run.png` });
 const civStats = await page.evaluate(() => document.getElementById('statusbar').textContent);
@@ -140,6 +200,28 @@ await page.waitForTimeout(1200);
 await page.click('.mode:text-is("Settlement")');
 await page.waitForTimeout(2000);
 await page.screenshot({ path: `${outDir}/12-settlement-return.png` });
+
+// The menu folds away and comes back, and the map takes the room either way.
+await page.click('#btn-panel');
+await page.waitForTimeout(500);
+if (await page.locator('.panel').isVisible()) problems.push('hiding the menu left it on screen');
+await page.screenshot({ path: `${outDir}/13-menu-hidden.png` });
+await page.click('#btn-panel');
+await page.waitForTimeout(400);
+if (!(await page.locator('.panel').isVisible())) problems.push('showing the menu did not bring it back');
+
+// Text scale reaches the whole page through the root font size.
+const scaled = await page.evaluate(() => {
+  const input = document.getElementById('ui-scale');
+  const before = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  input.value = '1.5';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  const after = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  input.value = '1';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  return after / before;
+});
+if (scaled < 1.4) problems.push(`text scale moved the root size by ${scaled.toFixed(2)}, not 1.5`);
 
 await browser.close();
 server.kill();

@@ -5,7 +5,7 @@
 //! species and sampling boxes authored in the lab are what grows on the
 //! settlement map and what its buildings are drawn from.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
@@ -42,8 +42,21 @@ pub struct UiState {
     pub selected_sampler: String,
     pub selected_species: String,
     pub brush_color: u32,
+    /// Hue, saturation and value of the brush, kept beside the packed color
+    /// because a gray has no hue to read back out of it.
+    pub brush_hsv: (f64, f64, f64),
+    /// Show the color wheel rather than only the plain color box.
+    pub use_wheel: bool,
     pub tool: Tool,
     pub mirror_x: bool,
+    /// The sheet, layer and frame the sprite editor is pointed at.
+    pub selected_sheet: String,
+    pub sheet_layer: usize,
+    pub sheet_frame: i32,
+    /// Draw the frame before this one behind it, faint.
+    pub onion: bool,
+    pub playing: bool,
+    pub play_time: f64,
     pub shade_preview_sampler: String,
     pub shade_preview_tones: i32,
     pub shade_preview_core: f64,
@@ -171,6 +184,14 @@ impl App {
         self.request_save();
     }
 
+    /// A sheet in the sprite editor changed. Only the panel reads sheets
+    /// directly; a settler drawn from one is drawn from the clip that was built
+    /// out of it, which is left alone until it is rebuilt on purpose.
+    pub fn art_changed(&mut self) {
+        self.redraw_panel = true;
+        self.request_save();
+    }
+
     pub fn civ_repaint(&mut self) {
         if let Some(civ) = &mut self.settlement {
             civ.invalidate_sprites();
@@ -248,6 +269,7 @@ const STATUS_INTERVAL_MS: f64 = 200.0;
 
 const LAB_TABS: &[TabDef] = &[
     TabDef { id: "materials", label: "Materials", build: ui::materials_panel::build },
+    TabDef { id: "sprites", label: "Sprites", build: ui::art_panel::build },
     TabDef { id: "shading", label: "Shading", build: ui::shading_panel::build },
     TabDef { id: "species", label: "Species", build: ui::species_panel::build },
     TabDef { id: "world", label: "World", build: ui::world_panel::build },
@@ -312,8 +334,16 @@ pub fn start() -> Result<(), JsValue> {
         selected_sampler: state.materials.samplers.first().map(|s| s.id.clone()).unwrap_or_default(),
         selected_species: state.species.first().map(|s| s.id.clone()).unwrap_or_default(),
         brush_color: hex_to_packed("#7ab55c"),
+        brush_hsv: crate::util::packed_to_hsv(hex_to_packed("#7ab55c"), 0.0),
+        use_wheel: false,
         tool: Tool::Pencil,
         mirror_x: false,
+        selected_sheet: state.art.sheets.first().map(|s| s.id.clone()).unwrap_or_default(),
+        sheet_layer: 0,
+        sheet_frame: 0,
+        onion: true,
+        playing: false,
+        play_time: 0.0,
         shade_preview_sampler: state
             .materials
             .samplers
@@ -347,6 +377,7 @@ pub fn start() -> Result<(), JsValue> {
 
     let handle: Handle = Rc::new(RefCell::new(Shell { app, panel: None }));
 
+    bind_view_actions(&handle);
     bind_canvas(&handle, &canvas);
     bind_keys(&handle);
     bind_project_actions(&handle);
@@ -450,6 +481,39 @@ pub fn show_tab(sh: &mut Shell, h: &Handle, id: &'static str) {
 
 // ---- stage toolbar -------------------------------------------------------
 
+/// The speed slider runs on a log scale. The settings anybody watches are
+/// bunched at the slow end, and a linear slider up to two hundred would spend
+/// nearly all of its travel between speeds nothing can be told apart at.
+pub const SPEED_MIN: f64 = 0.25;
+pub const SPEED_MAX: f64 = 200.0;
+const SPEED_STEPS: f64 = 400.0;
+
+fn speed_from_slider(pos: f64) -> f64 {
+    let t = clamp(pos / SPEED_STEPS, 0.0, 1.0);
+    let v = SPEED_MIN * (SPEED_MAX / SPEED_MIN).powf(t);
+    // Snapped to something that reads as a setting rather than as a reading.
+    if v < 1.0 {
+        (v * 100.0).round() / 100.0
+    } else if v < 10.0 {
+        (v * 10.0).round() / 10.0
+    } else {
+        v.round()
+    }
+}
+
+fn slider_from_speed(speed: f64) -> f64 {
+    let v = clamp(speed, SPEED_MIN, SPEED_MAX);
+    ((v / SPEED_MIN).ln() / (SPEED_MAX / SPEED_MIN).ln() * SPEED_STEPS).round()
+}
+
+fn speed_text(v: f64) -> String {
+    if v < 10.0 {
+        format!("{v}x")
+    } else {
+        format!("{}x", v.round())
+    }
+}
+
 fn build_toolbar(sh: &mut Shell, h: &Handle) {
     let toolbar = match by_id("stage-toolbar") {
         Some(n) => n,
@@ -517,19 +581,20 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
 
     // Speed
     let speed = ui::input_el("range");
-    let _ = speed.set_attribute("min", "0.25");
-    let _ = speed.set_attribute("max", "32");
-    let _ = speed.set_attribute("step", "0.25");
-    speed.set_value(&format!("{}", cfg.speed));
-    let speed_label = el("span").class("readout").text(&format!("{}x", cfg.speed)).get();
+    let _ = speed.set_attribute("min", "0");
+    let _ = speed.set_attribute("max", &format!("{SPEED_STEPS}"));
+    let _ = speed.set_attribute("step", "1");
+    speed.set_value(&format!("{}", slider_from_speed(cfg.speed)));
+    let speed_label = el("span").class("readout").text(&speed_text(cfg.speed)).get();
     {
         let h2 = h.clone();
         let label = speed_label.clone();
         on(speed.unchecked_ref(), "input", Scope::Toolbar, move |e| {
-            let v: f64 = ui::value_of(&e).parse().unwrap_or(1.0);
+            let pos: f64 = ui::value_of(&e).parse().unwrap_or(0.0);
+            let v = speed_from_slider(pos);
             let mut sh = h2.borrow_mut();
             sh.app.set_speed(v);
-            label.set_text_content(Some(&format!("{v}x")));
+            label.set_text_content(Some(&speed_text(v)));
             sh.app.request_save();
         });
     }
@@ -666,37 +731,101 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
         });
     }
 
-    let drag = Rc::new(RefCell::new((false, 0.0f64, 0.0f64)));
+    // Every pointer currently down on the map, by its id. One drags the map,
+    // two pinch it, and a finger lifting mid-pinch leaves the other one
+    // dragging rather than jumping the view.
+    let touches: Rc<RefCell<Vec<(i32, f64, f64)>>> = Rc::new(RefCell::new(Vec::new()));
+    // Where two fingers were as of the last move: how far apart, and the point
+    // between them. A pinch is read as the change since then rather than since
+    // it started, so a finger lifting and landing again carries on from where
+    // the gesture is instead of snapping back to where it began.
+    let span = Rc::new(Cell::new(0.0f64));
+    let middle = Rc::new(Cell::new((0.0f64, 0.0f64)));
+
     {
-        let drag = drag.clone();
+        let touches = touches.clone();
+        let span = span.clone();
+        let middle = middle.clone();
         let canvas2 = canvas.clone();
         on(canvas.unchecked_ref(), "pointerdown", Scope::Global, move |e: Event| {
             let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
-            *drag.borrow_mut() = (true, pe.client_x() as f64, pe.client_y() as f64);
             let _ = canvas2.set_pointer_capture(pe.pointer_id());
+            let mut list = touches.borrow_mut();
+            list.retain(|(id, _, _)| *id != pe.pointer_id());
+            list.push((pe.pointer_id(), pe.client_x() as f64, pe.client_y() as f64));
+            span.set(pinch_span(&list));
+            middle.set(pinch_middle(&list));
         });
     }
     {
-        let drag = drag.clone();
+        let touches = touches.clone();
+        let span = span.clone();
+        let middle = middle.clone();
         let h2 = h.clone();
         on(canvas.unchecked_ref(), "pointermove", Scope::Global, move |e: Event| {
-            let mut d = drag.borrow_mut();
-            if !d.0 {
-                return;
-            }
             let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
             let (x, y) = (pe.client_x() as f64, pe.client_y() as f64);
-            h2.borrow_mut().app.viewport.pan(x - d.1, y - d.2);
-            d.1 = x;
-            d.2 = y;
+            let mut list = touches.borrow_mut();
+            let previous = match list.iter_mut().find(|(id, _, _)| *id == pe.pointer_id()) {
+                Some(slot) => {
+                    let was = (slot.1, slot.2);
+                    slot.1 = x;
+                    slot.2 = y;
+                    was
+                }
+                None => return,
+            };
+            let mut sh = h2.borrow_mut();
+            if list.len() >= 2 {
+                let now = pinch_span(&list);
+                let (mx, my) = pinch_middle(&list);
+                let before = span.get();
+                let (px, py) = middle.get();
+                span.set(now);
+                middle.set((mx, my));
+                if before > 0.0 && now > 0.0 {
+                    // Two fingers both move the map and scale it: the point
+                    // between them drags, and their separation zooms about it.
+                    sh.app.viewport.pan(mx - px, my - py);
+                    sh.app.viewport.zoom_at(mx, my, now / before);
+                    sync_zoom(&sh.app);
+                }
+                return;
+            }
+            sh.app.viewport.pan(x - previous.0, y - previous.1);
         });
     }
-    for event in ["pointerup", "pointercancel"] {
-        let drag = drag.clone();
-        on(canvas.unchecked_ref(), event, Scope::Global, move |_| {
-            drag.borrow_mut().0 = false;
+    for event in ["pointerup", "pointercancel", "pointerleave"] {
+        let touches = touches.clone();
+        let span = span.clone();
+        let middle = middle.clone();
+        on(canvas.unchecked_ref(), event, Scope::Global, move |e: Event| {
+            let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
+            let mut list = touches.borrow_mut();
+            list.retain(|(id, _, _)| *id != pe.pointer_id());
+            span.set(pinch_span(&list));
+            middle.set(pinch_middle(&list));
         });
     }
+}
+
+/// Distance between the first two pointers down, or nothing if there are not
+/// two of them, which is what tells a pinch from a drag.
+fn pinch_span(list: &[(i32, f64, f64)]) -> f64 {
+    if list.len() < 2 {
+        return 0.0;
+    }
+    let (dx, dy) = (list[0].1 - list[1].1, list[0].2 - list[1].2);
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// The point between the first two pointers down. With fewer than two there is
+/// no pinch in progress and nothing for it to be measured against.
+fn pinch_middle(list: &[(i32, f64, f64)]) -> (f64, f64) {
+    if list.len() < 2 {
+        return (0.0, 0.0);
+    }
+    ((list[0].1 + list[1].1) / 2.0, (list[0].2 + list[1].2) / 2.0)
 }
 
 fn bind_keys(h: &Handle) {
@@ -760,6 +889,56 @@ fn bind_resize(h: &Handle, canvas: &HtmlCanvasElement) {
     closure.forget();
 }
 
+/// The controls that belong to the window rather than to the project: folding
+/// the menu away, and how large everything is drawn.
+fn bind_view_actions(h: &Handle) {
+    let prefs = ui::prefs::Prefs::load();
+    prefs.apply();
+
+    if let Some(node) = by_id("btn-panel") {
+        node.set_text_content(Some(collapse_label(prefs.collapsed)));
+        let label = node.clone();
+        let h2 = h.clone();
+        on(node.unchecked_ref(), "click", Scope::Global, move |_| {
+            let mut prefs = ui::prefs::Prefs::load();
+            prefs.collapsed = !prefs.collapsed;
+            let mut sh = h2.borrow_mut();
+            // Folding the menu away hands its width to the map. Reading the
+            // canvas either side of the change and panning by half the
+            // difference keeps whatever was in the middle of the view in the
+            // middle of it, rather than pinned to the left edge.
+            let before = sh.app.viewport.canvas.get_bounding_client_rect().width();
+            prefs.apply();
+            let after = sh.app.viewport.canvas.get_bounding_client_rect().width();
+            sh.app.viewport.pan((after - before) / 2.0, 0.0);
+            sh.app.viewport.resize();
+            prefs.save();
+            label.set_text_content(Some(collapse_label(prefs.collapsed)));
+        });
+    }
+
+    if let Some(node) = by_id("ui-scale") {
+        if let Ok(input) = node.dyn_into::<HtmlInputElement>() {
+            input.set_value(&format!("{}", prefs.scale));
+            on(input.unchecked_ref(), "input", Scope::Global, move |e| {
+                let v: f64 = ui::value_of(&e).parse().unwrap_or(1.0);
+                let mut prefs = ui::prefs::Prefs::load();
+                prefs.scale = clamp(v, ui::prefs::SCALE_MIN, ui::prefs::SCALE_MAX);
+                prefs.apply();
+                prefs.save();
+            });
+        }
+    }
+}
+
+fn collapse_label(collapsed: bool) -> &'static str {
+    if collapsed {
+        "Show menu"
+    } else {
+        "Hide menu"
+    }
+}
+
 fn bind_project_actions(h: &Handle) {
     if let Some(btn) = by_id("btn-new") {
         let h2 = h.clone();
@@ -776,6 +955,21 @@ fn bind_project_actions(h: &Handle) {
             reset_selection(&mut sh.app);
             show_mode(sh, &h2, Mode::Lab);
             sh.app.request_save();
+        });
+    }
+
+    if let Some(btn) = by_id("btn-reset") {
+        on(btn.unchecked_ref(), "click", Scope::Global, move |_| {
+            let asked = window()
+                .confirm_with_message(
+                    "Clear everything this page has saved in the browser and start again? \
+                     The project, the window settings and any cached files all go, and this \
+                     cannot be undone.",
+                )
+                .unwrap_or(false);
+            if asked {
+                ui::reset::everything();
+            }
         });
     }
 
@@ -841,6 +1035,9 @@ fn reset_selection(app: &mut App) {
         .unwrap_or_default();
     app.ui.selected_species = app.state.species.first().map(|s| s.id.clone()).unwrap_or_default();
     app.ui.shade_preview_sampler = app.ui.selected_sampler.clone();
+    app.ui.selected_sheet = app.state.art.sheets.first().map(|s| s.id.clone()).unwrap_or_default();
+    app.ui.sheet_layer = 0;
+    app.ui.sheet_frame = 0;
 }
 
 fn export_json(json: &str) {

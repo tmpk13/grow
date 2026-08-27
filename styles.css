@@ -1,5 +1,8 @@
 /* Sizing uses rem, fractions and viewport units so the whole tool scales with
-   the root font size instead of being pinned to pixel values. */
+   the root font size instead of being pinned to pixel values. The root size is
+   itself relative: rem inside the root's own font-size means the size the
+   browser was set to, so a reader who has raised that keeps the increase, and
+   --ui-scale multiplies whatever that comes to. */
 
 :root {
   --bg: #0a0d12;
@@ -13,7 +16,9 @@
   --danger: #e0745f;
   --radius: 0.4rem;
   --gap: 0.6rem;
-  font-size: clamp(13px, 0.55vw + 0.65rem, 17px);
+  --ui-scale: 1;
+  --hairline: 0.0625rem;
+  font-size: calc(clamp(0.8rem, 0.55vw + 0.65rem, 1.06rem) * var(--ui-scale));
 }
 
 * {
@@ -38,9 +43,10 @@ body {
 .topbar {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: var(--gap);
   padding: 0.5rem 0.9rem;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--hairline) solid var(--line);
   background: var(--bg-panel);
   flex: 0 0 auto;
 }
@@ -62,6 +68,9 @@ body {
   margin-left: auto;
   display: flex;
   align-items: center;
+  /* The bar carries enough controls to outgrow a phone, and a row that will
+     not wrap pushes the last of them off the side of the page. */
+  flex-wrap: wrap;
   gap: 0.4rem;
 }
 
@@ -84,11 +93,26 @@ body {
   }
 }
 
+/* Folded away, the map gets the window. The panel is taken out of the grid
+   rather than hidden in place, so the stage reflows into the space. */
+.menu-collapsed .panel {
+  display: none;
+}
+
+.menu-collapsed .layout {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.topbar-actions .inline input[type="range"] {
+  width: clamp(3.5rem, 6vw, 7rem);
+}
+
 .panel {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--line);
+  border-right: var(--hairline) solid var(--line);
   background: var(--bg-panel);
 }
 
@@ -96,7 +120,7 @@ body {
   display: flex;
   gap: 0.2rem;
   padding: 0.4rem 0.4rem 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--hairline) solid var(--line);
   flex: 0 0 auto;
 }
 
@@ -104,7 +128,7 @@ body {
   flex: 1 1 auto;
   padding: 0.4rem 0.5rem;
   background: transparent;
-  border: 1px solid transparent;
+  border: var(--hairline) solid transparent;
   border-bottom: none;
   border-radius: var(--radius) var(--radius) 0 0;
   color: var(--text-dim);
@@ -128,7 +152,7 @@ body {
 }
 
 .group {
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-raised);
 }
@@ -138,7 +162,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--hairline) solid var(--line);
 }
 
 .group-head h3 {
@@ -198,7 +222,7 @@ select {
   min-width: 0;
   background: #0c1017;
   color: var(--text);
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: 0.25rem;
   padding: 0.2rem 0.3rem;
   font-size: 0.8rem;
@@ -215,7 +239,7 @@ input[type="color"] {
   width: 2.4rem;
   height: 1.6rem;
   padding: 0;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   background: none;
   border-radius: 0.25rem;
 }
@@ -229,7 +253,7 @@ input[type="checkbox"] {
 .btn {
   background: #1d2735;
   color: var(--text);
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
   padding: 0.3rem 0.6rem;
   font-size: 0.8rem;
@@ -279,7 +303,7 @@ input[type="checkbox"] {
 .editor-wrap {
   width: 100%;
   aspect-ratio: 2 / 1;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
   background: #0c1017;
@@ -302,7 +326,7 @@ input[type="checkbox"] {
 .swatch {
   width: 1.15rem;
   height: 1.15rem;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: var(--hairline) solid rgba(255, 255, 255, 0.18);
   border-radius: 0.15rem;
   cursor: pointer;
   padding: 0;
@@ -312,7 +336,7 @@ input[type="checkbox"] {
   display: flex;
   width: 100%;
   height: 1.4rem;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: 0.25rem;
   overflow: hidden;
 }
@@ -335,7 +359,7 @@ input[type="checkbox"] {
   gap: 0.5rem;
   align-items: center;
   background: #0f151e;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
   padding: 0.3rem;
   cursor: pointer;
@@ -368,7 +392,7 @@ input[type="checkbox"] {
 /* settler sprites */
 
 .sprite-slot {
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-raised);
   padding: 0.5rem 0.6rem;
@@ -398,7 +422,7 @@ input[type="checkbox"] {
 }
 
 .dropzone {
-  border: 1px dashed var(--line);
+  border: var(--hairline) dashed var(--line);
   border-radius: var(--radius);
   /* A checker so transparent frames read as cut out rather than as black. */
   background-color: #0d1219;
@@ -458,7 +482,7 @@ input[type="checkbox"] {
 .preview-wrap {
   width: 100%;
   aspect-ratio: 2 / 1;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -485,7 +509,7 @@ input[type="checkbox"] {
 
 .chip {
   background: #0f151e;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: 1rem;
   color: var(--text);
   padding: 0.2rem 0.6rem;
@@ -508,7 +532,7 @@ input[type="checkbox"] {
 }
 
 .class-block {
-  border-top: 1px solid var(--line);
+  border-top: var(--hairline) solid var(--line);
   padding-top: 0.4rem;
   display: flex;
   flex-direction: column;
@@ -531,7 +555,7 @@ input[type="checkbox"] {
 }
 
 .stage-toolbar {
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--hairline) solid var(--line);
   background: var(--bg-panel);
   padding: 0.35rem 0.6rem;
   flex: 0 0 auto;
@@ -577,7 +601,7 @@ input[type="checkbox"] {
 
 .statusbar {
   flex: 0 0 auto;
-  border-top: 1px solid var(--line);
+  border-top: var(--hairline) solid var(--line);
   background: var(--bg-panel);
   padding: 0.3rem 0.6rem;
   color: var(--text-dim);
@@ -600,7 +624,7 @@ input[type="checkbox"] {
   flex: 1 1 auto;
   padding: 0.35rem 0.5rem;
   background: #0f151e;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
   color: var(--text-dim);
   cursor: pointer;
@@ -628,7 +652,7 @@ input[type="checkbox"] {
   justify-content: space-between;
   gap: 0.4rem;
   background: #0f151e;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: 0.25rem;
   padding: 0.2rem 0.4rem;
   font-size: 0.75rem;
@@ -658,7 +682,7 @@ input[type="checkbox"] {
   align-items: center;
   gap: 0.3rem;
   background: #0f151e;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: 0.25rem;
   padding: 0.2rem 0.35rem;
   font-size: 0.72rem;
@@ -713,7 +737,7 @@ input[type="checkbox"] {
   flex-direction: column;
   gap: 0.35rem;
   background: #0d131b;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: 0.3rem;
   padding: 0.4rem 0.5rem;
 }
@@ -739,7 +763,7 @@ input[type="checkbox"] {
   display: block;
   height: 0.45rem;
   background: #0a0f16;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: 0.2rem;
   overflow: hidden;
 }
@@ -837,7 +861,7 @@ input[type="checkbox"] {
   flex-direction: column;
   gap: 0.15rem;
   background: #0f151e;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
   padding: 0.3rem 0.4rem;
 }
@@ -911,7 +935,7 @@ input[type="checkbox"] {
 
 .stock-row.head {
   color: var(--text-dim);
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--hairline) solid var(--line);
   padding-bottom: 0.15rem;
 }
 
@@ -939,7 +963,7 @@ input[type="checkbox"] {
   width: 0.6rem;
   height: 0.6rem;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: var(--hairline) solid rgba(255, 255, 255, 0.2);
 }
 
 .swatch-dot.ghost {
@@ -959,4 +983,122 @@ input[type="checkbox"] {
   color: var(--text-dim);
   font-size: 0.7rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* color wheel */
+
+.wheel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wheel-canvas {
+  width: 100%;
+  max-width: 11rem;
+  aspect-ratio: 1 / 1;
+  align-self: center;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+input[type="text"].hex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: lowercase;
+}
+
+/* sprite editor */
+
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.layer-row {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+  background: #0f151e;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.35rem;
+}
+
+.layer-row.active {
+  border-color: var(--accent-warm);
+}
+
+/* The thumbnail is the target that picks the layer, so it carries no chrome of
+   its own; the row around it is what reads as selected. */
+.layer-pick {
+  background: #0a0f16;
+  border: var(--hairline) solid var(--line);
+  border-radius: 0.2rem;
+  padding: 0;
+  cursor: pointer;
+  display: block;
+  overflow: hidden;
+}
+
+.layer-pick .thumb {
+  height: 2rem;
+}
+
+.frame-strip {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+}
+
+.frame-cell {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  background: #0f151e;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.2rem;
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.frame-cell.active {
+  border-color: var(--accent-warm);
+  color: var(--text);
+}
+
+.frame-thumb {
+  width: 2.6rem;
+  height: 2.6rem;
+  display: block;
+}
+
+.frame-index {
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet-preview {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #0c1017;
+}
+
+/* Choosing a sheet to send to a settler motion. */
+.sprite-from {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+  align-items: end;
+}
+
+.sprite-from .field {
+  margin: 0;
 }

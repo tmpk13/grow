@@ -24,8 +24,8 @@ use crate::civ::sprites::{
     guess_frames, natural_cmp, Clip, Frame, Motion, ALPHA_CUT, MAX_FRAMES, MOTIONS,
 };
 use crate::ui::{
-    app_bool, danger_button, document, el, input_el, note, number_field, on, section, NumOpts,
-    Scope, Tap,
+    app_bool, button, danger_button, document, el, input_el, note, number_field, on, section,
+    select_field, NumOpts, Scope, Tap,
 };
 use crate::util::{pack_rgba, unpack_rgba};
 
@@ -108,6 +108,7 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
         head,
         el("p").class("field-hint").text(motion.hint()).get(),
         drop_zone(h, motion, clip),
+        sheet_row(app, h, motion),
     ];
     if let Some(c) = clip.filter(|c| c.ready()) {
         let per_unit = if c.stride { "frames per cell walked" } else { "frames per second" };
@@ -175,6 +176,14 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
             Some("off for art drawn facing the viewer"),
             |clip, v| clip.flip = v,
         ));
+        body.push(clip_bool(
+            h,
+            motion,
+            "Mirror the art",
+            c.mirror,
+            Some("for a sheet drawn facing the other way than the settler walks"),
+            |clip, v| clip.mirror = v,
+        ));
         let h2 = h.clone();
         body.push(
             el("div")
@@ -189,6 +198,39 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
         );
     }
     el("div").class("sprite-slot").children(body).get()
+}
+
+/// Pointing a motion at a sheet drawn in the sprite editor, which is the other
+/// way art gets here. The sheet is copied into a clip rather than followed, so
+/// carrying on drawing does not change the settlers until it is sent again.
+fn sheet_row(app: &App, h: &Handle, motion: Motion) -> Element {
+    let options = app.state.art.options();
+    if options.is_empty() {
+        return el("div").get();
+    }
+    let first = options.first().map(|(id, _)| id.clone()).unwrap_or_default();
+    let chosen = Rc::new(RefCell::new(first.clone()));
+    let picker = {
+        let chosen = chosen.clone();
+        select_field("From editor", &first, &options, None, move |v| {
+            *chosen.borrow_mut() = v;
+        })
+    };
+    let send = {
+        let h2 = h.clone();
+        let chosen = chosen.clone();
+        button("Use sheet", Scope::Panel, move || {
+            let id = chosen.borrow().clone();
+            let mut sh = h2.borrow_mut();
+            let built = sh.app.state.art.find(&id).and_then(Clip::from_sheet);
+            match built {
+                Some(clip) => apply_clip(&mut sh.app, motion, clip),
+                None => sh.app.set_note("nothing drawn on that sheet"),
+            }
+            sh.app.rebuild_panel = true;
+        })
+    };
+    el("div").class("sprite-from").child(&picker).child(&send).get()
 }
 
 // ---- the drop target -----------------------------------------------------
@@ -370,32 +412,37 @@ fn apply(h: &Handle, motion: Motion, frames: Vec<Frame>, strip: bool, source: &s
         Clip::from_frames(frames, source.to_string())
     };
     match built {
-        Some(mut clip) => {
-            // Playback that has already been tuned for this motion outlives the
-            // art it was tuned on; only a fresh slot takes the defaults.
-            match sh.app.state.civ.sprites.clip(motion) {
-                Some(old) => {
-                    clip.fps = old.fps;
-                    clip.stride = old.stride;
-                    clip.height = old.height;
-                    clip.lift = old.lift;
-                    clip.flip = old.flip;
-                }
-                None => {
-                    let (fps, stride) = motion.playback();
-                    clip.fps = fps;
-                    clip.stride = stride;
-                }
-            }
-            let count = clip.frame_count();
-            sh.app.state.civ.sprites.set(motion, Some(clip));
-            sh.app
-                .set_note(&format!("{}: {count} frames", motion.label().to_lowercase()));
-        }
+        Some(clip) => apply_clip(&mut sh.app, motion, clip),
         None => sh.app.set_note("nothing readable in that drop"),
     }
-    sh.app.sprites_changed();
     sh.app.rebuild_panel = true;
+}
+
+/// Drops a freshly built clip into a motion. Playback that has already been
+/// tuned for this motion outlives the art it was tuned on; only a fresh slot
+/// takes the defaults.
+fn apply_clip(app: &mut App, motion: Motion, mut clip: Clip) {
+    match app.state.civ.sprites.clip(motion) {
+        Some(old) => {
+            clip.fps = old.fps;
+            clip.stride = old.stride;
+            clip.height = old.height;
+            clip.lift = old.lift;
+            clip.flip = old.flip;
+            clip.mirror = old.mirror;
+        }
+        None => {
+            let (fps, stride) = motion.playback();
+            if clip.fps <= 0.0 {
+                clip.fps = fps;
+            }
+            clip.stride = stride;
+        }
+    }
+    let count = clip.frame_count();
+    app.state.civ.sprites.set(motion, Some(clip));
+    app.set_note(&format!("{}: {count} frames", motion.label().to_lowercase()));
+    app.sprites_changed();
 }
 
 /// One file to one frame of packed pixels, through an image element and a

@@ -1,14 +1,15 @@
 //! Materials panel: the sampling boxes, their layout mode and the pixel editor.
 
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, Element, HtmlCanvasElement, HtmlInputElement};
+use web_sys::{CanvasRenderingContext2d, Element, HtmlCanvasElement};
 
 use crate::app::{App, Handle, Panel, Tool};
 use crate::sampler::{role_def, role_label, Grid, MaterialMode, Region, Sampler, DEFAULT_TONES, ROLES};
+use crate::ui::color_wheel::{set_brush, Brush};
 use crate::ui::grid_editor::{self, GridEditor};
 use crate::ui::{
     app_button, app_danger_button, app_num, app_select, app_text, append, btn_row, button, clear,
-    el, input_el, on, section, window, NumOpts, Scope,
+    clear_scope, el, input_el, on, section, window, NumOpts, Scope,
 };
 use crate::util::{hex_to_packed, mix_packed, packed_to_hex, EMPTY_COLOR};
 
@@ -22,7 +23,7 @@ const TOOLS: [(Tool, &str); 4] = [
 pub struct MaterialsPanel {
     handle: Handle,
     editor: GridEditor,
-    color_input: HtmlInputElement,
+    brush: Brush,
     swatches: Element,
     ramp_strip: Element,
     ramp_note: Element,
@@ -112,15 +113,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         let _ = tool_buttons.append_child(&btn);
     }
 
-    let color_input = input_el("color");
-    color_input.set_value(&packed_to_hex(app.ui.brush_color));
-    {
-        let h2 = h.clone();
-        on(color_input.unchecked_ref(), "input", Scope::Panel, move |e| {
-            let mut sh = h2.borrow_mut();
-            sh.app.ui.brush_color = hex_to_packed(&crate::ui::value_of(&e));
-        });
-    }
+    let mut brush = Brush::build(h, app);
 
     let mirror = input_el("checkbox");
     mirror.set_checked(app.ui.mirror_x);
@@ -168,19 +161,17 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let ramp_strip = el("div").class("ramp-strip").get();
     let ramp_note = el("p").class("note").get();
 
-    append(root, section("Sampling grid", vec![
-        mode_row,
-        sync_buttons,
-        atlas_settings(app, h),
-        tool_buttons,
-        crate::ui::row("Brush color", el("span").class("inline").child(color_input.unchecked_ref()).get(), None),
+    let mut grid_rows = vec![mode_row, sync_buttons, atlas_settings(app, h), tool_buttons];
+    grid_rows.append(&mut brush.rows);
+    grid_rows.extend([
         crate::ui::row("Mirror X", mirror.unchecked_into(), None),
         swatches.clone(),
         wrap,
         ramp_row,
         ramp_strip.clone(),
         ramp_note.clone(),
-    ]));
+    ]);
+    append(root, section("Sampling grid", grid_rows));
 
     // ---- sampler list ----------------------------------------------------
     let list = el("div").class("sampler-list").get();
@@ -257,7 +248,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let mut panel = MaterialsPanel {
         handle: h.clone(),
         editor,
-        color_input,
+        brush,
         swatches,
         ramp_strip,
         ramp_note,
@@ -424,11 +415,15 @@ fn sampler_settings(app: &App, h: &Handle) -> Element {
 impl Panel for MaterialsPanel {
     fn redraw(&mut self, app: &mut App) {
         self.editor.draw(app);
-        self.color_input.set_value(&packed_to_hex(app.ui.brush_color));
+        self.brush.sync(app);
 
+        // The strip is the lookup shading actually reads, so a color covering
+        // most of the box shows as most of the strip. The swatches below it are
+        // the palette, one entry per color however little of the box it holds.
         let ramp = app.state.materials.ramp(&app.ui.selected_sampler);
+        let lut = app.state.materials.tone_lut(&app.ui.selected_sampler);
         clear(&self.ramp_strip);
-        for c in ramp.iter() {
+        for c in lut.iter() {
             let cell = el("span")
                 .class("ramp-cell")
                 .style("background", &packed_to_hex(*c))
@@ -436,26 +431,28 @@ impl Panel for MaterialsPanel {
             let _ = self.ramp_strip.append_child(&cell);
         }
         self.ramp_note.set_text_content(Some(&format!(
-            "{} tones, dark to light. Shading picks along this ramp.",
+            "{} tones, dark to light. Shading picks along this ramp, and each tone \
+             holds as much of it as it covers of the box.",
             ramp.len()
         )));
 
+        // The swatches are rebuilt every redraw, so their listeners go in the
+        // scope that is emptied first rather than piling up a closure a click.
+        clear_scope(Scope::List);
         clear(&self.swatches);
         for c in ramp.iter().rev() {
             let hex = packed_to_hex(*c);
             let value = *c;
             let h2 = self.handle.clone();
-            let color_input = self.color_input.clone();
-            let hex2 = hex.clone();
             let sw = el("button")
                 .class("swatch")
                 .attr("type", "button")
                 .attr("title", &hex)
                 .style("background", &hex)
-                .on("click", Scope::Panel, move |_| {
+                .on("click", Scope::List, move |_| {
                     let mut sh = h2.borrow_mut();
-                    sh.app.ui.brush_color = value;
-                    color_input.set_value(&hex2);
+                    set_brush(&mut sh.app, value);
+                    sh.app.redraw_panel = true;
                 })
                 .get();
             let _ = self.swatches.append_child(&sw);

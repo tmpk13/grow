@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::art::ArtLibrary;
 use crate::civ::config::{CivConfig, SimSettings};
 use crate::sampler::Materials;
 use crate::shading::Shading;
@@ -34,6 +35,9 @@ pub struct State {
     pub version: u32,
     pub seed: u32,
     pub materials: Materials,
+    /// Sprite sheets drawn in the tool, which settler motions can be pointed
+    /// at instead of at a dropped image.
+    pub art: ArtLibrary,
     pub shading: Shading,
     pub species: Vec<Species>,
     pub class_limits: ClassLimits,
@@ -48,6 +52,7 @@ impl Default for State {
             version: default_version(),
             seed: default_seed(),
             materials: Materials::new(),
+            art: ArtLibrary::default(),
             shading: Shading::default(),
             species: default_species_list(),
             class_limits: ClassLimits::default(),
@@ -84,6 +89,7 @@ impl State {
         if state.species.is_empty() {
             state.species = default_species_list();
         }
+        state.art.fit();
         state.materials.ensure_role_samplers();
         state.materials.invalidate();
         Ok(state)

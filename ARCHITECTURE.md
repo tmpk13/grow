@@ -40,10 +40,13 @@ flowchart TD
 
   subgraph labpanels [Lab panels]
     matp["ui/materials_panel.rs"]
+    artp["ui/art_panel.rs<br/>sheets, layers, frames, playback"]
     shdp["ui/shading_panel.rs"]
     spp["ui/species_panel.rs"]
     wldp["ui/world_panel.rs"]
-    ge["ui/grid_editor.rs<br/>drawable pixel grid"]
+    ge["ui/grid_editor.rs<br/>the sampling box, drawable"]
+    pnt["ui/paint.rs<br/>tools and strokes, over any surface"]
+    wheel["ui/color_wheel.rs<br/>the brush control"]
     ctl["ui/mod.rs<br/>schema driven fields"]
   end
 
@@ -61,7 +64,8 @@ flowchart TD
     world["world.rs<br/>cell grid, layer occupancy"]
     plant["plant.rs<br/>growth, raster, shade"]
     species["species.rs<br/>definitions, schema, limits"]
-    sampler["sampler.rs<br/>sampling boxes, ramps"]
+    sampler["sampler.rs<br/>sampling boxes, weighted tone ramps"]
+    art["art.rs<br/>sprite sheets: layers, frames, cels"]
     shading["shading.rs<br/>tone curve"]
     rng["rng.rs"]
     util["util.rs<br/>color, distance transform, labels"]
@@ -96,8 +100,18 @@ flowchart TD
   main --> render
   main --> labpanels
   main --> civpanels
+  main --> prefs["ui/prefs.rs<br/>menu fold, text scale"]
+  main --> rst["ui/reset.rs<br/>clears every browser store"]
   state --> cfg
+  state --> art
   matp --> ge
+  artp --> art
+  artp --> pnt
+  artp --> wheel
+  ge --> pnt
+  matp --> wheel
+  art --> csprites
+  artp --> csprites
   labpanels --> ctl
   civpanels --> ctl
   matp --> sampler
@@ -181,6 +195,7 @@ classDiagram
   class State {
     +u32 seed
     +Materials materials
+    +ArtLibrary art
     +Shading shading
     +Vec~Species~ species
     +ClassLimits class_limits
@@ -353,6 +368,26 @@ classDiagram
     +bool kin
   }
 
+  class ArtLibrary {
+    +Vec~Sheet~ sheets
+  }
+
+  class Sheet {
+    +id, name
+    +i32 w, h, frames
+    +f64 fps
+    +Vec~Layer~ layers
+  }
+
+  class Layer {
+    +String name
+    +bool visible
+    +Vec~Cel~ cels
+  }
+
+  State *-- ArtLibrary
+  ArtLibrary *-- Sheet
+  Sheet *-- Layer
   State *-- Materials
   State *-- Species
   State *-- CivConfig
@@ -447,13 +482,35 @@ flowchart LR
   nd --> curve["t = mid - center_dark*C(depth)<br/>+ top_light*C(1-vert)<br/>- bottom_dark*C(vert)"]
   vert --> curve
   curve --> q["quantize to tone steps<br/>plus stable per pixel jitter"]
-  q --> ramp["ramp of the sampling box<br/>bound to that material"]
+  q --> ramp["tone lookup of the sampling box<br/>bound to that material"]
   ramp --> px["output pixel"]
 ```
 
 The curve `C` is a smoothstep between `edge0` and `edge1` raised to `gamma`.
 Narrowing the gap between the two edges widens the flat plateau, which is what
 keeps the body of an object on one tone and confines the shading to a rim.
+
+A box is read twice over. Its **palette** is its distinct colors sorted dark to
+light, one entry each, and that is what the panel shows and what a swatch picks
+from. Its **tone lookup** is what shading indexes into, and there a color holds a
+span of the range as wide as its share of the box.
+
+```mermaid
+flowchart LR
+  boxpx["the box, pixel by pixel"] --> tally["distinct colors with how many<br/>pixels wear each,<br/>sorted dark to light"]
+  tally --> pal["palette: one entry per color"]
+  tally --> lut["tone lookup: steps shared out<br/>in proportion, never fewer than<br/>one step to a color"]
+  pal --> panel["swatches and the count"]
+  lut --> shade["shading, terrain, buildings"]
+```
+
+Spreading the distinct colors evenly instead is what made a hand drawn box come
+out looking nothing like itself: a box that is nine tenths mid green and one
+pixel of highlight would hand the highlight as much of the shading range as the
+green, and the object would read as evenly banded whatever had been drawn.
+Weighting by coverage means the drawn proportions are the rendered ones, and the
+floor of one step is what keeps a highlight that is only ever a pixel or two
+from disappearing altogether.
 
 ## Projection
 
@@ -932,6 +989,31 @@ flowchart TD
   frame --> night["night tint and labels<br/>drawn on the canvas, not the buffer"]
 ```
 
+## The sprite editor
+
+Sheets are drawn in the tool itself, in the lab's Sprites tab, and a motion can
+be pointed at one instead of at a dropped image. A sheet is a frame size, a
+stack of layers, and one cel per layer per frame; drawing lands on a single cel,
+and what anything else reads is the flattened frame.
+
+```mermaid
+flowchart TD
+  sheet["a sheet<br/>frame size, rate"] --> layers["layers, bottom of the pile first"]
+  layers --> cels["one cel per frame, each w by h"]
+  cels --> flat["flatten a frame:<br/>every visible layer over the one below,<br/>topmost pixel wins"]
+  flat --> ed["the editor canvas<br/>plus the frame before it, faint"]
+  flat --> prev["the preview, playing at the sheet's rate"]
+  flat --> strip["every frame side by side"]
+  strip --> clip["a settler clip, copied<br/>rather than followed"]
+  cels --> rle["saved run length encoded:<br/>count and color per run,<br/>because sprite art is mostly empty"]
+```
+
+Both pixel editors in the tool share their tools and strokes. `ui/paint.rs`
+holds the pencil, eraser, fill and pick and the pointer handling; what differs
+between the sampling grid and a sheet is only which buffer they land in, which
+each supplies as a surface. A surface also says what the pick tool reads, which
+for a stack of layers is what is on show rather than the layer being drawn on.
+
 ## Settler animations
 
 A settler can be drawn from images instead of from the generator. Every motion
@@ -943,13 +1025,24 @@ flowchart TD
   drop["images dropped on a motion"] --> how{"how many files?"}
   how -->|one| strip["read as a strip:<br/>frames guessed from the shape,<br/>square frames unless told otherwise"]
   how -->|several| each["one frame each, in the order<br/>their names sort, so walk2<br/>lands before walk10"]
+  ed["a sheet from the sprite editor"] --> flat["flattened frame by frame"]
   each --> box["a common box, widest and tallest<br/>of them; every frame centered<br/>across it and stood on its floor"]
-  strip --> cap
-  box --> cap["scaled down only if a frame<br/>is over the size cap"]
+  strip --> trim
+  box --> trim
+  flat --> trim["cropped to the box the art fills<br/>in every frame, so the drawn height<br/>means the art and not the padding"]
+  trim --> cap["scaled down only if a frame<br/>is over the size cap,<br/>frame by frame so the width<br/>stays a whole number of frames"]
   cap --> sheet["one sheet, kept whole"]
-  sheet --> cut["frame width is sheet width over<br/>frame count, so the count stays<br/>editable after the drop"]
+  sheet --> cut["frames are cut from the full width<br/>rather than stepped by the floored one,<br/>so an uneven sheet does not drift"]
   cut --> saved["saved with the project<br/>as RGBA hex, like every other<br/>pixel buffer"]
 ```
+
+Padding is the thing that used to make two sheets asked for the same height come
+out different sizes, and cropping to the art is what fixes it: a figure drawn a
+third of the way up a large canvas is the same figure as one drawn tight, and
+the clip is now sized by the figure either way. A clip can also be mirrored on
+the way out, for art drawn facing the other way than the settler walks; that is
+separate from mirroring when facing left, which is about the direction of
+travel rather than about the sheet.
 
 What a settler is doing folds down to one motion, and a motion with an empty
 slot borrows from a related one, so a single walk sheet stands in everywhere.

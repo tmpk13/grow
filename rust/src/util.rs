@@ -324,3 +324,50 @@ pub fn label_components(
 pub fn uid(prefix: &str, n: u32) -> String {
     format!("{prefix}-{n:06x}")
 }
+
+/// Hue in degrees, saturation and value in 0..1, to a packed opaque color.
+pub fn hsv_to_packed(h: f64, s: f64, v: f64) -> u32 {
+    let hh = (h % 360.0 + 360.0) % 360.0 / 60.0;
+    let s = clamp01(s);
+    let v = clamp01(v);
+    let c = v * s;
+    let x = c * (1.0 - ((hh % 2.0) - 1.0).abs());
+    let (r, g, b) = match hh as i32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = v - c;
+    pack_rgba(
+        ((r + m) * 255.0).round() as i32,
+        ((g + m) * 255.0).round() as i32,
+        ((b + m) * 255.0).round() as i32,
+        255,
+    )
+}
+
+/// The inverse, for seeding a wheel from a color that came from somewhere else.
+/// A gray has no hue to recover, so the caller's current hue is kept instead of
+/// snapping the wheel back to red.
+pub fn packed_to_hsv(v: u32, keep_hue: f64) -> (f64, f64, f64) {
+    let c = unpack_rgba(v);
+    let (r, g, b) = (c.r as f64 / 255.0, c.g as f64 / 255.0, c.b as f64 / 255.0);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let d = max - min;
+    let hue = if d <= 0.0 {
+        keep_hue
+    } else if max == r {
+        60.0 * (((g - b) / d) % 6.0)
+    } else if max == g {
+        60.0 * ((b - r) / d + 2.0)
+    } else {
+        60.0 * ((r - g) / d + 4.0)
+    };
+    let hue = (hue % 360.0 + 360.0) % 360.0;
+    let sat = if max <= 0.0 { 0.0 } else { d / max };
+    (hue, sat, max)
+}

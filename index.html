@@ -15,10 +15,16 @@
       <h1>grow</h1>
       <div class="topbar-actions">
         <span id="save-note" class="save-note"></span>
+        <label class="inline" for="ui-scale" title="Size of every label and control">
+          <span>Text</span>
+          <input id="ui-scale" type="range" min="0.75" max="1.75" step="0.05" />
+        </label>
+        <button id="btn-panel" class="btn" type="button">Hide menu</button>
         <button id="btn-new" class="btn" type="button">New</button>
         <button id="btn-export" class="btn" type="button">Export</button>
         <label class="btn" for="file-import">Import</label>
         <input id="file-import" type="file" accept="application/json" hidden />
+        <button id="btn-reset" class="btn danger" type="button">Reset all</button>
       </div>
     </header>
 

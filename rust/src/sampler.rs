@@ -9,7 +9,11 @@
 //!
 //! A sampler is read as a ramp: its unique colors sorted dark to light, indexed
 //! by a tone value. How the colors are arranged in the grid does not matter,
-//! only which distinct colors are present.
+//! but how much of the box each one covers does: the tone lookup a material is
+//! actually shaded through gives every color a share of the range the size of
+//! its share of the box. A box that is mostly mid green with two pixels of
+//! highlight comes out mostly mid green, rather than handing the highlight a
+//! third of the shading the way an even spread over the distinct colors would.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -204,10 +208,15 @@ pub enum MaterialMode {
     Single,
 }
 
+/// Steps in a tone lookup. Fine enough that a color covering a sixtieth of a
+/// box still gets a step of its own, short enough to build on demand.
+pub const TONE_STEPS: usize = 64;
+
 #[derive(Default)]
 struct RampCache {
     key: (u32, bool),
-    map: HashMap<String, Rc<Vec<u32>>>,
+    ramps: HashMap<String, Rc<Vec<u32>>>,
+    luts: HashMap<String, Rc<Vec<u32>>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -281,7 +290,8 @@ impl Materials {
 
     pub fn invalidate(&self) {
         let mut cache = self.cache.borrow_mut();
-        cache.map.clear();
+        cache.ramps.clear();
+        cache.luts.clear();
         cache.key = (u32::MAX, false);
     }
 
@@ -398,39 +408,107 @@ impl Materials {
         Grid { w, h, px }
     }
 
-    /// Unique opaque colors of a sampler, sorted dark to light. Cached per
-    /// materials version so the sim can call this for every pixel.
-    pub fn ramp(&self, id: &str) -> Rc<Vec<u32>> {
+    /// Drops every cached read if the materials have moved on since.
+    fn refresh_cache(&self) -> (u32, bool) {
         let key = (self.version, self.mode == MaterialMode::Single);
-        {
-            let mut cache = self.cache.borrow_mut();
-            if cache.key != key {
-                cache.key = key;
-                cache.map.clear();
+        let mut cache = self.cache.borrow_mut();
+        if cache.key != key {
+            cache.key = key;
+            cache.ramps.clear();
+            cache.luts.clear();
+        }
+        key
+    }
+
+    /// Every distinct color in a sampler with how many pixels wear it, sorted
+    /// dark to light.
+    fn tally(&self, id: &str) -> Vec<(u32, usize)> {
+        let sampler = match self.find(id) {
+            Some(s) => s,
+            None => return Vec::new(),
+        };
+        let mut seen: Vec<(u32, usize)> = Vec::new();
+        for v in self.patch(sampler).px {
+            if v == EMPTY_COLOR {
+                continue;
             }
-            if let Some(hit) = cache.map.get(id) {
-                return hit.clone();
+            match seen.iter_mut().find(|(c, _)| *c == v) {
+                Some(entry) => entry.1 += 1,
+                None => seen.push((v, 1)),
             }
         }
-        let colors = match self.find(id) {
-            Some(sampler) => {
-                let patch = self.patch(sampler);
-                let mut seen: Vec<u32> = Vec::new();
-                for v in patch.px {
-                    if v == EMPTY_COLOR || seen.contains(&v) {
-                        continue;
-                    }
-                    seen.push(v);
-                }
-                seen.sort_by(|a, b| luminance(*a).partial_cmp(&luminance(*b)).unwrap());
-                seen
-            }
-            None => Vec::new(),
-        };
-        let rc = Rc::new(colors);
-        self.cache.borrow_mut().map.insert(id.to_string(), rc.clone());
+        seen.sort_by(|a, b| luminance(a.0).partial_cmp(&luminance(b.0)).unwrap());
+        seen
+    }
+
+    /// Unique opaque colors of a sampler, sorted dark to light. This is the
+    /// palette the panel shows; what shading reads is `tone_lut`.
+    pub fn ramp(&self, id: &str) -> Rc<Vec<u32>> {
+        self.refresh_cache();
+        if let Some(hit) = self.cache.borrow().ramps.get(id) {
+            return hit.clone();
+        }
+        let rc = Rc::new(self.tally(id).into_iter().map(|(c, _)| c).collect::<Vec<u32>>());
+        self.cache.borrow_mut().ramps.insert(id.to_string(), rc.clone());
         rc
     }
+
+    /// The tone lookup a material is shaded through: the same colors, dark to
+    /// light, but each one holding a span of the range as wide as its share of
+    /// the box. Cached per materials version, because the sim reads it once
+    /// per pixel.
+    pub fn tone_lut(&self, id: &str) -> Rc<Vec<u32>> {
+        self.refresh_cache();
+        if let Some(hit) = self.cache.borrow().luts.get(id) {
+            return hit.clone();
+        }
+        let rc = Rc::new(weighted_lut(&self.tally(id)));
+        self.cache.borrow_mut().luts.insert(id.to_string(), rc.clone());
+        rc
+    }
+}
+
+/// Spreads colors over a fixed number of steps in proportion to how much of
+/// the box each one covers. Every color that is in the box at all gets at least
+/// one step, so a single highlight pixel still lands somewhere rather than
+/// being rounded away.
+fn weighted_lut(tally: &[(u32, usize)]) -> Vec<u32> {
+    if tally.is_empty() {
+        return Vec::new();
+    }
+    let steps = TONE_STEPS.max(tally.len());
+    let total: f64 = tally.iter().map(|(_, n)| *n as f64).sum::<f64>().max(1.0);
+    let mut share: Vec<usize> = tally
+        .iter()
+        .map(|(_, n)| ((*n as f64 / total) * steps as f64).floor().max(1.0) as usize)
+        .collect();
+    // Flooring leaves steps unclaimed and the floor of one takes too many. The
+    // slack is settled against the widest bands either way, which are the ones
+    // a step more or less shows in the least.
+    let mut order: Vec<usize> = (0..share.len()).collect();
+    order.sort_by(|a, b| share[*b].cmp(&share[*a]));
+    let mut sum: usize = share.iter().sum();
+    let mut turn = 0usize;
+    while sum != steps {
+        let k = order[turn % order.len()];
+        turn += 1;
+        if sum > steps {
+            if share[k] > 1 {
+                share[k] -= 1;
+                sum -= 1;
+            }
+        } else {
+            share[k] += 1;
+            sum += 1;
+        }
+    }
+    let mut out = Vec::with_capacity(steps);
+    for (k, (color, _)) in tally.iter().enumerate() {
+        for _ in 0..share[k] {
+            out.push(*color);
+        }
+    }
+    out
 }
 
 pub fn ramp_pick(ramp: &[u32], t: f64) -> u32 {

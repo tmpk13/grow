@@ -138,6 +138,10 @@ pub struct Clip {
     /// Mirror the art when the settler faces left. Off for art drawn facing the
     /// viewer, which should not flip at all.
     pub flip: bool,
+    /// Mirror the sheet itself, for art drawn facing the other way than the
+    /// settler it stands in for. Read on the way out rather than baked in, so
+    /// it can be turned off again without dropping the images a second time.
+    pub mirror: bool,
     /// What was dropped, so the panel can say what it is showing.
     pub source: String,
 }
@@ -154,6 +158,7 @@ impl Default for Clip {
             height: 1.1,
             lift: 0.0,
             flip: true,
+            mirror: false,
             source: String::new(),
         }
     }
@@ -166,6 +171,7 @@ impl Clip {
             return None;
         }
         let frames = frames.clamp(1, MAX_FRAMES);
+        let (w, h, px) = trim_sheet(w, h, &px, frames);
         let (w, h, px) = fit_sheet(w, h, &px, frames);
         Some(Clip { w, h, px, frames, source, ..Clip::default() })
     }
@@ -201,8 +207,31 @@ impl Clip {
                 }
             }
         }
-        let (w, h, px) = fit_sheet(w, fh, &px, frames);
+        let (w, h, px) = trim_sheet(w, fh, &px, frames);
+        let (w, h, px) = fit_sheet(w, h, &px, frames);
         Some(Clip { w, h, px, frames, source, ..Clip::default() })
+    }
+
+    /// A clip built from a sheet drawn in the editor. The sheet is already a
+    /// row of equal frames, so it goes in whole rather than being guessed at,
+    /// and the sheet's own rate comes with it.
+    pub fn from_sheet(sheet: &crate::art::Sheet) -> Option<Clip> {
+        let (w, h, px) = sheet.strip();
+        let frames = sheet.frame_count().clamp(1, MAX_FRAMES);
+        if w <= 0 || h <= 0 || px.iter().all(|v| *v == 0) {
+            return None;
+        }
+        let (w, h, px) = trim_sheet(w, h, &px, frames);
+        let (w, h, px) = fit_sheet(w, h, &px, frames);
+        Some(Clip {
+            w,
+            h,
+            px,
+            frames,
+            fps: sheet.fps,
+            source: format!("editor: {}", sheet.name),
+            ..Clip::default()
+        })
     }
 
     pub fn ready(&self) -> bool {
@@ -219,12 +248,24 @@ impl Clip {
         (self.w / self.frame_count()).max(1)
     }
 
+    /// Where a frame starts in the sheet. Cut from the full width rather than
+    /// by stepping the floored frame width, so a sheet that does not divide
+    /// evenly loses at most a column at the end instead of sliding a little
+    /// further off true with every frame.
+    fn frame_start(&self, frame: i32) -> i32 {
+        let n = self.frame_count();
+        let frame = frame.clamp(0, n - 1);
+        let start = (frame as i64 * self.w as i64 / n as i64) as i32;
+        start.min(self.w - self.frame_w()).max(0)
+    }
+
     pub fn pixel(&self, frame: i32, x: i32, y: i32) -> u32 {
         let fw = self.frame_w();
         if x < 0 || y < 0 || x >= fw || y >= self.h {
             return 0;
         }
-        let sx = frame.clamp(0, self.frame_count() - 1) * fw + x;
+        let x = if self.mirror { fw - 1 - x } else { x };
+        let sx = self.frame_start(frame) + x;
         if sx >= self.w {
             return 0;
         }
@@ -256,21 +297,87 @@ impl Clip {
 
 /// Shrinks a sheet until one frame fits the cap, sampling nearest so pixel art
 /// keeps its edges. The whole sheet is scaled by one ratio rather than frame by
-/// frame, which keeps the proportions the frame count is read against.
+/// frame, which keeps the proportions the frame count is read against, and the
+/// scaled width is held to a whole number of frames so the sheet still divides
+/// exactly afterwards.
 fn fit_sheet(w: i32, h: i32, px: &[u32], frames: i32) -> (i32, i32, Vec<u32>) {
-    let fw = (w / frames.max(1)).max(1);
+    let frames = frames.max(1);
+    let fw = (w / frames).max(1);
     let ratio = (fw as f64 / MAX_FRAME_PX as f64).max(h as f64 / MAX_FRAME_PX as f64);
     if ratio <= 1.0 {
         return (w, h, px.to_vec());
     }
-    let nw = ((w as f64 / ratio).round() as i32).max(frames.max(1));
+    let nfw = ((fw as f64 / ratio).round() as i32).max(1);
+    let nw = nfw * frames;
     let nh = ((h as f64 / ratio).round() as i32).max(1);
     let mut out = vec![0u32; (nw * nh) as usize];
     for y in 0..nh {
         let sy = ((y as i64 * h as i64) / nh as i64).min(h as i64 - 1) as i32;
-        for x in 0..nw {
-            let sx = ((x as i64 * w as i64) / nw as i64).min(w as i64 - 1) as i32;
-            out[(y * nw + x) as usize] = px[(sy * w + sx) as usize];
+        for f in 0..frames {
+            // Every frame is read from its own span of the source, so the
+            // rounding that fits the cap cannot walk the sample window off the
+            // frame it belongs to.
+            let s0 = (f as i64 * w as i64 / frames as i64) as i32;
+            let s1 = ((f + 1) as i64 * w as i64 / frames as i64) as i32;
+            let span = (s1 - s0).max(1);
+            for x in 0..nfw {
+                let sx = (s0 + ((x as i64 * span as i64) / nfw as i64) as i32).min(w - 1);
+                out[(y * nw + f * nfw + x) as usize] = px[(sy * w + sx) as usize];
+            }
+        }
+    }
+    (nw, nh, out)
+}
+
+/// Crops a sheet to the smallest box that holds the art in every frame.
+///
+/// Source images are padded, and never twice by the same amount: a figure
+/// exported on a 64x64 canvas at a third of that height arrives three times
+/// smaller than the same figure exported tight, because the drawn height is
+/// measured against the frame box rather than against the art in it. Cropping
+/// to the union of what the frames actually draw makes the height mean the art,
+/// so two sheets asked for the same height come out the same size.
+///
+/// The box is shared by every frame rather than fitted frame by frame, so a
+/// figure that leans or steps still moves within it instead of being re-centered
+/// on itself every frame.
+fn trim_sheet(w: i32, h: i32, px: &[u32], frames: i32) -> (i32, i32, Vec<u32>) {
+    let frames = frames.max(1);
+    let fw = (w / frames).max(1);
+    let (mut x0, mut y0, mut x1, mut y1) = (fw, h, -1, -1);
+    for f in 0..frames {
+        let base = f * fw;
+        for y in 0..h {
+            for x in 0..fw {
+                let sx = base + x;
+                if sx >= w || px[(y * w + sx) as usize] == 0 {
+                    continue;
+                }
+                x0 = x0.min(x);
+                x1 = x1.max(x);
+                y0 = y0.min(y);
+                y1 = y1.max(y);
+            }
+        }
+    }
+    if x1 < x0 || y1 < y0 {
+        return (w, h, px.to_vec());
+    }
+    let (nfw, nh) = (x1 - x0 + 1, y1 - y0 + 1);
+    if nfw == fw && nh == h {
+        return (w, h, px.to_vec());
+    }
+    let nw = nfw * frames;
+    let mut out = vec![0u32; (nw * nh) as usize];
+    for f in 0..frames {
+        for y in 0..nh {
+            for x in 0..nfw {
+                let sx = f * fw + x0 + x;
+                if sx >= w {
+                    continue;
+                }
+                out[(y * nw + f * nfw + x) as usize] = px[((y0 + y) * w + sx) as usize];
+            }
         }
     }
     (nw, nh, out)
