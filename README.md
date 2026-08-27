@@ -316,6 +316,20 @@ rivals. The section under the register sets how often the sim looks at who is
 near whom, how close counts, how many people a settler carries, how fast a bond
 warms, and where the friendship and feud lines sit.
 
+**Pictures for made things.** Buildings, walls, gates, stalls, boats and the
+loads people carry are all drawn out of the sampling boxes unless there is a
+picture for them. Under **Pictures for made things** in the Build panel there
+is a slot per thing - one per catalog entry, plus the boat and one per resource
+in hand - grouped the way the catalog groups them and folded away. Drop images
+on a slot, or send a sheet to one from the sprite editor with **Use for that**.
+
+A picture is scaled to the box the generator would have filled: as wide as the
+footprint, as tall as the walls and roof over the depth of it, standing on the
+front edge, so art and generated things stand together on the same map. A
+building that is still going up keeps the generated drawing, because one image
+cannot say how far a wall has got. **Draw made things from pictures** turns the
+lot off without losing any of them.
+
 **Foliage over people.** A settler walking behind a bush is behind it, which is
 right and also makes them hard to follow through a wood. **Foliage over people**
 in the Land panel's View section offers two other readings: *hatched* leaves

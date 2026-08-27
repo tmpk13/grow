@@ -1499,6 +1499,26 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
+    "group": "Use as settler art",
+    "label": "Or a made thing",
+    "anchor": "or-a-made-thing",
+    "kind": "field"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "sheet",
+    "tab_label": "Sheet",
+    "group": "Use as settler art",
+    "label": "Use for that",
+    "anchor": "use-for-that",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "sheet",
+    "tab_label": "Sheet",
     "group": "Download",
     "label": "Settler",
     "anchor": "settler",
@@ -3183,6 +3203,437 @@
     "label": "Build",
     "anchor": "build",
     "kind": "button"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Pictures for made things",
+    "label": "Draw made things from pictures",
+    "hint": "off keeps every picture and goes back to the generated shapes",
+    "anchor": "draw-made-things-from-pictures",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Homes",
+    "label": "Hut",
+    "anchor": "hut",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Homes",
+    "label": "House",
+    "anchor": "house",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Homes",
+    "label": "Manor",
+    "anchor": "manor",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Homes",
+    "label": "Tower",
+    "anchor": "tower",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Storage",
+    "label": "Storehouse",
+    "anchor": "storehouse",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Storage",
+    "label": "Granary",
+    "anchor": "granary",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Gathering",
+    "label": "Woodcutter camp",
+    "anchor": "woodcutter-camp",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Gathering",
+    "label": "Forager hut",
+    "anchor": "forager-hut",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Gathering",
+    "label": "Quarry",
+    "anchor": "quarry",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Gathering",
+    "label": "Clay pit",
+    "anchor": "clay-pit",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Gathering",
+    "label": "Mine",
+    "anchor": "mine",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Gathering",
+    "label": "Farm",
+    "anchor": "farm",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Workshops",
+    "label": "Sawpit",
+    "anchor": "sawpit",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Workshops",
+    "label": "Charcoal hearth",
+    "anchor": "charcoal-hearth",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Workshops",
+    "label": "Kiln",
+    "anchor": "kiln",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Workshops",
+    "label": "Weaver",
+    "anchor": "weaver",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Workshops",
+    "label": "Smelter",
+    "anchor": "smelter",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Workshops",
+    "label": "Smithy",
+    "anchor": "smithy",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Workshops",
+    "label": "Workshop",
+    "anchor": "workshop",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Civic",
+    "label": "School",
+    "anchor": "school",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Civic",
+    "label": "Market",
+    "anchor": "market",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Civic",
+    "label": "Well",
+    "anchor": "well",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Civic",
+    "label": "Lamp post",
+    "anchor": "lamp-post",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Civic",
+    "label": "Inn",
+    "anchor": "inn",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Civic",
+    "label": "Dock",
+    "anchor": "dock",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Civic",
+    "label": "Market stall",
+    "anchor": "market-stall",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Walls",
+    "label": "Palisade",
+    "anchor": "palisade",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Walls",
+    "label": "Rampart",
+    "anchor": "rampart",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Walls",
+    "label": "Gate",
+    "anchor": "gate",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "On the water",
+    "label": "Boat",
+    "anchor": "boat",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Wood in hand",
+    "anchor": "wood-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Stone in hand",
+    "anchor": "stone-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Clay in hand",
+    "anchor": "clay-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Ore in hand",
+    "anchor": "ore-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Fiber in hand",
+    "anchor": "fiber-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Food in hand",
+    "anchor": "food-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Plank in hand",
+    "anchor": "plank-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Brick in hand",
+    "anchor": "brick-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Charcoal in hand",
+    "anchor": "charcoal-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Metal in hand",
+    "anchor": "metal-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Tool in hand",
+    "anchor": "tool-in-hand",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Carried",
+    "label": "Cloth in hand",
+    "anchor": "cloth-in-hand",
+    "kind": "field"
   },
   {
     "mode": "settlement",

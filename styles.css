@@ -1518,3 +1518,26 @@ kbd.key {
   flex-direction: column;
   gap: 0.3rem;
 }
+
+/* One thing that can be given a picture instead of being generated. */
+.made-slot {
+  display: grid;
+  grid-template-columns: 40% 1fr;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0;
+}
+
+.made-slot .btn.danger {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.made-group > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.made-group > summary::-webkit-details-marker {
+  display: none;
+}

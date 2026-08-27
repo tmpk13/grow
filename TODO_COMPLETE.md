@@ -3,6 +3,11 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Separate images for everything people make: a slot per catalog entry, plus
+  the boat and one per resource carried, grouped and folded in the Build panel.
+  A picture is scaled to the box the generator would have filled, so art and
+  generated things stand together; a building still going up keeps the
+  generated drawing, since one image cannot say how far a wall has got.
 - Marquee selection in the sprite editor: a fifth tool that drags a rectangle
   out on the stage. The nudges and Clear act on what is inside it rather than
   on the whole cel, and what leaves the rectangle is dropped, so a selection is

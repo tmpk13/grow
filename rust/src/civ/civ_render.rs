@@ -122,6 +122,16 @@ pub enum SpriteKey {
         body_h: i32,
         adult: bool,
     },
+    /// A picture given to a thing people make, scaled to the box the generator
+    /// would have filled. Keyed by the slot rather than by the thing standing
+    /// in it: every hut with the same picture is the same pixels.
+    Made {
+        slot: u64,
+        frame: i32,
+        w: i32,
+        h: i32,
+        rev: u32,
+    },
     /// A frame of a dropped clip, scaled for the current cell size. Nothing
     /// about the settler is in the key: every person on the same motion and
     /// frame is drawn from the same pixels, so one entry serves the whole town.
@@ -405,6 +415,61 @@ fn building_key(
 /// sampling boxes. Which of the three shapes it takes is the one thing the
 /// catalog says outright, because a wall and a house share nothing but the
 /// projection they stand in.
+/// A thing given a picture, scaled to the box asked for. Nearest neighbor, the
+/// way every other sprite here is scaled: this is pixel art and a smooth
+/// resample would be the one blurred thing on the map.
+#[allow(clippy::too_many_arguments)]
+pub fn made_sprite(
+    cache: &mut SpriteCache,
+    clip: &Clip,
+    slot: &str,
+    frame: i32,
+    w: i32,
+    h: i32,
+    ox: i32,
+    rev: u32,
+) -> Rc<Sprite> {
+    let (w, h) = (w.max(1), h.max(1));
+    let key = SpriteKey::Made { slot: slot_key(slot), frame, w, h, rev };
+    if let Some(hit) = cache.map.get(&key) {
+        return hit.clone();
+    }
+    let fw = clip.frame_w();
+    let fh = clip.h.max(1);
+    let mut px = vec![0u32; (w * h) as usize];
+    for y in 0..h {
+        let sy = ((y as i64 * fh as i64) / h as i64).min(fh as i64 - 1) as i32;
+        for x in 0..w {
+            let sx = ((x as i64 * fw as i64) / w as i64).min(fw as i64 - 1) as i32;
+            px[(y * w + x) as usize] = clip.pixel(frame, sx, sy);
+        }
+    }
+    let sprite = Rc::new(Sprite { w, h, px, ox, oy: h });
+    cache.map.insert(key, sprite.clone());
+    sprite
+}
+
+/// A slot name folded to a number, so the cache key is a copyable value rather
+/// than a string cloned on every lookup.
+fn slot_key(slot: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in slot.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100_0000_01b3);
+    }
+    h
+}
+
+/// The box a building's picture is drawn into: as wide as its footprint, as
+/// tall as its walls and roof over the depth of it, standing on the front edge.
+pub fn made_box(world: &World, def: &crate::civ::buildings::BuildingDef) -> (i32, i32) {
+    let w = (def.w * world.cell_px).max(1);
+    let h = (def.h * world.depth_px
+        + ((def.wall_h + def.roof_h) * world.cell_px as f64).round() as i32)
+        .max(1);
+    (w, h)
+}
+
 pub fn building_sprite(
     cache: &mut SpriteCache,
     state: &State,
@@ -413,6 +478,14 @@ pub fn building_sprite(
     night: bool,
     detail: Detail,
 ) -> Rc<Sprite> {
+    // A picture stands in only for a finished building: what is half built is
+    // drawn rising out of the ground, which one image cannot say.
+    if b.built {
+        if let Some(clip) = state.civ.made.clip(b.def.id) {
+            let (w, h) = made_box(world, b.def);
+            return made_sprite(cache, clip, b.def.id, 0, w, h, 0, state.civ.made.rev);
+        }
+    }
     let key = building_key(state, world, b, night, detail);
     if let Some(hit) = cache.map.get(&key) {
         return hit.clone();
@@ -966,10 +1039,20 @@ fn hsl(hue: f64, sat: f64, light: f64) -> u32 {
 
 /// A hull, a mast and a sail, sized off the cell like everything else. The
 /// colony's banner is the sail, so a boat says where it is from at a glance.
-pub fn boat_sprite(cache: &mut SpriteCache, world: &World, boat: &Boat, banner: u32) -> Rc<Sprite> {
+pub fn boat_sprite(
+    cache: &mut SpriteCache,
+    state: &State,
+    world: &World,
+    boat: &Boat,
+    banner: u32,
+) -> Rc<Sprite> {
     let hull_w = ((world.cell_px as f64 * 1.5).round() as i32).max(4);
     let hull_h = ((world.cell_px as f64 * 0.4).round() as i32).max(2);
     let mast_h = ((world.cell_px as f64 * 1.1).round() as i32).max(3);
+    if let Some(clip) = state.civ.made.clip("boat") {
+        let (w, h) = (hull_w, hull_h + mast_h);
+        return made_sprite(cache, clip, "boat", 0, w, h, w / 2, state.civ.made.rev);
+    }
     let key = SpriteKey::Boat {
         seed: (boat.seed & 255) as u8,
         facing: boat.facing,
@@ -1139,11 +1222,33 @@ fn draw_smoke(
     }
 }
 
-fn draw_carry(world: &World, buf: &mut [u32], p: &Person, sprite: &Sprite, sx: i32, sy: i32) {
+#[allow(clippy::too_many_arguments)]
+fn draw_carry(
+    cache: &mut SpriteCache,
+    state: &State,
+    world: &World,
+    buf: &mut [u32],
+    p: &Person,
+    sprite: &Sprite,
+    sx: i32,
+    sy: i32,
+) {
     let res = match p.carry.res {
         Some(res) => res,
         None => return,
     };
+    let slot = format!("carry-{}", res.id());
+    // A load in hand is a couple of pixels when it is generated; a picture of
+    // one wants room to be a picture, so it is drawn at the size of the hand
+    // rather than of the marker.
+    if let Some(clip) = state.civ.made.clip(&slot) {
+        let side = ((world.cell_px as f64 * 0.6).round() as i32).max(3);
+        let art = made_sprite(cache, clip, &slot, 0, side, side, 0, state.civ.made.rev);
+        let x = sx + if p.facing > 0 { sprite.ox } else { -sprite.ox - side + 1 };
+        let y = sy - sprite.oy + (sprite.h as f64 * 0.35).round() as i32 + side;
+        blit(buf, world, &art, x, y, false);
+        return;
+    }
     let color = hex_to_packed(res.def().color);
     let size = clamp((sprite.w as f64 * 0.4).round(), 1.0, 3.0) as i32;
     let x0 = sx + if p.facing > 0 { sprite.ox } else { -sprite.ox - size + 1 };
@@ -1556,7 +1661,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                 } else {
                     blit(&mut buf, world, &sprite, sx, sy, true);
                     if p.carrying() && detail.flourishes() {
-                        draw_carry(world, &mut buf, p, &sprite, sx, sy);
+                        draw_carry(&mut sprites, state, world, &mut buf, p, &sprite, sx, sy);
                     }
                 }
             }
@@ -1571,7 +1676,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                     fill_rect(&mut buf, world, sx - 1, sy - 1, sx + 2, sy + 1, banner);
                     continue;
                 }
-                let sprite = boat_sprite(&mut sprites, world, boat, banner);
+                let sprite = boat_sprite(&mut sprites, state, world, boat, banner);
                 blit(&mut buf, world, &sprite, sx, sy, false);
             }
         }

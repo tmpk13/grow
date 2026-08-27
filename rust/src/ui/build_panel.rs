@@ -163,6 +163,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     ));
     cat_body.push(catalog.clone());
     append(root, section("Catalog", cat_body));
+    append(root, crate::ui::sprite_drop::made_section(app, h));
 
     let mut panel = BuildPanel { towns, counters, sites, catalog, handle: h.clone(), since: 0.0 };
     panel.redraw(app);

@@ -1098,3 +1098,171 @@ fn the_view_reads_its_own_setting() {
     view.foliage = "nonsense".into();
     assert_eq!(view.foliage_over_people(), Foliage::Solid);
 }
+
+// ---- pictures for made things -------------------------------------------
+
+#[test]
+fn every_made_thing_has_exactly_one_slot() {
+    use grow::civ::sprites::made_slots;
+    let slots = made_slots();
+    let mut ids: Vec<&str> = slots.iter().map(|s| s.id.as_str()).collect();
+    let n = ids.len();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), n, "two things share a picture slot");
+
+    // Everything in the catalog, plus the boat and one per resource carried.
+    for def in grow::civ::buildings::BUILDINGS {
+        assert!(ids.contains(&def.id), "{} has nowhere to put a picture", def.id);
+    }
+    assert!(ids.contains(&"boat"));
+    for res in grow::civ::resources::RES_IDS {
+        let want = format!("carry-{}", res.id());
+        assert!(ids.iter().any(|id| *id == want), "{want} has no slot");
+    }
+    for slot in &slots {
+        assert!(!slot.label.is_empty(), "{} has no name to show", slot.id);
+        assert!(!slot.group.is_empty(), "{} belongs to no group", slot.id);
+    }
+}
+
+#[test]
+fn a_picture_is_only_used_when_pictures_are_turned_on() {
+    use grow::civ::sprites::{Clip, MadeSprites};
+    let mut made = MadeSprites::default();
+    let clip = Clip::from_strip(4, 4, vec![0xffff_ffff; 16], 1, "hut.png".into()).expect("a strip");
+    made.set("hut", clip);
+    assert!(made.slot("hut").is_some(), "the panel can always see it");
+    assert!(made.clip("hut").is_none(), "but the map does not until it is turned on");
+    made.enabled = true;
+    assert!(made.clip("hut").is_some());
+    assert!(made.clip("house").is_none(), "and only for what has one");
+}
+
+#[test]
+fn clearing_a_picture_takes_it_out_and_moves_the_revision_on() {
+    use grow::civ::sprites::{Clip, MadeSprites};
+    let mut made = MadeSprites { enabled: true, ..MadeSprites::default() };
+    let clip = Clip::from_strip(4, 4, vec![0xffff_ffff; 16], 1, "hut.png".into()).expect("a strip");
+    let start = made.rev;
+    made.set("hut", clip);
+    assert!(made.bytes() > 0);
+    let after_set = made.rev;
+    assert_ne!(after_set, start, "the cache has to be told the picture changed");
+    made.clear("hut");
+    assert!(made.clip("hut").is_none());
+    assert_eq!(made.bytes(), 0);
+    assert_ne!(made.rev, after_set, "and told again when it went");
+}
+
+#[test]
+fn a_picture_fills_the_box_the_generator_would_have() {
+    use grow::civ::civ_render::made_box;
+    let world = grow::world::World::new(&grow::civ::config::default_civ_world());
+    for def in grow::civ::buildings::BUILDINGS {
+        let (w, h) = made_box(&world, def);
+        assert_eq!(w, def.w * world.cell_px, "{} is not as wide as its footprint", def.id);
+        assert!(h > 0, "{} has no height to draw into", def.id);
+        // Tall enough for the walls and roof over the depth of the footprint.
+        assert!(h >= def.h * world.depth_px, "{} is shorter than its own depth", def.id);
+    }
+}
+
+#[test]
+fn pictures_survive_a_project_file() {
+    use grow::civ::sprites::Clip;
+    let mut state = State::new();
+    let clip = Clip::from_strip(4, 4, vec![0xff00_ff00; 16], 1, "hut.png".into()).expect("a strip");
+    state.civ.made.enabled = true;
+    state.civ.made.set("hut", clip);
+
+    let back = State::from_json(&state.to_json()).expect("a project file");
+    assert!(back.civ.made.enabled);
+    let kept = back.civ.made.slot("hut").expect("the picture came back");
+    assert_eq!(kept.px.len(), 16);
+    assert_eq!(kept.source, "hut.png");
+}
+
+#[test]
+fn a_finished_building_with_a_picture_is_drawn_from_it() {
+    use grow::civ::civ_render::{building_sprite, made_box, Detail, SpriteCache};
+    use grow::civ::sprites::Clip;
+
+    let (mut sim, mut state) = peopled(48, 24);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..2000 {
+        sim.step(&state, dt);
+    }
+    let at = sim
+        .buildings
+        .iter()
+        .position(|b| b.built)
+        .expect("something should have been finished by now");
+    let def = sim.buildings[at].def;
+
+    let mut cache = SpriteCache::default();
+    let plain =
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, Detail::Full);
+
+    // One flat color, so what is drawn from it is unmistakable.
+    let pink = grow::util::pack_rgba(255, 0, 255, 255);
+    let clip = Clip::from_strip(4, 4, vec![pink; 16], 1, "test".into()).expect("a strip");
+    state.civ.made.enabled = true;
+    state.civ.made.set(def.id, clip);
+
+    let mut cache = SpriteCache::default();
+    let art =
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, Detail::Full);
+    let (w, h) = made_box(sim.world(), def);
+    assert_eq!((art.w, art.h), (w, h), "the picture should fill the box it was given");
+    assert!(art.px.iter().all(|v| *v == pink), "the picture is what should have been drawn");
+    assert_ne!(
+        (plain.w, plain.h, plain.px.clone()),
+        (art.w, art.h, art.px.clone()),
+        "the generated shape and the picture should differ"
+    );
+
+    // Turned off, the generator is back.
+    state.civ.made.enabled = false;
+    let mut cache = SpriteCache::default();
+    let back =
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, Detail::Full);
+    assert_eq!((back.w, back.h), (plain.w, plain.h));
+}
+
+#[test]
+fn a_half_built_building_is_still_drawn_rising_out_of_the_ground() {
+    use grow::civ::civ_render::{building_sprite, made_box, Detail, SpriteCache};
+    use grow::civ::sprites::Clip;
+
+    let (mut sim, mut state) = peopled(48, 24);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    let mut site = None;
+    for _ in 0..2000 {
+        sim.step(&state, dt);
+        site = sim.buildings.iter().position(|b| !b.built && b.work_done > 0.0);
+        if site.is_some() {
+            break;
+        }
+    }
+    // Nothing was mid-build at any step; there is nothing to check.
+    let site = match site {
+        Some(s) => s,
+        None => return,
+    };
+    let def = sim.buildings[site].def;
+
+    let pink = grow::util::pack_rgba(255, 0, 255, 255);
+    let clip = Clip::from_strip(4, 4, vec![pink; 16], 1, "test".into()).expect("a strip");
+    state.civ.made.enabled = true;
+    state.civ.made.set(def.id, clip);
+
+    let mut cache = SpriteCache::default();
+    let drawn =
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[site], false, Detail::Full);
+    let (w, h) = made_box(sim.world(), def);
+    assert!(
+        (drawn.w, drawn.h) != (w, h) || !drawn.px.iter().all(|v| *v == pink),
+        "one picture cannot say how far up a wall has got"
+    );
+}

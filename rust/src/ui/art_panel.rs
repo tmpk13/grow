@@ -1179,6 +1179,37 @@ fn use_section(app: &App, h: &Handle) -> Element {
         })
         .collect();
     rows.push(btn_row(buttons));
+
+    // The same sheet, sent to a thing people make rather than to a settler.
+    // There are thirty odd of those, so they are picked from a list.
+    let slots = crate::civ::sprites::made_slots();
+    if !slots.is_empty() {
+        let options: Vec<(String, String)> = slots
+            .iter()
+            .map(|s| (s.id.clone(), format!("{} - {}", s.group, s.label)))
+            .collect();
+        let first = options[0].0.clone();
+        let chosen = std::rc::Rc::new(std::cell::RefCell::new(first.clone()));
+        let picker = {
+            let chosen = chosen.clone();
+            crate::ui::select_field("Or a made thing", &first, &options, None, move |v| {
+                *chosen.borrow_mut() = v;
+            })
+        };
+        let h2 = h.clone();
+        let send = button("Use for that", Scope::Panel, move || {
+            let target = chosen.borrow().clone();
+            let mut sh = h2.borrow_mut();
+            let id = sh.app.ui.selected_sheet.clone();
+            match sh.app.state.art.find(&id).and_then(crate::civ::sprites::Clip::from_sheet) {
+                Some(clip) => crate::ui::sprite_drop::apply_made(&mut sh.app, &target, clip),
+                None => sh.app.set_note("nothing drawn on that sheet"),
+            }
+            sh.app.rebuild_panel();
+        });
+        rows.push(el("div").class("sprite-from").child(&picker).child(&send).get());
+    }
+
     if behind > 0 {
         rows.push(note(&format!(
             "{behind} of these took this sheet before it was last drawn on. The settlers on the \

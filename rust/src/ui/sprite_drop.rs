@@ -17,7 +17,9 @@ use web_sys::{
 };
 
 use crate::app::{App, Handle};
-use crate::civ::sprites::{guess_frames, Clip, Frame, FromSheet, Motion, MAX_FRAMES, MOTIONS};
+use crate::civ::sprites::{
+    guess_frames, made_slots, Clip, Frame, FromSheet, Motion, MAX_FRAMES, MOTIONS,
+};
 use crate::ui::{
     app_bool, button, danger_button, document, el, input_el, note, number_field, on, section,
     select_field, NumOpts, Scope, Tap,
@@ -31,6 +33,17 @@ const SIZE_WARN: usize = 1 << 20;
 
 /// The whole "Settler sprites" section: the switch, a card per motion, and what
 /// the sheets are costing.
+/// What a dropped image is for. The drop target, the file reading and the
+/// picker beside them are the same either way; only what the clip lands in
+/// differs.
+#[derive(Clone, PartialEq, Eq)]
+pub enum Slot {
+    /// One of a settler's motions.
+    Motion(Motion),
+    /// A thing people make, by its name in the catalog.
+    Made(String),
+}
+
 pub fn sprites_section(app: &App, h: &Handle) -> Element {
     let sprites = &app.state.civ.sprites;
     let mut rows = vec![
@@ -67,6 +80,94 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
     section("Settler sprites", rows)
 }
 
+/// Pictures for the things people make, grouped the way the catalog groups
+/// them and folded away: there are thirty odd slots and most projects will
+/// fill none of them.
+pub fn made_section(app: &App, h: &Handle) -> Element {
+    let made = &app.state.civ.made;
+    let mut rows = vec![
+        note(
+            "Buildings, walls, boats and the loads people carry are drawn out of the sampling \
+             boxes unless there is a picture for them. A picture is scaled to the box the \
+             generator would have filled, so art and generated things stand together.",
+        ),
+        app_bool(
+            h,
+            "Draw made things from pictures",
+            made.enabled,
+            Some("off keeps every picture and goes back to the generated shapes"),
+            |app, v| {
+                app.state.civ.made.enabled = v;
+                app.sprites_changed();
+            },
+        ),
+    ];
+
+    let slots = made_slots();
+    let mut groups: Vec<&'static str> = slots.iter().map(|s| s.group).collect();
+    groups.dedup();
+    for group in groups {
+        let body = el("div").class("group-body").get();
+        let mut filled = 0;
+        for slot in slots.iter().filter(|s| s.group == group) {
+            let clip = made.slot(&slot.id);
+            if clip.is_some_and(|c| c.ready()) {
+                filled += 1;
+            }
+            let _ = body.append_child(&made_row(app, h, slot));
+        }
+        let head = if filled > 0 {
+            format!("{group} ({filled})")
+        } else {
+            group.to_string()
+        };
+        rows.push(
+            el("details")
+                .class("group made-group")
+                .attr("data-group", group)
+                .child(
+                    &el("summary")
+                        .class("group-head")
+                        .child(&el("h3").text(&head).get())
+                        .get(),
+                )
+                .child(&body)
+                .get(),
+        );
+    }
+
+    let bytes = made.bytes();
+    if bytes > 0 {
+        rows.push(note(&format!("Pictures in this project: {}.", size_text(bytes))));
+    }
+    section("Pictures for made things", rows)
+}
+
+/// One thing, its picture and the way to change it.
+fn made_row(app: &App, h: &Handle, slot: &crate::civ::sprites::MadeSlot) -> Element {
+    let id = slot.id.clone();
+    let clip = app.state.civ.made.slot(&id);
+    let key = Slot::Made(id.clone());
+    let row = el("div")
+        .class("made-slot")
+        .attr("data-find", &crate::ui::slug(&slot.label))
+        .child(&el("span").class("field-label").text(&slot.label).get())
+        .child(&drop_zone(h, key, clip))
+        .get();
+    if clip.is_some() {
+        let h2 = h.clone();
+        let id2 = id.clone();
+        let _ = row.append_child(&crate::ui::danger_button("Clear", Scope::Panel, move || {
+            let mut sh = h2.borrow_mut();
+            sh.app.record("made art", false);
+            sh.app.state.civ.made.clear(&id2);
+            sh.app.sprites_changed();
+            sh.app.rebuild_panel();
+        }));
+    }
+    row
+}
+
 fn size_text(bytes: usize) -> String {
     if bytes >= 1 << 20 {
         format!("{:.1} MB", bytes as f64 / (1 << 20) as f64)
@@ -93,7 +194,7 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
     let mut body = vec![
         head,
         el("p").class("field-hint").text(motion.hint()).get(),
-        drop_zone(h, motion, clip),
+        drop_zone(h, Slot::Motion(motion), clip),
         sheet_row(app, h, motion),
     ];
     if let Some(c) = clip.filter(|c| c.ready()) {
@@ -282,7 +383,7 @@ pub fn build_from_sheet(app: &mut App, motion: Motion, id: &str) {
 
 // ---- the drop target -----------------------------------------------------
 
-fn drop_zone(h: &Handle, motion: Motion, clip: Option<&Clip>) -> Element {
+fn drop_zone(h: &Handle, slot: Slot, clip: Option<&Clip>) -> Element {
     let picker = input_el("file").tap(|i| {
         i.set_accept("image/*");
         i.set_multiple(true);
@@ -319,6 +420,7 @@ fn drop_zone(h: &Handle, motion: Motion, clip: Option<&Clip>) -> Element {
     {
         let zone2 = zone.clone();
         let h2 = h.clone();
+        let slot = slot.clone();
         on(zone.unchecked_ref(), "drop", Scope::Panel, move |e: Event| {
             e.prevent_default();
             let _ = zone2.class_list().remove_1("over");
@@ -327,7 +429,7 @@ fn drop_zone(h: &Handle, motion: Motion, clip: Option<&Clip>) -> Element {
                 .and_then(|d| d.data_transfer())
                 .and_then(|t| t.files());
             if let Some(files) = files {
-                load_files(&h2, motion, files);
+                load_files(&h2, slot.clone(), files);
             }
         });
     }
@@ -362,9 +464,10 @@ fn drop_zone(h: &Handle, motion: Motion, clip: Option<&Clip>) -> Element {
     {
         let picker2 = picker.clone();
         let h2 = h.clone();
+        let slot = slot.clone();
         on(picker.unchecked_ref(), "change", Scope::Panel, move |_| {
             if let Some(files) = picker2.files() {
-                load_files(&h2, motion, files);
+                load_files(&h2, slot.clone(), files);
             }
             picker2.set_value("");
         });
@@ -412,14 +515,14 @@ fn strip_canvas(clip: &Clip) -> Option<Element> {
 
 // ---- reading what was dropped --------------------------------------------
 
-fn load_files(h: &Handle, motion: Motion, files: FileList) {
+fn load_files(h: &Handle, slot: Slot, files: FileList) {
     let h = h.clone();
     crate::ui::decode::read_files(files, move |frames, strip, source| {
-        apply(&h, motion, frames, strip, &source);
+        apply(&h, slot.clone(), frames, strip, &source);
     });
 }
 
-fn apply(h: &Handle, motion: Motion, frames: Vec<Frame>, strip: bool, source: &str) {
+fn apply(h: &Handle, slot: Slot, frames: Vec<Frame>, strip: bool, source: &str) {
     let mut sh = h.borrow_mut();
     let built = if strip {
         frames.into_iter().next().and_then(|(w, height, px)| {
@@ -429,7 +532,7 @@ fn apply(h: &Handle, motion: Motion, frames: Vec<Frame>, strip: bool, source: &s
         Clip::from_frames(frames, source.to_string())
     };
     match built {
-        Some(clip) => apply_clip(&mut sh.app, motion, clip),
+        Some(clip) => apply_to(&mut sh.app, &slot, clip),
         None => sh.app.set_note("nothing readable in that drop"),
     }
     sh.app.rebuild_panel = true;
@@ -439,6 +542,26 @@ fn apply(h: &Handle, motion: Motion, frames: Vec<Frame>, strip: bool, source: &s
 /// tuned for this motion outlives the art it was tuned on; only a fresh slot
 /// takes the defaults. Which sheet a clip came from is part of the art rather
 /// than part of the tuning, so it is not carried over.
+/// Puts a clip in whichever kind of slot it was dropped on.
+pub fn apply_to(app: &mut App, slot: &Slot, clip: Clip) {
+    match slot {
+        Slot::Motion(m) => apply_clip(app, *m, clip),
+        Slot::Made(id) => apply_made(app, id, clip),
+    }
+}
+
+/// A picture for a thing people make. Nothing here has playback to keep: a
+/// building stands still, and how large it is drawn is the box it fills rather
+/// than a number on the clip.
+pub fn apply_made(app: &mut App, id: &str, clip: Clip) {
+    app.record("made art", false);
+    let count = clip.frame_count();
+    app.state.civ.made.enabled = true;
+    app.state.civ.made.set(id, clip);
+    app.set_note(&format!("{id}: {count} frames"));
+    app.sprites_changed();
+}
+
 pub fn apply_clip(app: &mut App, motion: Motion, mut clip: Clip) {
     app.record("settler art", false);
     match app.state.civ.sprites.clip(motion) {

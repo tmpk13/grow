@@ -607,3 +607,80 @@ pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     }
     (a.len() - i).cmp(&(b.len() - j))
 }
+
+// ---- the things people make ---------------------------------------------
+
+/// One thing that can be given a picture instead of being generated from the
+/// sampling boxes: a building, a boat, or a load in somebody's hands.
+pub struct MadeSlot {
+    /// What the thing is called in the catalog. Keyed by name rather than by
+    /// position, so adding a building does not move what the others point at.
+    pub id: String,
+    pub label: String,
+    pub group: &'static str,
+}
+
+/// Everything with a picture slot, in the order the panel lists them.
+pub fn made_slots() -> Vec<MadeSlot> {
+    let mut out: Vec<MadeSlot> = crate::civ::buildings::BUILDINGS
+        .iter()
+        .map(|def| MadeSlot {
+            id: def.id.to_string(),
+            label: def.label.to_string(),
+            group: def.category.label(),
+        })
+        .collect();
+    out.push(MadeSlot { id: "boat".into(), label: "Boat".into(), group: "On the water" });
+    for res in crate::civ::resources::RES_IDS {
+        out.push(MadeSlot {
+            id: format!("carry-{}", res.id()),
+            label: format!("{} in hand", res.label()),
+            group: "Carried",
+        });
+    }
+    out
+}
+
+/// Pictures for the things people make. A settler has a clip per motion; a
+/// building has one picture, drawn at the size the generator would have drawn
+/// it, so art and generated things stand together on the same map.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct MadeSprites {
+    pub enabled: bool,
+    pub slots: std::collections::BTreeMap<String, Clip>,
+    /// Bumped whenever a picture changes, so the sprite cache lets go of what
+    /// it drew from the old one. Not part of the project.
+    #[serde(skip)]
+    pub rev: u32,
+}
+
+impl MadeSprites {
+    /// The picture for a thing, if there is one and it is being used.
+    pub fn clip(&self, id: &str) -> Option<&Clip> {
+        if !self.enabled {
+            return None;
+        }
+        self.slots.get(id).filter(|c| c.ready())
+    }
+
+    /// The picture whether or not it is being used, which is what the panel
+    /// shows.
+    pub fn slot(&self, id: &str) -> Option<&Clip> {
+        self.slots.get(id)
+    }
+
+    pub fn set(&mut self, id: &str, clip: Clip) {
+        self.slots.insert(id.to_string(), clip);
+        self.rev = self.rev.wrapping_add(1);
+    }
+
+    pub fn clear(&mut self, id: &str) {
+        self.slots.remove(id);
+        self.rev = self.rev.wrapping_add(1);
+    }
+
+    pub fn bytes(&self) -> usize {
+        self.slots.values().map(|c| c.px.len() * 4).sum()
+    }
+}

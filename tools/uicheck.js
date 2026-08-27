@@ -462,6 +462,53 @@ const civStats = await page.evaluate(() => document.getElementById('statusbar').
 console.log(`settlement status: ${civStats}`);
 if (!/people \d+/.test(civStats)) problems.push('settlement status line has no population');
 
+// Pictures for made things: every catalog entry has a slot, and a sheet sent to
+// one fills it and turns pictures on. That the picture then reaches the map is
+// checked in the simulation tests, where a sprite can be read rather than
+// hunted for in a canvas.
+await page.click('.tab[data-tab="build"]');
+await page.waitForTimeout(600);
+const slotCount = await page.locator('.made-slot').count();
+if (slotCount < 30) problems.push(`only ${slotCount} things can be given a picture`);
+const homesHead = () => page.textContent('.made-group[data-group="Homes"] summary');
+if ((await homesHead()).includes('(')) problems.push('a picture is filled before anything was sent');
+await page.locator('.made-group').first().evaluate((n) => n.scrollIntoView());
+await page.waitForTimeout(200);
+await page.screenshot({ path: `${outDir}/10e-made-slots.png` });
+
+await page.click('.mode[data-mode="sprites"]');
+await page.waitForTimeout(800);
+await page.click('.tab[data-tab="sheet"]');
+await page.waitForTimeout(500);
+await page.selectOption('#panel-body [data-find="or-a-made-thing"] select', 'hut');
+await page.click('#panel-body .btn:text-is("Use for that")');
+await page.waitForTimeout(600);
+if (!(await page.textContent('#save-note')).includes('hut')) {
+  problems.push(`sending a sheet to the hut said "${(await page.textContent('#save-note')).trim()}"`);
+}
+
+await page.click('.mode[data-mode="settlement"]');
+await page.waitForTimeout(3000);
+await page.click('.tab[data-tab="build"]');
+await page.waitForTimeout(600);
+if (!(await homesHead()).includes('(1)')) {
+  problems.push(`the homes group reads "${(await homesHead()).trim()}" after filling one`);
+}
+const picturesOn = await page.evaluate(() => {
+  const label = [...document.querySelectorAll('#panel-body .field-label')].find((n) =>
+    n.textContent.includes('Draw made things'),
+  );
+  return label ? label.closest('.field').querySelector('input').checked : null;
+});
+if (picturesOn !== true) problems.push('sending a picture did not turn pictures on');
+await page.screenshot({ path: `${outDir}/10f-made-filled.png` });
+// Clear it again, so the rest of the run looks like the rest of the run.
+await page.click('.made-group[data-group="Homes"] summary');
+await page.waitForTimeout(200);
+await page.click('.made-slot[data-find="hut"] .btn.danger');
+await page.waitForTimeout(500);
+if ((await homesHead()).includes('(')) problems.push('clearing a picture left it filled');
+
 // Foliage over a settler: three ways, and the amount only shows for the one it
 // means anything for.
 await page.click('.tab[data-tab="land"]');
