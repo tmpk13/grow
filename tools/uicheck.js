@@ -246,6 +246,89 @@ const civStats = await page.evaluate(() => document.getElementById('statusbar').
 console.log(`settlement status: ${civStats}`);
 if (!/people \d+/.test(civStats)) problems.push('settlement status line has no population');
 
+// Moving people: with the switch on, a press on a settler picks them up and
+// the pointer carries them until it is let go. Where the settlers are on
+// screen is not knowable from out here, so the stage is swept from inside the
+// page until one comes up in hand.
+await pause();
+await page.click('#move-people');
+await page.waitForTimeout(200);
+if (!(await page.evaluate(() => document.body.classList.contains('moving-people')))) {
+  problems.push('the move people switch did not change what a press on the stage does');
+}
+const sweepStage = () => page.evaluate(() => {
+  const canvas = document.getElementById('world-canvas');
+  const r = canvas.getBoundingClientRect();
+  const note = () => (document.getElementById('save-note').textContent || '').trim();
+  const send = (type, x, y) =>
+    canvas.dispatchEvent(
+      new PointerEvent(type, {
+        pointerId: 1,
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        button: 0,
+        buttons: type === 'pointerup' ? 0 : 1,
+      }),
+    );
+  for (let y = r.top + 4; y < r.bottom - 4; y += 6) {
+    for (let x = r.left + 4; x < r.right - 4; x += 6) {
+      send('pointerdown', x, y);
+      if (note().startsWith('holding')) return { x, y, who: note() };
+      send('pointerup', x, y);
+    }
+  }
+  return null;
+});
+// Settlers indoors are not on the map to be picked up, so a town that has
+// gone to bed has nobody out there at all. The clock is run on between
+// sweeps until somebody is up.
+let sweep = null;
+for (let attempt = 0; attempt < 10 && !sweep; attempt += 1) {
+  if (attempt > 0) {
+    await resume();
+    await page.waitForTimeout(2500);
+    await pause();
+    await page.waitForTimeout(200);
+  }
+  sweep = await sweepStage();
+}
+if (!sweep) {
+  problems.push('no settler could be picked up anywhere on the stage');
+} else {
+  console.log(`picked up: ${sweep.who}`);
+  if (!(await page.evaluate(() => document.body.classList.contains('holding')))) {
+    problems.push('holding a settler did not show in the pointer');
+  }
+  await page.screenshot({ path: `${outDir}/11b-holding.png` });
+  const put = await page.evaluate(({ x, y }) => {
+    const canvas = document.getElementById('world-canvas');
+    const send = (type, cx, cy) =>
+      canvas.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 1,
+          clientX: cx,
+          clientY: cy,
+          bubbles: true,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+        }),
+      );
+    send('pointermove', x + 40, y + 24);
+    send('pointerup', x + 40, y + 24);
+    return (document.getElementById('save-note').textContent || '').trim();
+  }, sweep);
+  if (!put.startsWith('put ')) problems.push(`putting a settler down said "${put}"`);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${outDir}/11c-put-down.png` });
+}
+await page.click('#move-people');
+await page.waitForTimeout(200);
+if (await page.evaluate(() => document.body.classList.contains('moving-people'))) {
+  problems.push('turning the move people switch off left the stage picking settlers up');
+}
+await resume();
+
 // Back to the lab and in again: both sims have to survive the switch.
 await page.click('.mode:text-is("Plant lab")');
 await page.waitForTimeout(1200);

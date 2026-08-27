@@ -66,6 +66,10 @@ pub struct UiState {
     pub onion: bool,
     pub playing: bool,
     pub play_time: f64,
+    /// The stage picks settlers up rather than dragging the map. Kept here
+    /// rather than in the project: it is how somebody is using the map right
+    /// now, not something about the map.
+    pub move_people: bool,
     pub shade_preview_sampler: String,
     pub shade_preview_tones: i32,
     pub shade_preview_core: f64,
@@ -496,6 +500,7 @@ pub fn start() -> Result<(), JsValue> {
         onion: true,
         playing: false,
         play_time: 0.0,
+        move_people: false,
         shade_preview_sampler: state
             .materials
             .samplers
@@ -587,6 +592,7 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
             list.remove_1("painting")
         };
     }
+    sync_grab_cursor(&sh.app);
     build_toolbar(sh, h);
     let first = tabs_for(mode)[0].id;
     show_tab(sh, h, first);
@@ -868,6 +874,34 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
                 .child(labels.unchecked_ref())
                 .get(),
         );
+
+        // Picking settlers up is a way of using the stage rather than a
+        // setting, so it sits with the other stage switches and is not saved.
+        let move_people = ui::input_el("checkbox");
+        move_people.set_checked(sh.app.ui.move_people);
+        let _ = move_people.set_attribute("id", "move-people");
+        {
+            let h2 = h.clone();
+            on(move_people.unchecked_ref(), "change", Scope::Toolbar, move |e| {
+                let mut sh = h2.borrow_mut();
+                sh.app.ui.move_people = ui::checked_of(&e);
+                sync_grab_cursor(&sh.app);
+                let note = if sh.app.ui.move_people {
+                    "drag a settler to put them somewhere else - ctrl or middle drag moves the map"
+                } else {
+                    "the stage moves the map again"
+                };
+                sh.app.set_note(note);
+            });
+        }
+        controls.push(
+            el("label")
+                .class("inline")
+                .attr("title", "drag settlers about; ctrl or the middle button still moves the map")
+                .child(&el("span").text("Move people").get())
+                .child(move_people.unchecked_ref())
+                .get(),
+        );
     }
 
     let _ = toolbar.append_child(&el("div").class("toolbar-row").children(controls).get());
@@ -1047,6 +1081,10 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
     // than dragged. The sprite editor shares this canvas with the camera, so
     // the stroke is driven here rather than by `paint::attach`.
     let stroke: Rc<RefCell<Option<(i32, i32)>>> = Rc::new(RefCell::new(None));
+    // The settler currently in hand, or 0. Held here beside the stroke for the
+    // same reason: the stage is shared with the camera, so what a press means
+    // is decided in one place.
+    let grab: Rc<Cell<u32>> = Rc::new(Cell::new(0));
     // Where two fingers were as of the last move: how far apart, and the point
     // between them. A pinch is read as the change since then rather than since
     // it started, so a finger lifting and landing again carries on from where
@@ -1061,6 +1099,7 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
         let canvas2 = canvas.clone();
         let h2 = h.clone();
         let stroke = stroke.clone();
+        let grab = grab.clone();
         on(canvas.unchecked_ref(), "pointerdown", Scope::Global, move |e: Event| {
             let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
             let _ = canvas2.set_pointer_capture(pe.pointer_id());
@@ -1072,9 +1111,20 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             // A second pointer is a pinch, whatever the first one was doing.
             if list.len() > 1 {
                 end_stroke(&h2, &stroke);
+                end_grab(&h2, &grab);
                 return;
             }
             let mut sh = h2.borrow_mut();
+            if grabs(&sh.app, pe) {
+                // Pressing on nobody falls through to dragging the map, so the
+                // switch does not cost the camera the whole stage.
+                if let Some(id) = start_grab(&mut sh.app, pe.client_x() as f64, pe.client_y() as f64)
+                {
+                    grab.set(id);
+                    set_holding(true);
+                    return;
+                }
+            }
             if !paints(&sh.app, pe) {
                 return;
             }
@@ -1099,6 +1149,7 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
         let span = span.clone();
         let middle = middle.clone();
         let stroke = stroke.clone();
+        let grab = grab.clone();
         let h2 = h.clone();
         on(canvas.unchecked_ref(), "pointermove", Scope::Global, move |e: Event| {
             let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
@@ -1114,6 +1165,10 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                 None => return,
             };
             let mut sh = h2.borrow_mut();
+            if list.len() < 2 && grab.get() != 0 {
+                drag_held(&mut sh.app, x, y);
+                return;
+            }
             if list.len() < 2 && stroke.borrow().is_some() {
                 let cell = SHEET_SURFACE.locate(
                     &sh.app,
@@ -1161,6 +1216,7 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
         let span = span.clone();
         let middle = middle.clone();
         let stroke = stroke.clone();
+        let grab = grab.clone();
         let h2 = h.clone();
         on(canvas.unchecked_ref(), event, Scope::Global, move |e: Event| {
             let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
@@ -1171,6 +1227,7 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                 middle.set(pinch_middle(&list));
             }
             end_stroke(&h2, &stroke);
+            end_grab(&h2, &grab);
         });
     }
     {
@@ -1183,6 +1240,93 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             }
         });
     }
+}
+
+/// How far from a press a settler will still be picked up, in cells. A settler
+/// is about a cell across, so this is wide enough to catch one aimed at and
+/// narrow enough to leave the one beside them alone.
+const GRAB_REACH: f64 = 1.6;
+
+/// Whether this press picks a settler up rather than dragging the map. Only in
+/// the settlement, only with the switch on, and only for a plain press: the
+/// middle button and a held control key drag the map, the same way they do in
+/// the sprite editor.
+fn grabs(app: &App, pe: &web_sys::PointerEvent) -> bool {
+    app.mode == Mode::Settlement
+        && app.ui.move_people
+        && app.settlement.is_some()
+        && !pe.ctrl_key()
+        && pe.button() != 1
+        && pe.buttons() & 4 == 0
+}
+
+/// Picks up whoever is under the pointer, and says who that was.
+fn start_grab(app: &mut App, client_x: f64, client_y: f64) -> Option<u32> {
+    let world = app.settlement.as_ref()?.world().clone();
+    let (gx, gy) = app.viewport.ground_at(client_x, client_y, &world)?;
+    let sim = app.settlement.as_mut()?;
+    let id = sim.person_near(gx, gy, GRAB_REACH)?;
+    if !sim.hold_person(id) {
+        return None;
+    }
+    let name = sim.people.get(id).map(|p| p.name.clone()).unwrap_or_default();
+    app.set_note(&format!("holding {name}"));
+    Some(id)
+}
+
+/// Carries the held settler along with the pointer.
+fn drag_held(app: &mut App, client_x: f64, client_y: f64) {
+    let world = match app.settlement.as_ref() {
+        Some(sim) => sim.world().clone(),
+        None => return,
+    };
+    let at = app.viewport.ground_at(client_x, client_y, &world);
+    if let (Some((gx, gy)), Some(sim)) = (at, app.settlement.as_mut()) {
+        sim.move_held(gx, gy);
+    }
+}
+
+/// Puts down whoever is in hand, wherever the pointer left them.
+fn end_grab(h: &Handle, grab: &Rc<Cell<u32>>) {
+    if grab.get() == 0 {
+        return;
+    }
+    let id = grab.replace(0);
+    set_holding(false);
+    let mut sh = h.borrow_mut();
+    let landed = match sh.app.settlement.as_mut() {
+        Some(sim) => sim.drop_held().map(|_| {
+            sim.people.get(id).map(|p| p.name.clone()).unwrap_or_default()
+        }),
+        None => None,
+    };
+    if let Some(name) = landed {
+        sh.app.set_note(&format!("put {name} down"));
+    }
+}
+
+/// What the stage says a press will do: an open hand where settlers can be
+/// picked up, a closed one while one is in hand.
+fn sync_grab_cursor(app: &App) {
+    let body = match document().body() {
+        Some(b) => b,
+        None => return,
+    };
+    let list = body.class_list();
+    let on = app.mode == Mode::Settlement && app.ui.move_people;
+    let _ = if on { list.add_1("moving-people") } else { list.remove_1("moving-people") };
+    if !on {
+        set_holding(false);
+    }
+}
+
+fn set_holding(holding: bool) {
+    let body = match document().body() {
+        Some(b) => b,
+        None => return,
+    };
+    let list = body.class_list();
+    let _ = if holding { list.add_1("holding") } else { list.remove_1("holding") };
 }
 
 /// The sheet, as something to draw on. Held as a constant because the stage

@@ -775,3 +775,119 @@ fn nobody_beds_down_where_the_day_ended() {
          still bedding down where the day ended"
     );
 }
+
+/// A small town, warmed up enough to have settlers walking about in it.
+fn peopled(cols: i32, rows: i32) -> (Settlement, State) {
+    let mut state = State::new();
+    state.civ.world.cols = cols;
+    state.civ.world.rows = rows;
+    state.civ.terrain.warmup = 60.0;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+    (sim, state)
+}
+
+/// The first settler out in the open, who is the one a press on their own feet
+/// has to find.
+fn outdoors(sim: &Settlement) -> u32 {
+    sim.people
+        .iter()
+        .find(|p| !p.indoors() && p.aboard == 0)
+        .map(|p| p.id)
+        .expect("nobody is outdoors to pick up")
+}
+
+#[test]
+fn a_settler_is_picked_up_by_pointing_at_them() {
+    let (sim, _) = peopled(48, 24);
+    let id = outdoors(&sim);
+    let (x, y) = {
+        let p = sim.people.get(id).unwrap();
+        (p.x, p.y)
+    };
+    assert_eq!(sim.person_near(x, y, 1.6), Some(id), "pointing at somebody's feet missed them");
+    // A settler is drawn standing up out of their cell, so the reach is taller
+    // above them than below.
+    assert_eq!(sim.person_near(x, y - 2.0, 1.6), Some(id), "pointing at somebody's head missed them");
+    // Far enough away and the answer is nobody rather than the nearest.
+    let far = sim.person_near(x + 40.0, y, 1.6);
+    assert!(far.is_none() || far != Some(id), "a press nowhere near anybody picked somebody up");
+}
+
+#[test]
+fn a_settler_can_be_carried_somewhere_else_and_put_down() {
+    let (mut sim, _) = peopled(48, 24);
+    let id = outdoors(&sim);
+    let was = {
+        let p = sim.people.get(id).unwrap();
+        (p.cell_col(), p.cell_row())
+    };
+    assert!(sim.hold_person(id), "a living settler could not be picked up");
+    assert_eq!(sim.held, id);
+
+    // Somewhere they can stand, as far from where they were as the map allows.
+    let (cols, rows) = (sim.world().cols, sim.world().rows);
+    let target = (0..rows)
+        .flat_map(|r| (0..cols).map(move |c| (c, r)))
+        .filter(|(c, r)| sim.walkable(*c, *r))
+        .max_by_key(|(c, r)| (c - was.0).abs() + (r - was.1).abs())
+        .expect("the map has nowhere to stand");
+    sim.move_held(target.0 as f64 + 0.5, target.1 as f64 + 0.5);
+    assert_eq!(sim.drop_held(), Some(target), "a settler was not put down where they were let go");
+    assert_eq!(sim.held, 0, "the hand is still holding somebody");
+
+    let p = sim.people.get(id).unwrap();
+    assert_ne!((p.cell_col(), p.cell_row()), was, "the settler did not move at all");
+    assert!(p.task.is_none(), "a settler put down is still on their way somewhere");
+    assert!(p.path.is_empty(), "a settler put down is still walking a path from before");
+    assert!(!p.indoors(), "a settler picked up is still recorded as being inside");
+}
+
+#[test]
+fn a_settler_put_down_on_a_roof_lands_beside_it() {
+    let (mut sim, _) = peopled(48, 24);
+    let id = outdoors(&sim);
+    let (cols, rows) = (sim.world().cols, sim.world().rows);
+    let blocked = (0..rows)
+        .flat_map(|r| (0..cols).map(move |c| (c, r)))
+        .find(|(c, r)| !sim.walkable(*c, *r) && !sim.in_water(*c, *r))
+        .expect("the map has nothing solid to drop somebody on");
+
+    assert!(sim.hold_person(id));
+    sim.move_held(blocked.0 as f64 + 0.5, blocked.1 as f64 + 0.5);
+    let landed = sim.drop_held().expect("nobody was put down");
+    assert_ne!(landed, blocked, "a settler was left standing in something solid");
+    assert!(sim.walkable(landed.0, landed.1), "a settler landed somewhere they cannot stand");
+}
+
+#[test]
+fn a_settler_in_hand_is_left_out_of_the_tick() {
+    let (mut sim, state) = peopled(48, 24);
+    let id = outdoors(&sim);
+    assert!(sim.hold_person(id));
+    // Held over open ground rather than wherever they happened to be standing,
+    // so nothing about the spot explains them staying put.
+    let held_at = (sim.world().cols as f64 * 0.5, sim.world().rows as f64 * 0.5);
+    sim.move_held(held_at.0, held_at.1);
+
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..400 {
+        sim.step(&state, dt);
+    }
+    let p = sim.people.get(id).unwrap();
+    assert_eq!((p.x, p.y), held_at, "a settler being held walked off on their own");
+    assert!(p.task.is_none(), "a settler being held took on work");
+    // Time still passes for them: being carried about is no way out of getting
+    // older or hungrier.
+    assert!(p.age > 0.0);
+
+    sim.drop_held();
+    for _ in 0..400 {
+        sim.step(&state, dt);
+    }
+    let p = sim.people.get(id).unwrap();
+    assert!(
+        p.task.is_some() || (p.x, p.y) != held_at,
+        "a settler put down never picked their life back up"
+    );
+}

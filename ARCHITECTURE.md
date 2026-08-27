@@ -694,6 +694,59 @@ flowchart TD
   rough --> morning
 ```
 
+## Picking a settler up
+
+The stage is one canvas and a press on it can mean three things. The mode
+decides two of them and one switch decides the third: a press draws in the
+sprite editor, and in the settlement with **Move people** on it picks up
+whoever is under the pointer. Everything else drags the map, including a press
+on empty ground with the switch on, so turning it on does not cost the camera
+the whole stage. The middle button and a held control key drag whatever the
+mode is, the same way they do while drawing.
+
+```mermaid
+flowchart TD
+  press["a press on the stage"] --> mode{"what is this press?"}
+  mode -->|sprite editor,<br/>plain press| brush["a stroke"]
+  mode -->|settlement,<br/>Move people on| who{"anybody within<br/>reach of the point?"}
+  mode -->|middle, ctrl,<br/>two fingers, anything else| pan["pan, zoom, pinch"]
+  who -->|no| pan
+  who -->|yes| hold["hold them:<br/>give the task up properly,<br/>step outside, stop sleeping"]
+  hold --> carry["the pointer carries them;<br/>the tick leaves them out"]
+  carry --> put["let go: the cell they are over,<br/>or the nearest one they can stand in"]
+  put --> plan["no task, no path:<br/>they plan again from<br/>where they are standing"]
+```
+
+Where somebody can be picked up from is not where they are standing. A settler's
+position is their feet and the sprite is drawn standing up out of that cell, so
+`person_near` halves the distance it measures upward: the reach is an oval
+leaning up the screen, which is the shape of what is being pointed at. Somebody
+indoors or aboard a boat is not on the map at all and is never picked up,
+whatever their recorded position says.
+
+Three things make this safe to do to a running simulation.
+
+* **The task is given up, not dropped.** Picking somebody up calls the same
+  `abandon_task` any other change of plan does, so hauled stock goes back to the
+  store, a claimed plant or pile is unclaimed, a building loses its builder and
+  an inn loses its guest. Clearing `task` by hand would leave the world holding
+  reservations for work nobody is coming to do.
+* **The tick leaves them alone.** `Settlement::held` is the id of whoever is in
+  hand, and `update_person` returns early for them - beside the early return
+  that already exists for anybody at sea. They still age and still get hungry,
+  since being carried about is no way out of either, but they do not walk, work
+  or take anything on. It sits on the settlement rather than on the person
+  because only one settler is ever in hand and because a saved `Person` should
+  not carry a piece of pointer state.
+* **They land somewhere they can be.** Water counts - they swim out of it - and
+  anything else they cannot stand in sends them to the nearest cell they can,
+  which is the same `free_spot_near` a settler with no bed walks to.
+
+Somebody can die of old age in your hand; holding is dropped rather than
+dragging a body about. The switch itself lives in `app.ui` rather than in the
+project: it is how somebody is using the map right now, not something about the
+map, so it is not saved and undo does not step through it.
+
 ## The ladder of homes
 
 A settler who has saved enough has their own house pulled down and rebuilt one

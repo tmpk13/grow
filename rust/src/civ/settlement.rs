@@ -41,7 +41,7 @@ use crate::rng::Rng;
 use crate::sim::Sim;
 use crate::species::SizeClass;
 use crate::state::State;
-use crate::util::{clamp, clamp01};
+use crate::util::{clamp, clamp01, clampi};
 use crate::world::World;
 
 /// A rectangle of world pixels. The camera hands one of these in so a frame
@@ -306,6 +306,11 @@ pub struct Settlement {
     pub next_colony_id: i32,
     /// Which colony the panels are reporting on.
     pub focus: usize,
+    /// The settler currently held off the map by a pointer, or 0. Somebody
+    /// held is skipped by the tick entirely: they keep aging and getting
+    /// hungry, but they do not walk, work or take on anything new until they
+    /// are put down again.
+    pub held: u32,
     pub boats: Vec<Boat>,
     pub next_boat_id: i32,
     pub plant_index: PlantIndex,
@@ -372,6 +377,7 @@ impl Settlement {
             colonies: Vec::new(),
             next_colony_id: 1,
             focus: 0,
+            held: 0,
             boats: Vec::new(),
             next_boat_id: 1,
             plant_index: PlantIndex::default(),
@@ -681,6 +687,106 @@ impl Settlement {
             }
         }
         None
+    }
+
+    // ---- settlers in hand ------------------------------------------------
+
+    /// The settler nearest a point on the ground plane, or nothing if none is
+    /// within reach of it. Somebody indoors or aboard a boat is not on the map
+    /// to be picked up, whatever their recorded position says.
+    pub fn person_near(&self, x: f64, y: f64, reach: f64) -> Option<u32> {
+        let mut best: Option<(f64, u32)> = None;
+        for p in self.people.iter() {
+            if p.indoors() || p.aboard != 0 {
+                continue;
+            }
+            // A settler is drawn standing up out of the cell their feet are
+            // in, so a point above them is still on them while the same
+            // distance below them is only ground.
+            let dy = if y < p.y { (p.y - y) * 0.5 } else { y - p.y };
+            let d = (p.x - x).powi(2) + dy * dy;
+            if d > reach * reach {
+                continue;
+            }
+            match best {
+                Some((near, _)) if near <= d => {}
+                _ => best = Some((d, p.id)),
+            }
+        }
+        best.map(|(_, id)| id)
+    }
+
+    /// Picks a settler up off the map. Whatever they were doing is given up
+    /// the way it would be by any other change of plan, so nothing is left
+    /// reserved for a job nobody is coming to do.
+    pub fn hold_person(&mut self, id: u32) -> bool {
+        let pi = match self.people.index_of(id) {
+            Some(i) if self.people[i].alive => i,
+            _ => return false,
+        };
+        abandon_task(self, pi);
+        let p = &mut self.people[pi];
+        p.step_outside();
+        p.sleeping = false;
+        self.held = id;
+        true
+    }
+
+    /// Moves whoever is being held. Nothing about the position is checked here:
+    /// a settler in hand is off the map, and only where they are put down has
+    /// to be somewhere they can be.
+    pub fn move_held(&mut self, x: f64, y: f64) {
+        let pi = match self.people.index_of(self.held) {
+            Some(i) if self.people[i].alive => i,
+            // Somebody can die of old age in your hand, and a body is not
+            // something to go on dragging about.
+            _ => {
+                self.held = 0;
+                return;
+            }
+        };
+        let p = &mut self.people[pi];
+        if x > p.x {
+            p.facing = 1;
+        } else if x < p.x {
+            p.facing = -1;
+        }
+        p.x = x;
+        p.y = y;
+    }
+
+    /// Puts the held settler down, and says which cell they landed in. Water
+    /// counts as somewhere to land - they swim out of it - but a roof or a
+    /// cliff sends them to the nearest cell they can stand in instead.
+    pub fn drop_held(&mut self) -> Option<(i32, i32)> {
+        let id = std::mem::take(&mut self.held);
+        let pi = self.people.index_of(id).filter(|&i| self.people[i].alive)?;
+        let (cols, rows) = (self.world().cols, self.world().rows);
+        let c = clampi(self.people[pi].x.floor() as i32, 0, cols - 1);
+        let r = clampi(self.people[pi].y.floor() as i32, 0, rows - 1);
+        let landed = if self.walkable(c, r) || self.in_water(c, r) {
+            None
+        } else {
+            self.free_spot_near(c, r)
+        };
+        let p = &mut self.people[pi];
+        match landed {
+            Some((fc, fr)) => {
+                p.x = fc as f64 + 0.5;
+                p.y = fr as f64 + 0.5;
+            }
+            // Where they were let go of, kept as it was so nothing jumps on
+            // release, but never off the edge of the map.
+            None => {
+                p.x = p.x.clamp(0.0, cols as f64 - 0.01);
+                p.y = p.y.clamp(0.0, rows as f64 - 0.01);
+            }
+        }
+        // They plan again from where they are standing rather than carrying on
+        // to somewhere they were walking from the other side of the map.
+        p.clear_task();
+        let p = &self.people[pi];
+        Some((p.cell_col(), p.cell_row()))
     }
 
     /// Whether a cell is water, which is where somebody is swimming rather than

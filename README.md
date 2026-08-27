@@ -425,6 +425,13 @@ population. Pick any available tech to make it the target.
   would be much further, and a swimmer moves at a fraction of walking speed and
   wears no path behind them. Both numbers are in the People panel. Somebody in
   the water is drawn cut off at the surface.
+* **Settlers can be picked up.** Turn on **Move people** above the map and a
+  press on a settler lifts them off it: the pointer carries them, and letting go
+  puts them down where they were dropped, or on the nearest ground they can
+  stand in if that was a roof or a cliff. Whatever they were doing is given up
+  properly, so nothing is left reserved for a delivery nobody is coming to make,
+  and they plan again from where they land. A press on empty ground still drags
+  the map, as do the middle button and a held control key.
 * **Everybody knows somebody.** Standing near each other is how settlers meet,
   and what they make of each other follows from how alike they are. It decides
   who they marry - among people of a like age, never across a generation - whose
@@ -434,7 +441,8 @@ population. Pick any available tech to make it the target.
 
 Play/pause (space), single step (`.`), fit (`f`), a speed multiplier up to 200x
 on a logarithmic slider, wheel or pinch to zoom, drag to pan, plus grid and
-occupancy overlays. The status bar
+occupancy overlays. In the settlement, Move people turns a press on the map into
+picking a settler up rather than dragging the view. The status bar
 shows tick count, simulation time, plant counts per species, the redraw queue
 and frame rate; in the settlement it shows the day and hour, the towns, the
 population, what is built, the stores, the fleet and the current drawing detail.

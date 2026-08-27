@@ -209,6 +209,13 @@ pub fn update_person(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
         return;
     }
 
+    // Somebody picked up off the map keeps aging and getting hungry, since
+    // being carried about is not a way out of either, but does nothing else
+    // until they are put down.
+    if sim.held != 0 && sim.held == sim.people[pi].id {
+        return;
+    }
+
     let health = sim.people[pi].health;
     let hardy = sim.people[pi].traits.hardiness;
     let sick = pcfg.sickness_rate * dt / pcfg.day_length.max(1.0)

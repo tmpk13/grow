@@ -1078,6 +1078,15 @@ body.painting #world-canvas {
   cursor: crosshair;
 }
 
+/* Picking settlers up off the map rather than dragging it. */
+body.moving-people #world-canvas {
+  cursor: grab;
+}
+
+body.moving-people.holding #world-canvas {
+  cursor: grabbing;
+}
+
 .readout.hint {
   min-width: 0;
   opacity: 0.75;
