@@ -397,6 +397,30 @@ impl Sheet {
         }
     }
 
+    /// Shifts one cel, or every cel in the sheet, by whole pixels. What moves
+    /// off an edge is gone: a sheet is the frame, not a window onto something
+    /// larger, and keeping what has left it would mean carrying a buffer nobody
+    /// can see.
+    pub fn shift_cel(&mut self, layer: usize, frame: i32, dx: i32, dy: i32) {
+        let (w, h) = (self.w, self.h);
+        if let Some(cel) = self
+            .layers
+            .get_mut(layer)
+            .and_then(|l| l.cels.get_mut(frame.max(0) as usize))
+        {
+            shift_px(&mut cel.px, w, h, dx, dy);
+        }
+    }
+
+    pub fn shift_all(&mut self, dx: i32, dy: i32) {
+        let (w, h) = (self.w, self.h);
+        for layer in &mut self.layers {
+            for cel in &mut layer.cels {
+                shift_px(&mut cel.px, w, h, dx, dy);
+            }
+        }
+    }
+
     pub fn clear_cel(&mut self, layer: usize, frame: i32) {
         if let Some(cel) = self
             .layers
@@ -407,17 +431,33 @@ impl Sheet {
         }
     }
 
-    /// Lays an image over one cel, top left aligned and cropped to the sheet.
-    /// What is already there stays wherever the image has nothing.
-    pub fn paste(&mut self, layer: usize, frame: i32, src_w: i32, src_h: i32, px: &[u32]) {
-        for y in 0..src_h.min(self.h) {
-            for x in 0..src_w.min(self.w) {
-                let v = match px.get((y * src_w + x) as usize) {
+    /// Lays an image into one cel, scaled down to fit the frame and centered in
+    /// it. Nearest sampling and never scaled up, so pixel art arrives as its own
+    /// pixels wherever it already fits and loses whole ones where it does not.
+    /// The cel is cleared first: what is dropped is what the layer then shows,
+    /// which is the only reading of a drop that does not depend on what was
+    /// underneath.
+    pub fn place(&mut self, layer: usize, frame: i32, src_w: i32, src_h: i32, px: &[u32]) {
+        if src_w <= 0 || src_h <= 0 {
+            return;
+        }
+        self.clear_cel(layer, frame);
+        let ratio = (src_w as f64 / self.w as f64)
+            .max(src_h as f64 / self.h as f64)
+            .max(1.0);
+        let w = ((src_w as f64 / ratio).round() as i32).clamp(1, self.w);
+        let h = ((src_h as f64 / ratio).round() as i32).clamp(1, self.h);
+        let (ox, oy) = ((self.w - w) / 2, (self.h - h) / 2);
+        for y in 0..h {
+            let sy = ((y as i64 * src_h as i64) / h as i64).min(src_h as i64 - 1) as i32;
+            for x in 0..w {
+                let sx = ((x as i64 * src_w as i64) / w as i64).min(src_w as i64 - 1) as i32;
+                let v = match px.get((sy * src_w + sx) as usize) {
                     Some(v) => *v,
                     None => continue,
                 };
                 if v != EMPTY_COLOR {
-                    self.set(layer, frame, x, y, v);
+                    self.set(layer, frame, ox + x, oy + y, v);
                 }
             }
         }
@@ -431,6 +471,27 @@ impl Sheet {
             .map(|l| l.cels.iter().map(|c| runs(&c.px) * 10).sum::<usize>())
             .sum()
     }
+}
+
+fn shift_px(px: &mut [u32], w: i32, h: i32, dx: i32, dy: i32) {
+    if dx == 0 && dy == 0 {
+        return;
+    }
+    let mut next = vec![EMPTY_COLOR; px.len()];
+    for y in 0..h {
+        let sy = y - dy;
+        if sy < 0 || sy >= h {
+            continue;
+        }
+        for x in 0..w {
+            let sx = x - dx;
+            if sx < 0 || sx >= w {
+                continue;
+            }
+            next[(y * w + x) as usize] = px[(sy * w + sx) as usize];
+        }
+    }
+    px.copy_from_slice(&next);
 }
 
 fn flip_px(px: &mut [u32], w: i32, h: i32) {

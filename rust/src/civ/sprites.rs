@@ -144,6 +144,10 @@ pub struct Clip {
     pub mirror: bool,
     /// What was dropped, so the panel can say what it is showing.
     pub source: String,
+    /// The sheet this was built from, when it came from the editor. The clip
+    /// is a copy and stays one; this is only so the panel can offer to build it
+    /// again from a sheet that has moved on since.
+    pub sheet: String,
 }
 
 impl Default for Clip {
@@ -160,6 +164,7 @@ impl Default for Clip {
             flip: true,
             mirror: false,
             source: String::new(),
+            sheet: String::new(),
         }
     }
 }
@@ -230,6 +235,7 @@ impl Clip {
             frames,
             fps: sheet.fps,
             source: format!("editor: {}", sheet.name),
+            sheet: sheet.id.clone(),
             ..Clip::default()
         })
     }

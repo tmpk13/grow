@@ -59,6 +59,10 @@ texture, leaf edges, stem to leaf) and boxes can be added or removed.
   grid copies the boxes into it; the two sync buttons copy in either direction
   at any time.
 * Pencil, eraser, fill and pick; right click erases; mirror X paints both sides.
+* **Undo** and **Redo** live in the top bar (ctrl+z, ctrl+shift+z) and cover the
+  whole project, not just the editors: a stroke, a layer, a species parameter, a
+  world size, anything a panel can set. A slider held through a range of values
+  is one step back rather than one per value.
 * **Brush color** is a plain color box, and **Wheel** opens an HSV wheel beside
   it: hue around, saturation out from the middle, value on the slider under it,
   and a hex field for a color you already know.
@@ -83,11 +87,19 @@ A pixel editor for animations, and the other way to draw a settler.
 * **Frames** run along the strip near the bottom. Add an empty one, duplicate
   the current one to nudge a pose rather than redraw it, or shuffle one left and
   right. Up to twenty four.
+* **Drop images** onto the zone under the canvas and they land on the selected
+  layer, scaled down to fit the frame and centered. Several at once fill
+  successive frames, one each, starting from the frame being drawn - so a
+  reference can go on a layer of its own and be drawn over on the one above.
+* **Nudge** shifts the art by a pixel: the selected layer in the selected frame,
+  or the whole sheet with the switch beside the buttons.
 * **Onion skin** shows the frame before this one faintly behind it.
 * **Play** runs the sheet at its own rate in the preview.
 * **Use as settler art** sends the sheet to one of the five settler motions. It
   is copied rather than followed, so the town does not change under you while
-  you keep drawing; send it again to push a change.
+  you keep drawing. The motion's card in the People panel says which sheet it
+  came from and offers to take that sheet again, which is how a change is
+  pushed.
 * Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
   the art keeps its place and the new room is empty.
 

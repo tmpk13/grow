@@ -15,6 +15,7 @@ use web_sys::{Document, Element, Event, EventTarget, HtmlInputElement, HtmlSelec
 pub mod art_panel;
 pub mod build_panel;
 pub mod color_wheel;
+pub mod decode;
 pub mod economy_panel;
 pub mod grid_editor;
 pub mod land_panel;
@@ -476,8 +477,14 @@ pub fn bar(kind: &str, value: f64) -> Element {
 
 // ---- panel helpers -------------------------------------------------------
 //
-// Every panel control ends in the same two steps: borrow the app, apply the
-// change. These wrap that so a panel reads as a list of parameters.
+// Every panel control ends in the same three steps: borrow the app, record what
+// it is about to change, apply the change. These wrap that, so a panel reads as
+// a list of parameters and every one of them is undoable without the panel
+// having to say so.
+//
+// A control somebody holds - a slider, a text field, a color picker - fires
+// while it is being held, so those coalesce into one step per burst. A control
+// somebody presses does not.
 
 use crate::app::{App, Handle};
 
@@ -490,8 +497,10 @@ pub fn app_num(
     apply: impl Fn(&mut App, f64) + 'static,
 ) -> Element {
     let h2 = h.clone();
+    let key = label.to_string();
     number_field(label, value, opts, hint, move |v| {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, true);
         apply(&mut sh.app, v);
     })
 }
@@ -506,8 +515,10 @@ pub fn app_range(
     apply: impl Fn(&mut App, f64, f64) + 'static,
 ) -> Element {
     let h2 = h.clone();
+    let key = label.to_string();
     range_field(label, lo, hi, opts, hint, move |lo, hi| {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, true);
         apply(&mut sh.app, lo, hi);
     })
 }
@@ -520,8 +531,10 @@ pub fn app_bool(
     apply: impl Fn(&mut App, bool) + 'static,
 ) -> Element {
     let h2 = h.clone();
+    let key = label.to_string();
     bool_field(label, value, hint, move |v| {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, false);
         apply(&mut sh.app, v);
     })
 }
@@ -534,8 +547,10 @@ pub fn app_text(
     apply: impl Fn(&mut App, &str) + 'static,
 ) -> Element {
     let h2 = h.clone();
+    let key = label.to_string();
     text_field(label, value, hint, move |v| {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, true);
         apply(&mut sh.app, &v);
     })
 }
@@ -548,8 +563,10 @@ pub fn app_color(
     apply: impl Fn(&mut App, &str) + 'static,
 ) -> Element {
     let h2 = h.clone();
+    let key = label.to_string();
     color_field(label, value, hint, move |v| {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, true);
         apply(&mut sh.app, &v);
     })
 }
@@ -563,26 +580,50 @@ pub fn app_select(
     apply: impl Fn(&mut App, &str) + 'static,
 ) -> Element {
     let h2 = h.clone();
+    let key = label.to_string();
     select_field(label, value, options, hint, move |v| {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, false);
         apply(&mut sh.app, &v);
     })
 }
 
 pub fn app_button(h: &Handle, label: &str, apply: impl Fn(&mut App) + 'static) -> Element {
     let h2 = h.clone();
+    let key = label.to_string();
     button(label, Scope::Panel, move || {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, false);
         apply(&mut sh.app);
     })
 }
 
 pub fn app_danger_button(h: &Handle, label: &str, apply: impl Fn(&mut App) + 'static) -> Element {
     let h2 = h.clone();
+    let key = label.to_string();
     danger_button(label, Scope::Panel, move || {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, false);
         apply(&mut sh.app);
     })
+}
+
+/// The undo pair lives in the top bar, outside every panel, because a step
+/// covers the whole project rather than whichever editor is open. Nothing
+/// rebuilds it, so it is told when the history moves.
+pub fn sync_undo_buttons(app: &App) {
+    for (id, enabled) in [
+        ("btn-undo", app.history.can_undo()),
+        ("btn-redo", app.history.can_redo()),
+    ] {
+        if let Some(node) = by_id(id) {
+            let _ = if enabled {
+                node.remove_attribute("disabled")
+            } else {
+                node.set_attribute("disabled", "disabled")
+            };
+        }
+    }
 }
 
 pub fn btn_row(children: Vec<Element>) -> Element {

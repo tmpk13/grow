@@ -140,6 +140,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                 let dark = hex_to_packed(&a.value());
                 let light = hex_to_packed(&b.value());
                 let mut sh = h2.borrow_mut();
+                sh.app.record("make ramp", false);
                 with_region(&mut sh.app, |grid| fill_ramp(grid, dark, light));
                 sh.app.materials_changed();
                 sh.app.redraw_panel = true;

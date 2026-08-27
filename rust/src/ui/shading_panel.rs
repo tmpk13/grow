@@ -7,7 +7,7 @@ use crate::app::{App, Handle, Panel};
 use crate::sampler::ramp_pick;
 use crate::shading::{curve_value, quantize, shade_value, Shading};
 use crate::ui::{
-    app_button, app_num, app_select, append, btn_row, el, note, sampler_options, section, window,
+    app_button, app_num, append, btn_row, el, note, sampler_options, section, window,
     NumOpts,
 };
 use crate::util::{clamp01, distance_transform, label_components, unpack_rgba};
@@ -52,17 +52,39 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     curve.push(presets);
     append(root, section("Tone curve", curve));
 
+    // These three describe the preview rather than the project, so they go
+    // through the plain fields: recording them would put steps on the undo
+    // stack that change nothing when they are taken back.
     let preview_fields = vec![
         el("div").class("preview-wrap").child(preview.unchecked_ref()).get(),
-        app_select(h, "Preview material", &app.ui.shade_preview_sampler.clone(), &sampler_options(app), None,
-            |app, v| { app.ui.shade_preview_sampler = v.to_string(); app.redraw_panel = true; }),
-        app_num(h, "Preview tone steps", app.ui.shade_preview_tones as f64,
-            NumOpts { min: 2.0, max: 16.0, step: 1.0 }, None,
-            |app, v| { app.ui.shade_preview_tones = v as i32; app.redraw_panel = true; }),
-        app_num(h, "Preview core depth (px)", app.ui.shade_preview_core,
-            NumOpts { min: 0.5, max: 16.0, step: 0.5 },
-            Some("depth at which a shape reads as fully core"),
-            |app, v| { app.ui.shade_preview_core = v; app.redraw_panel = true; }),
+        {
+            let h2 = h.clone();
+            crate::ui::select_field("Preview material", &app.ui.shade_preview_sampler.clone(),
+                &sampler_options(app), None, move |v| {
+                    let mut sh = h2.borrow_mut();
+                    sh.app.ui.shade_preview_sampler = v;
+                    sh.app.redraw_panel = true;
+                })
+        },
+        {
+            let h2 = h.clone();
+            crate::ui::number_field("Preview tone steps", app.ui.shade_preview_tones as f64,
+                NumOpts { min: 2.0, max: 16.0, step: 1.0 }, None, move |v| {
+                    let mut sh = h2.borrow_mut();
+                    sh.app.ui.shade_preview_tones = v as i32;
+                    sh.app.redraw_panel = true;
+                })
+        },
+        {
+            let h2 = h.clone();
+            crate::ui::number_field("Preview core depth (px)", app.ui.shade_preview_core,
+                NumOpts { min: 0.5, max: 16.0, step: 0.5 },
+                Some("depth at which a shape reads as fully core"), move |v| {
+                    let mut sh = h2.borrow_mut();
+                    sh.app.ui.shade_preview_core = v;
+                    sh.app.redraw_panel = true;
+                })
+        },
     ];
     append(root, section("Preview", preview_fields));
 

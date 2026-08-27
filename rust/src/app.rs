@@ -20,6 +20,7 @@ use crate::plant::Scratch;
 use crate::render::Viewport;
 use crate::sim::{Env, Sim};
 use crate::state::{State, STORAGE_KEY};
+use crate::undo::History;
 use crate::ui::{self, by_id, clear, clear_scope, document, el, on, on_passive_false, window, Scope};
 use crate::util::{clamp, hex_to_packed};
 
@@ -87,6 +88,8 @@ pub struct App {
     pub status_at: f64,
     pub accumulator: f64,
     pub last_ts: f64,
+    /// What the two pixel editors can put back.
+    pub history: History,
 }
 
 impl App {
@@ -118,6 +121,98 @@ impl App {
     pub fn uid(&mut self, prefix: &str) -> String {
         self.next_uid = self.next_uid.wrapping_add(1);
         crate::util::uid(prefix, self.next_uid)
+    }
+
+    // ---- undo -----------------------------------------------------------
+
+    /// Records the project before a control changes it. `key` names the
+    /// control; `coalesce` is for the ones a person holds rather than presses,
+    /// so a slider drag is one step rather than one a frame.
+    pub fn record(&mut self, key: &str, coalesce: bool) {
+        let now = ui::now();
+        self.history.record(&self.state, key, coalesce, now);
+        ui::sync_undo_buttons(self);
+    }
+
+    pub fn undo(&mut self) {
+        self.take_step(false);
+    }
+
+    pub fn redo(&mut self) {
+        self.take_step(true);
+    }
+
+    fn take_step(&mut self, forward: bool) {
+        let before = Marks::of(&self.state);
+        let mut history = std::mem::take(&mut self.history);
+        let moved = if forward {
+            history.redo(&mut self.state)
+        } else {
+            history.undo(&mut self.state)
+        };
+        self.history = history;
+        ui::sync_undo_buttons(self);
+        if !moved {
+            self.set_note(if forward { "nothing to redo" } else { "nothing to undo" });
+            return;
+        }
+        self.after_restore(before);
+    }
+
+    /// Puts everything that reads the project back in step with it. A restored
+    /// project can differ anywhere, so everything cached from it is dropped;
+    /// what is not done unconditionally is starting a simulation again, which
+    /// only happens if the step actually moved what a simulation is built on.
+    fn after_restore(&mut self, before: Marks) {
+        let now = Marks::of(&self.state);
+        self.state.materials.invalidate();
+        self.env.invalidate();
+        self.sim.env.invalidate();
+        self.sim.mark_all_dirty();
+        self.sim.world_cfg = self.state.world.clone();
+        if now.world != before.world || now.seed != before.seed {
+            self.sim.reset(self.state.seed);
+            self.viewport.fit(&self.sim.world);
+        } else {
+            self.sim.buffer_dirty = true;
+        }
+        if let Some(civ) = &mut self.settlement {
+            civ.invalidate_sprites();
+            civ.mark_all_dirty();
+            civ.plant_sim.env.invalidate();
+        }
+        if now.civ_world != before.civ_world || now.civ_seed != before.civ_seed {
+            self.civ_restart();
+        }
+        self.clamp_selection();
+        self.rebuild_panel();
+        self.request_save();
+    }
+
+    /// Keeps every selection the panels hold pointing at something that is
+    /// still there, which a step back may have taken away.
+    pub fn clamp_selection(&mut self) {
+        if self.state.materials.find(&self.ui.selected_sampler).is_none() {
+            self.ui.selected_sampler = self
+                .state
+                .materials
+                .samplers
+                .first()
+                .map(|s| s.id.clone())
+                .unwrap_or_default();
+        }
+        if self.state.find_species(&self.ui.selected_species).is_none() {
+            self.ui.selected_species =
+                self.state.species.first().map(|s| s.id.clone()).unwrap_or_default();
+        }
+        if self.state.art.find(&self.ui.selected_sheet).is_none() {
+            self.ui.selected_sheet =
+                self.state.art.sheets.first().map(|s| s.id.clone()).unwrap_or_default();
+        }
+        if let Some(sheet) = self.state.art.find(&self.ui.selected_sheet) {
+            self.ui.sheet_layer = self.ui.sheet_layer.min(sheet.layers.len().saturating_sub(1));
+            self.ui.sheet_frame = self.ui.sheet_frame.clamp(0, sheet.frame_count() - 1);
+        }
     }
 
     // ---- change notifications -------------------------------------------
@@ -229,6 +324,27 @@ impl App {
         } else {
             "save failed".to_string()
         });
+    }
+}
+
+/// The parts of a project a simulation is built on. A step that leaves these
+/// alone is a step nothing has to be restarted for, which is what keeps undoing
+/// a brush stroke from throwing away the settlement.
+struct Marks {
+    world: crate::world::WorldConfig,
+    seed: u32,
+    civ_world: crate::world::WorldConfig,
+    civ_seed: u32,
+}
+
+impl Marks {
+    fn of(state: &State) -> Marks {
+        Marks {
+            world: state.world.clone(),
+            seed: state.seed,
+            civ_world: state.civ.world.clone(),
+            civ_seed: state.civ.seed,
+        }
     }
 }
 
@@ -373,6 +489,7 @@ pub fn start() -> Result<(), JsValue> {
         status_at: 0.0,
         accumulator: 0.0,
         last_ts: ui::now(),
+        history: History::default(),
     };
 
     let handle: Handle = Rc::new(RefCell::new(Shell { app, panel: None }));
@@ -838,6 +955,24 @@ fn bind_keys(h: &Handle) {
             }
         }
         let mut sh = h2.borrow_mut();
+        if ke.ctrl_key() || ke.meta_key() {
+            match ke.key().to_ascii_lowercase().as_str() {
+                "z" if ke.shift_key() => {
+                    e.prevent_default();
+                    sh.app.redo();
+                }
+                "z" => {
+                    e.prevent_default();
+                    sh.app.undo();
+                }
+                "y" => {
+                    e.prevent_default();
+                    sh.app.redo();
+                }
+                _ => {}
+            }
+            return;
+        }
         match ke.code().as_str() {
             "Space" => {
                 e.prevent_default();
@@ -958,6 +1093,22 @@ fn bind_project_actions(h: &Handle) {
         });
     }
 
+    for (id, forward) in [("btn-undo", false), ("btn-redo", true)] {
+        let btn = match by_id(id) {
+            Some(b) => b,
+            None => continue,
+        };
+        let h2 = h.clone();
+        on(btn.unchecked_ref(), "click", Scope::Global, move |_| {
+            let mut sh = h2.borrow_mut();
+            if forward {
+                sh.app.redo();
+            } else {
+                sh.app.undo();
+            }
+        });
+    }
+
     if let Some(btn) = by_id("btn-reset") {
         on(btn.unchecked_ref(), "click", Scope::Global, move |_| {
             let asked = window()
@@ -1026,6 +1177,9 @@ fn bind_project_actions(h: &Handle) {
 }
 
 fn reset_selection(app: &mut App) {
+    // The steps in the history are snapshots of a project that is no longer
+    // open, and putting one back would graft it onto this one.
+    app.history.clear();
     app.ui.selected_sampler = app
         .state
         .materials

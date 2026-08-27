@@ -146,6 +146,13 @@ pub fn attach(canvas: &HtmlCanvasElement, h: &Handle, surface: Rc<dyn Surface>, 
             *drawing.borrow_mut() = true;
             *last.borrow_mut() = cell;
             if let Some(cell) = cell {
+                // A stroke is one step back however many cells the pointer
+                // walks over. The pick tool reads and does not write, so it has
+                // nothing to put back and should not push real edits off the
+                // stack.
+                if sh.app.ui.tool != Tool::Pick {
+                    sh.app.record("stroke", false);
+                }
                 let erase = pe.buttons() & 2 == 2;
                 apply(&mut sh.app, surface.as_ref(), cell, erase);
                 draw(&canvas2, &sh.app);

@@ -5,38 +5,24 @@
 //! their names sort, and the frame count stays editable afterwards because the
 //! sheet is kept whole rather than cut up.
 //!
-//! Decoding goes through the browser: a file becomes an object URL, an image
-//! element, a canvas and finally packed pixels, which is why none of this lives
-//! next to the clip itself.
+//! What a dropped file becomes is `ui/decode`'s business; this is only where a
+//! motion's slot is, and how the clip in it is tuned afterwards.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{
-    CanvasRenderingContext2d, DragEvent, Element, Event, File, FileList, HtmlCanvasElement,
-    HtmlImageElement, ImageData,
+    CanvasRenderingContext2d, DragEvent, Element, Event, FileList, HtmlCanvasElement, ImageData,
 };
 
 use crate::app::{App, Handle};
-use crate::civ::sprites::{
-    guess_frames, natural_cmp, Clip, Frame, Motion, ALPHA_CUT, MAX_FRAMES, MOTIONS,
-};
+use crate::civ::sprites::{guess_frames, Clip, Frame, Motion, MAX_FRAMES, MOTIONS};
 use crate::ui::{
     app_bool, button, danger_button, document, el, input_el, note, number_field, on, section,
     select_field, NumOpts, Scope, Tap,
 };
-use crate::util::{pack_rgba, unpack_rgba};
-
-/// Whoever gets there first: an image either loads or it fails, and the caller
-/// is told once either way.
-type Sink = Rc<RefCell<Option<Box<dyn FnOnce(Option<Frame>)>>>>;
-
-/// Source images larger than this are drawn down on the way in. Nothing on the
-/// map is read at anything near it, and walking a photograph pixel by pixel is
-/// how a drop turns into a stall.
-const MAX_SOURCE_PX: i32 = 1024;
+use crate::util::unpack_rgba;
 
 /// Sheet size past which a project stops fitting comfortably in local storage.
 /// Nothing is refused at it; the panel just says so, because a save that fails
@@ -184,6 +170,21 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
             Some("for a sheet drawn facing the other way than the settler walks"),
             |clip, v| clip.mirror = v,
         ));
+        if let Some(sheet) = app.state.art.find(&c.sheet) {
+            let h2 = h.clone();
+            let id = sheet.id.clone();
+            body.push(
+                el("div")
+                    .class("btn-row")
+                    .child(&el("span").class("field-hint").text("drawn in the editor").get())
+                    .child(&button(&format!("Take {} again", sheet.name), Scope::Panel, move || {
+                        let mut sh = h2.borrow_mut();
+                        let id = id.clone();
+                        build_from_sheet(&mut sh.app, motion, &id);
+                    }))
+                    .get(),
+            );
+        }
         let h2 = h.clone();
         body.push(
             el("div")
@@ -222,15 +223,23 @@ fn sheet_row(app: &App, h: &Handle, motion: Motion) -> Element {
         button("Use sheet", Scope::Panel, move || {
             let id = chosen.borrow().clone();
             let mut sh = h2.borrow_mut();
-            let built = sh.app.state.art.find(&id).and_then(Clip::from_sheet);
-            match built {
-                Some(clip) => apply_clip(&mut sh.app, motion, clip),
-                None => sh.app.set_note("nothing drawn on that sheet"),
-            }
-            sh.app.rebuild_panel = true;
+            build_from_sheet(&mut sh.app, motion, &id);
         })
     };
     el("div").class("sprite-from").child(&picker).child(&send).get()
+}
+
+/// Builds a motion's clip from a sheet, whether it is being pointed at one for
+/// the first time or being sent the same sheet again.
+pub fn build_from_sheet(app: &mut App, motion: Motion, id: &str) {
+    match app.state.art.find(id).and_then(Clip::from_sheet) {
+        Some(clip) => {
+            app.state.civ.sprites.enabled = true;
+            apply_clip(app, motion, clip);
+        }
+        None => app.set_note("nothing drawn on that sheet"),
+    }
+    app.rebuild_panel = true;
 }
 
 // ---- the drop target -----------------------------------------------------
@@ -366,40 +375,10 @@ fn strip_canvas(clip: &Clip) -> Option<Element> {
 // ---- reading what was dropped --------------------------------------------
 
 fn load_files(h: &Handle, motion: Motion, files: FileList) {
-    let mut list: Vec<File> = (0..files.length()).filter_map(|i| files.get(i)).collect();
-    list.sort_by(|a, b| natural_cmp(&a.name(), &b.name()));
-    list.truncate(MAX_FRAMES as usize);
-    if list.is_empty() {
-        return;
-    }
-    let strip = list.len() == 1;
-    let source = if strip {
-        list[0].name()
-    } else {
-        format!("{} images", list.len())
-    };
-    // Every file decodes on its own callback, so the slots are filled out of
-    // order and only the last one home does anything with them.
-    let slots: Rc<RefCell<Vec<Option<Frame>>>> = Rc::new(RefCell::new(vec![None; list.len()]));
-    let left = Rc::new(Cell::new(list.len()));
-    for (i, file) in list.into_iter().enumerate() {
-        let slots = slots.clone();
-        let left = left.clone();
-        let h = h.clone();
-        let source = source.clone();
-        decode(&file, move |frame| {
-            slots.borrow_mut()[i] = frame;
-            left.set(left.get().saturating_sub(1));
-            if left.get() > 0 {
-                return;
-            }
-            let frames: Vec<Frame> = std::mem::take(&mut *slots.borrow_mut())
-                .into_iter()
-                .flatten()
-                .collect();
-            apply(&h, motion, frames, strip, &source);
-        });
-    }
+    let h = h.clone();
+    crate::ui::decode::read_files(files, move |frames, strip, source| {
+        apply(&h, motion, frames, strip, &source);
+    });
 }
 
 fn apply(h: &Handle, motion: Motion, frames: Vec<Frame>, strip: bool, source: &str) {
@@ -420,8 +399,10 @@ fn apply(h: &Handle, motion: Motion, frames: Vec<Frame>, strip: bool, source: &s
 
 /// Drops a freshly built clip into a motion. Playback that has already been
 /// tuned for this motion outlives the art it was tuned on; only a fresh slot
-/// takes the defaults.
-fn apply_clip(app: &mut App, motion: Motion, mut clip: Clip) {
+/// takes the defaults. Which sheet a clip came from is part of the art rather
+/// than part of the tuning, so it is not carried over.
+pub fn apply_clip(app: &mut App, motion: Motion, mut clip: Clip) {
+    app.record("settler art", false);
     match app.state.civ.sprites.clip(motion) {
         Some(old) => {
             clip.fps = old.fps;
@@ -445,95 +426,6 @@ fn apply_clip(app: &mut App, motion: Motion, mut clip: Clip) {
     app.sprites_changed();
 }
 
-/// One file to one frame of packed pixels, through an image element and a
-/// canvas. Anything that fails on the way, a file that is not an image
-/// included, arrives as nothing rather than as an error nobody asked for.
-fn decode(file: &File, done: impl FnOnce(Option<Frame>) + 'static) {
-    let sink: Sink = Rc::new(RefCell::new(Some(Box::new(done))));
-    let fire = |sink: &Sink, out: Option<Frame>| {
-        if let Some(f) = sink.borrow_mut().take() {
-            f(out);
-        }
-    };
-    let url = match web_sys::Url::create_object_url_with_blob(file.as_ref()) {
-        Ok(url) => url,
-        Err(_) => return fire(&sink, None),
-    };
-    let img = match HtmlImageElement::new() {
-        Ok(img) => img,
-        Err(_) => {
-            let _ = web_sys::Url::revoke_object_url(&url);
-            return fire(&sink, None);
-        }
-    };
-    {
-        let sink = sink.clone();
-        let url = url.clone();
-        let onload = Closure::once_into_js(move |e: Event| {
-            let out = e
-                .target()
-                .and_then(|t| t.dyn_into::<HtmlImageElement>().ok())
-                .and_then(|img| image_pixels(&img));
-            let _ = web_sys::Url::revoke_object_url(&url);
-            fire(&sink, out);
-        });
-        img.set_onload(Some(onload.unchecked_ref()));
-    }
-    {
-        let sink = sink.clone();
-        let url = url.clone();
-        let onerror = Closure::once_into_js(move |_: JsValue| {
-            let _ = web_sys::Url::revoke_object_url(&url);
-            fire(&sink, None);
-        });
-        img.set_onerror(Some(onerror.unchecked_ref()));
-    }
-    img.set_src(&url);
-}
-
-/// A loaded image as packed pixels. Anything past the source cap is drawn down
-/// on the way in, without smoothing, so pixel art keeps its edges.
-fn image_pixels(img: &HtmlImageElement) -> Option<Frame> {
-    let (sw, sh) = (img.natural_width() as i32, img.natural_height() as i32);
-    if sw <= 0 || sh <= 0 {
-        return None;
-    }
-    let ratio = (sw as f64 / MAX_SOURCE_PX as f64)
-        .max(sh as f64 / MAX_SOURCE_PX as f64)
-        .max(1.0);
-    let w = ((sw as f64 / ratio).round() as i32).max(1);
-    let h = ((sh as f64 / ratio).round() as i32).max(1);
-    let canvas = document()
-        .create_element("canvas")
-        .ok()?
-        .dyn_into::<HtmlCanvasElement>()
-        .ok()?;
-    canvas.set_width(w as u32);
-    canvas.set_height(h as u32);
-    let ctx = canvas
-        .get_context("2d")
-        .ok()??
-        .dyn_into::<CanvasRenderingContext2d>()
-        .ok()?;
-    ctx.set_image_smoothing_enabled(false);
-    ctx.draw_image_with_html_image_element_and_dw_and_dh(img, 0.0, 0.0, w as f64, h as f64)
-        .ok()?;
-    let data = ctx.get_image_data(0.0, 0.0, w as f64, h as f64).ok()?;
-    let bytes = data.data();
-    let mut px = Vec::with_capacity((w * h) as usize);
-    let mut at = 0;
-    while at + 3 < bytes.len() {
-        px.push(if bytes[at + 3] < ALPHA_CUT {
-            0
-        } else {
-            pack_rgba(bytes[at] as i32, bytes[at + 1] as i32, bytes[at + 2] as i32, 255)
-        });
-        at += 4;
-    }
-    px.resize((w * h) as usize, 0);
-    Some((w, h, px))
-}
-
 // ---- fields --------------------------------------------------------------
 
 #[allow(clippy::too_many_arguments)]
@@ -551,8 +443,10 @@ fn clip_num(
 ) -> Element {
     let h2 = h.clone();
     let meta = meta.clone();
+    let key = label.to_string();
     number_field(label, value, NumOpts { min, max, step }, hint, move |v| {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, true);
         if let Some(clip) = sh.app.state.civ.sprites.slot_mut(motion).as_mut() {
             apply(clip, v);
         }
@@ -572,8 +466,10 @@ fn clip_bool(
     apply: impl Fn(&mut Clip, bool) + 'static,
 ) -> Element {
     let h2 = h.clone();
+    let key = label.to_string();
     crate::ui::bool_field(label, value, hint, move |v| {
         let mut sh = h2.borrow_mut();
+        sh.app.record(&key, false);
         if let Some(clip) = sh.app.state.civ.sprites.slot_mut(motion).as_mut() {
             apply(clip, v);
         }

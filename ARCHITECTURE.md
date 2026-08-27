@@ -46,6 +46,7 @@ flowchart TD
     wldp["ui/world_panel.rs"]
     ge["ui/grid_editor.rs<br/>the sampling box, drawable"]
     pnt["ui/paint.rs<br/>tools and strokes, over any surface"]
+    dec["ui/decode.rs<br/>dropped files to packed pixels"]
     wheel["ui/color_wheel.rs<br/>the brush control"]
     ctl["ui/mod.rs<br/>schema driven fields"]
   end
@@ -66,6 +67,7 @@ flowchart TD
     species["species.rs<br/>definitions, schema, limits"]
     sampler["sampler.rs<br/>sampling boxes, weighted tone ramps"]
     art["art.rs<br/>sprite sheets: layers, frames, cels"]
+    undo["undo.rs<br/>snapshots of what an edit is about to change"]
     shading["shading.rs<br/>tone curve"]
     rng["rng.rs"]
     util["util.rs<br/>color, distance transform, labels"]
@@ -108,7 +110,12 @@ flowchart TD
   artp --> art
   artp --> pnt
   artp --> wheel
+  artp --> dec
+  sdrop --> dec
   ge --> pnt
+  pnt --> undo
+  undo --> art
+  undo --> sampler
   matp --> wheel
   art --> csprites
   artp --> csprites
@@ -1012,7 +1019,50 @@ Both pixel editors in the tool share their tools and strokes. `ui/paint.rs`
 holds the pencil, eraser, fill and pick and the pointer handling; what differs
 between the sampling grid and a sheet is only which buffer they land in, which
 each supplies as a surface. A surface also says what the pick tool reads, which
-for a stack of layers is what is on show rather than the layer being drawn on.
+for a stack of layers is what is on show rather than the layer being drawn on,
+and how to record what an edit is about to change.
+
+Images reach a sheet the same way they reach a settler motion, through
+`ui/decode.rs`: a file becomes an object URL, an image element, a canvas and
+packed pixels. A drop on the editor lands on the selected layer, scaled down to
+fit the frame and centered, one image per frame from the frame being drawn.
+
+### Stepping back
+
+Undo is snapshots, not inverse operations, and the snapshot is the whole
+project. A flood fill, a resize that crops, a merge that folds two layers
+together and a world parameter that restarts a simulation are none of them
+invertible on their own, and typing every settable thing as its own kind of
+target would be a taxonomy nobody could keep complete.
+
+```mermaid
+flowchart TD
+  ctl["a control: a field, a button,<br/>a stroke, a drop"] --> rec{"same control,<br/>within a moment?"}
+  rec -->|yes, and it is one<br/>somebody holds| extend["extend the step already there,<br/>so a slider drag is one step"]
+  rec -->|no| snap["copy the project as it stands"]
+  snap --> done["the done stack"]
+  snap --> drop["drop the undone stack:<br/>a redo would put back<br/>something this branch never had"]
+  done -->|undo| swap["copy the current project<br/>into the other stack"]
+  undone["the undone stack"] -->|redo| swap
+  swap --> put["put the snapshot back"]
+  put --> inval["drop everything cached from a project:<br/>ramps, environments, sprites, dirty flags"]
+  inval --> marks{"did the world configs<br/>or the seeds move?"}
+  marks -->|no| keep["the simulations carry on"]
+  marks -->|yes| restart["start them again,<br/>as the forward edit would have"]
+  keep --> clamp["clamp every selection:<br/>a step back can take away<br/>the sheet, layer or species<br/>being edited"]
+  restart --> clamp
+```
+
+Recording happens in the eight panel helpers in `ui/mod.rs`, which every panel
+builds its fields from, so every parameter in the tool is covered at once.
+The controls that bypass them - a stroke, an image drop, a nudge, a layer's name
+and visibility, the clip fields on a settler motion - record for themselves. The
+three preview knobs in the shading panel deliberately do not: they change the
+panel rather than the project, and a step that restores nothing is worse than no
+step at all.
+
+The stacks are bounded by depth and by the pixels they hold, because a project
+carrying sheets near their caps is megabytes on its own.
 
 ## Settler animations
 

@@ -10,16 +10,16 @@
 use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, Element, HtmlCanvasElement};
+use web_sys::{CanvasRenderingContext2d, Element, Event, HtmlCanvasElement};
 
 use crate::app::{App, Handle, Panel, Tool};
 use crate::art::{Sheet, MAX_LAYERS, MAX_SHEET_FRAMES, MAX_SHEET_PX};
-use crate::civ::sprites::{Clip, Motion, MOTIONS};
+use crate::civ::sprites::MOTIONS;
 use crate::ui::color_wheel::Brush;
 use crate::ui::paint::{self, Surface};
 use crate::ui::{
     app_button, app_danger_button, app_num, app_text, append, btn_row, button, clear, el, note,
-    on, row, section, window, NumOpts, Scope,
+    on, row, section, window, NumOpts, Scope, Tap,
 };
 use crate::util::{packed_to_hex, EMPTY_COLOR};
 
@@ -101,19 +101,8 @@ fn with_sheet(app: &mut App, f: impl FnOnce(&mut Sheet)) {
     if let Some(slot) = app.state.art.find_mut(&id) {
         *slot = sheet;
     }
-    clamp_selection(app);
+    app.clamp_selection();
     app.art_changed();
-}
-
-/// Keeps the layer and frame the panel is pointed at inside the sheet, which an
-/// edit that removed either of them may have moved.
-fn clamp_selection(app: &mut App) {
-    let (layers, frames) = match selected(app) {
-        Some(s) => (s.layers.len(), s.frame_count()),
-        None => return,
-    };
-    app.ui.sheet_layer = app.ui.sheet_layer.min(layers.saturating_sub(1));
-    app.ui.sheet_frame = app.ui.sheet_frame.clamp(0, frames - 1);
 }
 
 // ---- the panel -----------------------------------------------------------
@@ -130,10 +119,7 @@ pub struct ArtPanel {
 }
 
 pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
-    if selected(app).is_none() {
-        app.ui.selected_sheet = app.state.art.sheets.first().map(|s| s.id.clone()).unwrap_or_default();
-    }
-    clamp_selection(app);
+    app.clamp_selection();
 
     append(root, sheet_section(app, h));
 
@@ -164,6 +150,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         rows.push(mirror_row(app, h));
         rows.push(swatches.clone());
         rows.push(wrap);
+        rows.push(image_drop(h));
+        rows.push(nudge_row(h));
         rows.push(btn_row(vec![
             app_button(h, "Clear frame", |app| {
                 let (layer, frame) = (app.ui.sheet_layer, app.ui.sheet_frame);
@@ -320,6 +308,160 @@ fn sheet_section(app: &App, h: &Handle) -> Element {
     section("Sheets", rows)
 }
 
+/// Dropping images onto the sheet. One lands in the frame being drawn, several
+/// fill successive frames from it, one each; either way they go on the layer
+/// that is selected, so a reference can be dropped on a layer of its own and
+/// drawn over on the one above.
+fn image_drop(h: &Handle) -> Element {
+    let picker = crate::ui::input_el("file").tap(|i| {
+        i.set_accept("image/*");
+        i.set_multiple(true);
+        let _ = i.set_attribute("hidden", "hidden");
+    });
+
+    let zone = el("div").class("dropzone short").get();
+    let _ = zone.append_child(
+        &el("span")
+            .class("dropzone-hint")
+            .text("Drop images onto this layer, or click to choose")
+            .get(),
+    );
+    let _ = zone.append_child(picker.unchecked_ref());
+
+    for event in ["dragenter", "dragover"] {
+        let zone2 = zone.clone();
+        on(zone.unchecked_ref(), event, Scope::Panel, move |e: Event| {
+            e.prevent_default();
+            let _ = zone2.class_list().add_1("over");
+        });
+    }
+    {
+        let zone2 = zone.clone();
+        on(zone.unchecked_ref(), "dragleave", Scope::Panel, move |_| {
+            let _ = zone2.class_list().remove_1("over");
+        });
+    }
+    {
+        let zone2 = zone.clone();
+        let h2 = h.clone();
+        on(zone.unchecked_ref(), "drop", Scope::Panel, move |e: Event| {
+            e.prevent_default();
+            let _ = zone2.class_list().remove_1("over");
+            let files = e
+                .dyn_ref::<web_sys::DragEvent>()
+                .and_then(|d| d.data_transfer())
+                .and_then(|t| t.files());
+            if let Some(files) = files {
+                let h3 = h2.clone();
+                crate::ui::decode::read_files(files, move |frames, _, _| {
+                    place_images(&h3, frames);
+                });
+            }
+        });
+    }
+    {
+        let picker2 = picker.clone();
+        on(zone.unchecked_ref(), "click", Scope::Panel, move |_| picker2.click());
+    }
+    {
+        // The picker sits inside the zone, so the click that opens it would
+        // bubble straight back to the handler that opened it.
+        on(picker.unchecked_ref(), "click", Scope::Panel, |e: Event| e.stop_propagation());
+    }
+    {
+        let picker2 = picker.clone();
+        let h2 = h.clone();
+        on(picker.unchecked_ref(), "change", Scope::Panel, move |_| {
+            if let Some(files) = picker2.files() {
+                let h3 = h2.clone();
+                crate::ui::decode::read_files(files, move |frames, _, _| {
+                    place_images(&h3, frames);
+                });
+            }
+            picker2.set_value("");
+        });
+    }
+    let _ = zone.set_attribute("role", "button");
+    let _ = zone.set_attribute("tabindex", "0");
+    zone
+}
+
+/// Lays what was dropped into the sheet, starting at the frame being drawn and
+/// adding frames for anything that runs past the end of it.
+fn place_images(h: &Handle, images: Vec<crate::civ::sprites::Frame>) {
+    let mut sh = h.borrow_mut();
+    if images.is_empty() {
+        sh.app.set_note("nothing readable in that drop");
+        return;
+    }
+    sh.app.record("drop", false);
+    let start = sh.app.ui.sheet_frame;
+    let layer = sh.app.ui.sheet_layer;
+    let mut landed = start;
+    let count = images.len();
+    with_sheet(&mut sh.app, |sheet| {
+        let mut at = start;
+        for (w, h, px) in images {
+            if at >= sheet.frame_count() {
+                let next = sheet.add_frame(sheet.frame_count() - 1, false);
+                if next < at {
+                    // The sheet is at its cap and the rest have nowhere to go.
+                    break;
+                }
+                at = next;
+            }
+            sheet.place(layer, at, w, h, &px);
+            landed = at;
+            at += 1;
+        }
+    });
+    sh.app.ui.sheet_frame = landed;
+    sh.app.set_note(&if count == 1 {
+        "dropped onto this layer".to_string()
+    } else {
+        format!("{count} images across {} frames", landed - start + 1)
+    });
+    sh.app.rebuild_panel = true;
+}
+
+/// Shifting the art in the frame being drawn by a pixel at a time, which is
+/// what an animation needs far more often than it needs a selection: a pose
+/// that is a pixel low, or a whole sheet that sits off center.
+fn nudge_row(h: &Handle) -> Element {
+    // A nudge does not rebuild the panel, so the switch beside the buttons is
+    // read off the page rather than kept in the shell's state.
+    let whole = crate::ui::input_el("checkbox");
+    let mut buttons = Vec::new();
+    for (label, dx, dy) in [
+        ("Nudge left", -1, 0),
+        ("Nudge right", 1, 0),
+        ("Nudge up", 0, -1),
+        ("Nudge down", 0, 1),
+    ] {
+        let h2 = h.clone();
+        let whole = whole.clone();
+        buttons.push(button(label, Scope::Panel, move || {
+            let mut sh = h2.borrow_mut();
+            sh.app.record(label, true);
+            let (layer, frame) = (sh.app.ui.sheet_layer, sh.app.ui.sheet_frame);
+            let every = whole.checked();
+            with_sheet(&mut sh.app, |s| {
+                if every {
+                    s.shift_all(dx, dy);
+                } else {
+                    s.shift_cel(layer, frame, dx, dy);
+                }
+            });
+        }));
+    }
+    let scope = el("label")
+        .class("inline")
+        .child(whole.unchecked_ref())
+        .child(&el("span").text("whole sheet").get())
+        .get();
+    el("div").class("btn-row").children(buttons).child(&scope).get()
+}
+
 fn tool_row(app: &App, h: &Handle) -> Element {
     let tools = el("div").class("btn-row").get();
     for (tool, label) in TOOLS {
@@ -432,6 +574,7 @@ fn layers_section(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasEleme
             on(eye.unchecked_ref(), "change", Scope::Panel, move |e| {
                 let visible = crate::ui::checked_of(&e);
                 let mut sh = h2.borrow_mut();
+                sh.app.record("layer visible", false);
                 with_sheet(&mut sh.app, |s| {
                     if let Some(l) = s.layers.get_mut(i) {
                         l.visible = visible;
@@ -447,6 +590,7 @@ fn layers_section(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasEleme
             on(name.unchecked_ref(), "input", Scope::Panel, move |e| {
                 let text = crate::ui::value_of(&e);
                 let mut sh = h2.borrow_mut();
+                sh.app.record("layer name", true);
                 let id = sh.app.ui.selected_sheet.clone();
                 if let Some(l) = sh.app.state.art.find_mut(&id).and_then(|s| s.layers.get_mut(i)) {
                     l.name = text;
@@ -620,7 +764,8 @@ fn use_section(app: &App, h: &Handle) -> Element {
             let h2 = h.clone();
             button(motion.label(), Scope::Panel, move || {
                 let mut sh = h2.borrow_mut();
-                send_to_motion(&mut sh.app, motion);
+                let id = sh.app.ui.selected_sheet.clone();
+                crate::ui::sprite_drop::build_from_sheet(&mut sh.app, motion, &id);
             })
         })
         .collect();
@@ -629,39 +774,6 @@ fn use_section(app: &App, h: &Handle) -> Element {
         rows.push(note("Nothing is drawn on this sheet yet."));
     }
     section("Use as settler art", rows)
-}
-
-fn send_to_motion(app: &mut App, motion: Motion) {
-    let clip = match selected(app).and_then(Clip::from_sheet) {
-        Some(c) => c,
-        None => {
-            app.set_note("nothing drawn on that sheet");
-            return;
-        }
-    };
-    let mut clip = clip;
-    // Playback that was tuned on this motion outlives the art it was tuned on.
-    match app.state.civ.sprites.clip(motion) {
-        Some(old) => {
-            clip.stride = old.stride;
-            clip.height = old.height;
-            clip.lift = old.lift;
-            clip.flip = old.flip;
-            clip.mirror = old.mirror;
-        }
-        None => {
-            let (fps, stride) = motion.playback();
-            if clip.fps <= 0.0 {
-                clip.fps = fps;
-            }
-            clip.stride = stride;
-        }
-    }
-    let frames = clip.frame_count();
-    app.state.civ.sprites.enabled = true;
-    app.state.civ.sprites.set(motion, Some(clip));
-    app.set_note(&format!("{}: {frames} frames from the editor", motion.label().to_lowercase()));
-    app.sprites_changed();
 }
 
 // ---- drawing -------------------------------------------------------------

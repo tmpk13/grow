@@ -14,6 +14,7 @@ pub mod shading;
 pub mod sim;
 pub mod species;
 pub mod state;
+pub mod undo;
 pub mod util;
 pub mod world;
 

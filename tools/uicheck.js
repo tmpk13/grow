@@ -126,9 +126,41 @@ await page.mouse.up();
 await page.click('.btn:text-is("Add layer")');
 await page.waitForTimeout(300);
 if ((await page.locator('.layer-row').count()) < 2) problems.push('adding a layer did nothing');
-await page.click('.btn:text-is("Duplicate frame")');
+
+// Undo: the layer comes off and goes back, from the top bar rather than the
+// panel, because a step covers the whole project.
+if (await page.locator('#btn-undo').isDisabled()) problems.push('undo stayed disabled after an edit');
+await page.click('#btn-undo');
+await page.waitForTimeout(400);
+if ((await page.locator('.layer-row').count()) !== 1) problems.push('undo did not take the layer off');
+await page.click('#btn-redo');
+await page.waitForTimeout(400);
+if ((await page.locator('.layer-row').count()) !== 2) problems.push('redo did not put the layer back');
+
+// And a plain panel field is a step too, which is the point of the rework.
+const rate = page.locator('.field', { has: page.locator('.field-label:text-is("Rate")') }).locator('.num');
+const rateBefore = await rate.inputValue();
+await rate.fill('11');
+await rate.dispatchEvent('input');
+await page.waitForTimeout(400);
+await page.click('#btn-undo');
+await page.waitForTimeout(500);
+const rateAfter = await page
+  .locator('.field', { has: page.locator('.field-label:text-is("Rate")') })
+  .locator('.num')
+  .inputValue();
+if (rateAfter !== rateBefore) {
+  problems.push(`undo left the rate at ${rateAfter}, not ${rateBefore}`);
+}
+const frames = '.group:has-text("Frames") .btn';
+await page.click(`${frames}:text-is("Duplicate frame")`);
 await page.waitForTimeout(300);
 if ((await page.locator('.frame-cell').count()) < 2) problems.push('duplicating a frame did nothing');
+// Nudging the art, and stepping that back too.
+await page.click('.btn:text-is("Nudge right")');
+await page.waitForTimeout(300);
+await page.click('#btn-undo');
+await page.waitForTimeout(300);
 await page.click('.btn:text-is("Wheel")');
 await page.waitForTimeout(300);
 if ((await page.locator('.wheel-canvas').count()) === 0) problems.push('the color wheel did not open');

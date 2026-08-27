@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::species::LAYER_COUNT;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct WorldConfig {
     pub cols: i32,
