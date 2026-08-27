@@ -31,7 +31,10 @@ What is left. What is done is in TODO_COMPLETE.md.
 - Settings that restart the sim automatically should be changes to have a apply button. A * next to un-applied settings.
     - When switching menus without applying have a confirmation with 3 options.
 
-- Labels should not be 
+- Labels toggle should not be on top bar. It should be in left menu, and have toggle all, and per category turn off/on. Make sure walls has it's own category.
+    - Occupancy and grid should also be moved to the left menu (What is the left menu in desktop resolutions it joins the top in smaller screens).
+
+- The move people toggle should be a toggle button not a checkbox next to text.
 
 - Farms that grow food. (Need employees/workers. And water. Initally from buckets. Maybe proximity to water or irrigation with bridges over it.)
 
