@@ -307,6 +307,15 @@ rivals. The section under the register sets how often the sim looks at who is
 near whom, how close counts, how many people a settler carries, how fast a bond
 warms, and where the friendship and feud lines sit.
 
+**Foliage over people.** A settler walking behind a bush is behind it, which is
+right and also makes them hard to follow through a wood. **Foliage over people**
+in the Land panel's View section offers two other readings: *hatched* leaves
+every other pixel of the covering foliage out, so the settler shows through in
+a screen pattern; *see through* mixes the foliage over them by a settable
+amount. The mark rides in the alpha byte of the composite buffer rather than in
+a mask beside it, so it costs nothing on a map that is already megabytes of
+pixels.
+
 **Taking a sheet again.** A clip keeps its own copy of the art, so a sheet
 drawn on after a motion took it does not change the settlers on the map. Both
 ends now say so: the motion's card in the People panel reads *from Settler,

@@ -2125,6 +2125,17 @@
   {
     "mode": "settlement",
     "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
+    "label": "Foliage over people",
+    "hint": "somebody walking behind a bush is behind it; the other two keep them findable",
+    "anchor": "foliage-over-people",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
     "tab": "people",
     "tab_label": "People",
     "label": "People",

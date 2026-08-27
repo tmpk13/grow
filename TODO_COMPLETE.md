@@ -3,6 +3,10 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Foliage over a settler can be solid (what a plant is), hatched, or mixed over
+  them by a settable amount, so somebody walking through a wood stays findable.
+  The settler is marked in the alpha byte of the composite buffer rather than in
+  a mask beside it.
 - Downloads from the sprite editor: the frame showing on its own, or every
   ticked sheet in one zip, a folder per sheet and a file per frame beside the
   strip when asked for. The archive is written here, stored rather than

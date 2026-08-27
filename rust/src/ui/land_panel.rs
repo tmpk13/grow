@@ -4,6 +4,7 @@
 use web_sys::Element;
 
 use crate::app::{App, Handle, Panel, Restart};
+use crate::civ::config::FOLIAGE_MODES;
 use crate::civ::terrain::{DepositKind, DEPOSIT_KINDS};
 use crate::ui::{
     app_bool, app_button, app_color, app_num, app_restart_num, app_select, append, btn_row, clear,
@@ -116,7 +117,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     append(root, section("Deposits", deposit_fields));
 
     let view = &app.state.civ.view;
-    let view_fields = vec![
+    let mut view_fields = vec![
         app_bool(h, "Day and night", view.day_night,
             Some("tints the map with the hour and lights the windows"),
             |app, v| { app.state.civ.view.day_night = v; app.civ_repaint(); }),
@@ -152,6 +153,33 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         app_select(h, "Soil texture", &app.state.civ.world.soil_sampler.clone(), &sampler_options(app), None,
             |app, v| { app.state.civ.world.soil_sampler = v.to_string(); app.civ_repaint(); }),
     ];
+    view_fields.push(app_select(
+        h,
+        "Foliage over people",
+        &app.state.civ.view.foliage.clone(),
+        &FOLIAGE_MODES.iter().map(|(id, l)| (id.to_string(), l.to_string())).collect::<Vec<_>>(),
+        Some("somebody walking behind a bush is behind it; the other two keep them findable"),
+        |app, v| {
+            app.state.civ.view.foliage = v.to_string();
+            app.civ_repaint();
+            // The amount only means anything for one of the three, so it comes
+            // and goes with the choice.
+            app.rebuild_panel();
+        },
+    ));
+    if app.state.civ.view.foliage == "faded" {
+        view_fields.push(app_num(
+            h,
+            "How much foliage is left",
+            app.state.civ.view.foliage_alpha,
+            NumOpts { min: 0.1, max: 1.0, step: 0.05 },
+            Some("1 is solid, and anything below it lets the settler through"),
+            |app, v| {
+                app.state.civ.view.foliage_alpha = v;
+                app.civ_repaint();
+            },
+        ));
+    }
     append(root, section("View", view_fields));
 
     let summary = el("div").class("stat-grid").get();

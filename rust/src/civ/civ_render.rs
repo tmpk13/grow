@@ -1023,7 +1023,15 @@ const WADE_DEPTH: f64 = 0.45;
 /// is under the water is not drawn at all rather than tinted: the water is
 /// already painted there, and a settler half in it reads better as a shape
 /// cut off at the surface than as a shape showing through it.
-fn blit_above(buf: &mut [u32], world: &World, sprite: &Sprite, sx: i32, sy: i32, sunk: f64) {
+fn blit_above(
+    buf: &mut [u32],
+    world: &World,
+    sprite: &Sprite,
+    sx: i32,
+    sy: i32,
+    sunk: f64,
+    mark: bool,
+) {
     let keep = ((sprite.h as f64) * (1.0 - sunk)).round().max(1.0) as i32;
     let x0 = sx - sprite.ox;
     let y0 = sy - sprite.oy;
@@ -1043,12 +1051,14 @@ fn blit_above(buf: &mut [u32], world: &World, sprite: &Sprite, sx: i32, sy: i32,
             if px < 0 || px >= world.px_w {
                 continue;
             }
-            buf[drow + px as usize] = v;
+            buf[drow + px as usize] = if mark { crate::util::mark_person(v) } else { v };
         }
     }
 }
 
-fn blit(buf: &mut [u32], world: &World, sprite: &Sprite, sx: i32, sy: i32) {
+/// `mark` stamps what is drawn as a settler, so foliage laid over it later can
+/// tell it from the ground.
+fn blit(buf: &mut [u32], world: &World, sprite: &Sprite, sx: i32, sy: i32, mark: bool) {
     let x0 = sx - sprite.ox;
     let y0 = sy - sprite.oy;
     for y in 0..sprite.h {
@@ -1067,7 +1077,7 @@ fn blit(buf: &mut [u32], world: &World, sprite: &Sprite, sx: i32, sy: i32) {
             if wx < 0 || wx >= world.px_w {
                 continue;
             }
-            buf[drow + wx as usize] = v;
+            buf[drow + wx as usize] = if mark { crate::util::mark_person(v) } else { v };
         }
     }
 }
@@ -1373,6 +1383,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
         return;
     }
     let detail = sim.detail;
+    let foliage = state.civ.view.foliage_over_people();
     let px_w = sim.world().px_w as usize;
     // Zoomed out the upload samples one row in `px_step`, and a row it will not
     // sample is a row nothing can read: erasing last frame's drawing there buys
@@ -1468,7 +1479,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
         match item {
             Item::Plant(i) => {
                 if detail.sprites() {
-                    sim.plant_sim.blit_plant(&mut buf, *i, false);
+                    sim.plant_sim.blit_plant(&mut buf, *i, false, foliage);
                 } else {
                     draw_plant_blob(&mut buf, world, &sim.plant_sim.plants[*i], detail);
                 }
@@ -1497,7 +1508,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                 }
                 let lit = night && detail.flourishes();
                 let sprite = building_sprite(&mut sprites, state, world, b, lit, detail);
-                blit(&mut buf, world, &sprite, sx + sprite.ox, sy);
+                blit(&mut buf, world, &sprite, sx + sprite.ox, sy, false);
                 if detail.flourishes() {
                     draw_occupancy(&mut buf, world, b, sx + b.w * world.cell_px / 2, sy);
                     if b.def.structure == Structure::Stall {
@@ -1541,9 +1552,9 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                 if swimming {
                     // In the water, only what is above the waterline is drawn,
                     // so somebody crossing a river is in it rather than on it.
-                    blit_above(&mut buf, world, &sprite, sx, sy, WADE_DEPTH);
+                    blit_above(&mut buf, world, &sprite, sx, sy, WADE_DEPTH, true);
                 } else {
-                    blit(&mut buf, world, &sprite, sx, sy);
+                    blit(&mut buf, world, &sprite, sx, sy, true);
                     if p.carrying() && detail.flourishes() {
                         draw_carry(world, &mut buf, p, &sprite, sx, sy);
                     }
@@ -1561,7 +1572,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                     continue;
                 }
                 let sprite = boat_sprite(&mut sprites, world, boat, banner);
-                blit(&mut buf, world, &sprite, sx, sy);
+                blit(&mut buf, world, &sprite, sx, sy, false);
             }
         }
     }

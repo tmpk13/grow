@@ -428,6 +428,23 @@ const civStats = await page.evaluate(() => document.getElementById('statusbar').
 console.log(`settlement status: ${civStats}`);
 if (!/people \d+/.test(civStats)) problems.push('settlement status line has no population');
 
+// Foliage over a settler: three ways, and the amount only shows for the one it
+// means anything for.
+await page.click('.tab[data-tab="land"]');
+await page.waitForTimeout(500);
+const foliage = '#panel-body [data-find="foliage-over-people"] select';
+const alphaShown = () => page.locator('#panel-body [data-find="how-much-foliage-is-left"]').count();
+if ((await alphaShown()) !== 0) problems.push('the foliage amount shows with nothing to fade');
+for (const mode of ['hatched', 'faded', 'solid']) {
+  await page.selectOption(foliage, mode);
+  await page.waitForTimeout(700);
+  const shown = await alphaShown();
+  if ((mode === 'faded') !== (shown === 1)) {
+    problems.push(`the foliage amount is ${shown ? 'shown' : 'hidden'} for ${mode}`);
+  }
+  await page.screenshot({ path: `${outDir}/10d-foliage-${mode}.png` });
+}
+
 // The view menu: what the stage draws over the map is in the side panel now,
 // and the label switches are one per category with walls on their own.
 const pressed = (find) =>

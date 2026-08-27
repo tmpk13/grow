@@ -414,3 +414,22 @@ pub fn file_name(name: &str, extension: &str) -> String {
     }
     format!("{out}.{extension}")
 }
+
+// ---- settlers under foliage ----------------------------------------------
+
+/// Alpha the composite buffer uses to mark a pixel as part of a settler, so
+/// foliage drawn in front of one can be told from foliage drawn over ground.
+///
+/// It rides in the alpha byte, one step down from opaque. Nothing on the map is
+/// ever drawn transparent, so the byte is otherwise a constant; a mask beside
+/// the buffer would be a quarter of it again in memory, for a map that is
+/// already megabytes of pixels.
+pub const PERSON_ALPHA: u32 = 254 << 24;
+
+pub fn mark_person(v: u32) -> u32 {
+    (v & 0x00ff_ffff) | PERSON_ALPHA
+}
+
+pub fn is_person(v: u32) -> bool {
+    v & 0xff00_0000 == PERSON_ALPHA
+}

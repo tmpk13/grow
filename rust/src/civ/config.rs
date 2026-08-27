@@ -15,6 +15,7 @@ use crate::civ::social::SocialConfig;
 use crate::civ::sprites::PeopleSprites;
 use crate::civ::tech::TechConfig;
 use crate::civ::terrain::TerrainConfig;
+use crate::util::clamp01;
 use crate::world::WorldConfig;
 
 pub fn default_civ_world() -> WorldConfig {
@@ -137,6 +138,12 @@ pub struct ViewConfig {
     /// turning off on their own: a ring of palisade is a hundred of them.
     pub label_walls: bool,
     pub label_towns: bool,
+    /// What foliage does where it covers a settler: `solid`, `hatched` or
+    /// `faded`. Solid is what a plant is; the other two keep somebody walking
+    /// through a wood findable.
+    pub foliage: String,
+    /// How much of the foliage is left when it is faded over a settler.
+    pub foliage_alpha: f64,
     pub smoke: bool,
     pub water_top: String,
     pub water_deep: String,
@@ -165,7 +172,23 @@ pub const LABEL_KINDS: [(Option<Category>, &str); 7] = [
     (None, "Town names"),
 ];
 
+/// The three ways foliage can cover a settler, and what to call them.
+pub const FOLIAGE_MODES: [(&str, &str); 3] = [
+    ("solid", "Solid"),
+    ("hatched", "Hatched"),
+    ("faded", "See through"),
+];
+
 impl ViewConfig {
+    /// How a plant should be drawn where it lands on a settler.
+    pub fn foliage_over_people(&self) -> crate::sim::Foliage {
+        match self.foliage.as_str() {
+            "hatched" => crate::sim::Foliage::Hatched,
+            "faded" => crate::sim::Foliage::Faded(clamp01(self.foliage_alpha)),
+            _ => crate::sim::Foliage::Solid,
+        }
+    }
+
     /// Whether labels of this kind are drawn. Every kind is off while the
     /// master switch is, so one click clears the map.
     pub fn label_on(&self, kind: Option<Category>) -> bool {
@@ -221,6 +244,8 @@ impl Default for ViewConfig {
             label_civic: true,
             label_walls: false,
             label_towns: true,
+            foliage: "solid".into(),
+            foliage_alpha: 0.5,
             smoke: true,
             water_top: "#2b4f63".into(),
             water_deep: "#16303f".into(),

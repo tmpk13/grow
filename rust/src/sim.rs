@@ -56,6 +56,20 @@ pub struct Stats {
     pub ticks: u64,
 }
 
+/// What foliage does where it covers a settler. Somebody walking behind a bush
+/// is behind it, which is right and also makes them hard to follow; the other
+/// two let the bush stay a bush and the settler stay findable.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Foliage {
+    /// A leaf is a leaf. What a plant looks like from in front.
+    Solid,
+    /// Every other pixel of the covering foliage is left out, so the settler
+    /// shows through it in a screen pattern rather than as a ghost.
+    Hatched,
+    /// The covering foliage is mixed over the settler at this much.
+    Faded(f64),
+}
+
 pub struct Sim {
     /// The world config is held separately from the state so a second sim (the
     /// settlement map) can run the same species on a grid of its own size.
@@ -313,7 +327,7 @@ impl Sim {
         self.paint_background(state, &mut buf);
         let shadows = self.world_cfg.shadows;
         for i in self.draw_order() {
-            self.blit_plant(&mut buf, i, shadows);
+            self.blit_plant(&mut buf, i, shadows, Foliage::Solid);
         }
         self.buffer = buf;
         self.buffer_dirty = false;
@@ -336,7 +350,9 @@ impl Sim {
 
     /// One plant onto a buffer with the world's dimensions, contact shadow
     /// first.
-    pub fn blit_plant(&self, buf: &mut [u32], index: usize, shadows: bool) {
+    /// What foliage does where it covers a settler. The default is what a plant
+    /// is: opaque, and whoever is behind it is behind it.
+    pub fn blit_plant(&self, buf: &mut [u32], index: usize, shadows: bool, over: Foliage) {
         let plant = &self.plants[index];
         let w = &self.world;
         let b = plant.bounds;
@@ -366,7 +382,24 @@ impl Sim {
                 if wx < 0 || wx >= w.px_w {
                     continue;
                 }
-                buf[drow + wx as usize] = v;
+                let dst = &mut buf[drow + wx as usize];
+                // The mark stays on whatever is drawn over a settler, so the
+                // same settler shows through however many leaves are in front.
+                if over != Foliage::Solid && crate::util::is_person(*dst) {
+                    match over {
+                        Foliage::Solid => {}
+                        Foliage::Hatched => {
+                            if (wx + wy) % 2 != 0 {
+                                *dst = crate::util::mark_person(v);
+                            }
+                        }
+                        Foliage::Faded(alpha) => {
+                            *dst = crate::util::mark_person(crate::util::mix_packed(*dst, v, alpha));
+                        }
+                    }
+                    continue;
+                }
+                *dst = v;
             }
         }
     }

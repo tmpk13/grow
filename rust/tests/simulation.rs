@@ -1012,3 +1012,89 @@ fn an_empty_settlement_starts_counting_from_the_last_death() {
         "it should count from the death, not from being noticed"
     );
 }
+
+// ---- foliage over a settler ---------------------------------------------
+
+/// One settler pixel and one plant pixel in a two pixel buffer, so what
+/// foliage does over somebody can be read off directly.
+fn over_person(mode: grow::sim::Foliage, leaf: u32) -> [u32; 2] {
+    use grow::util::{is_person, mark_person, mix_packed};
+    let person = mark_person(grow::util::pack_rgba(255, 0, 0, 255));
+    let mut buf = [person, person];
+    // What `blit_plant` does per pixel, at two neighboring x on one row: one
+    // even and one odd, which is the whole of what hatching turns on.
+    for (x, slot) in buf.iter_mut().enumerate() {
+        if !is_person(*slot) {
+            *slot = leaf;
+            continue;
+        }
+        match mode {
+            grow::sim::Foliage::Solid => *slot = leaf,
+            grow::sim::Foliage::Hatched => {
+                if x % 2 != 0 {
+                    *slot = mark_person(leaf);
+                }
+            }
+            grow::sim::Foliage::Faded(a) => *slot = mark_person(mix_packed(*slot, leaf, a)),
+        }
+    }
+    buf
+}
+
+#[test]
+fn solid_foliage_covers_a_settler_the_way_a_plant_does() {
+    use grow::util::is_person;
+    let leaf = grow::util::pack_rgba(0, 255, 0, 255);
+    let out = over_person(grow::sim::Foliage::Solid, leaf);
+    assert_eq!(out, [leaf, leaf]);
+    assert!(!is_person(out[0]), "solid foliage is not the settler any more");
+}
+
+#[test]
+fn hatched_foliage_leaves_every_other_pixel_showing() {
+    use grow::util::{is_person, mark_person, unpack_rgba};
+    let leaf = grow::util::pack_rgba(0, 255, 0, 255);
+    let out = over_person(grow::sim::Foliage::Hatched, leaf);
+    let kept = unpack_rgba(out[0]);
+    assert_eq!((kept.r, kept.g, kept.b), (255, 0, 0), "one pixel stays the settler");
+    assert_eq!(out[1], mark_person(leaf), "and the next is the leaf");
+    assert!(is_person(out[0]) && is_person(out[1]), "both stay marked for the next leaf");
+}
+
+#[test]
+fn faded_foliage_mixes_and_stays_findable() {
+    use grow::util::{is_person, unpack_rgba};
+    let leaf = grow::util::pack_rgba(0, 255, 0, 255);
+    let out = over_person(grow::sim::Foliage::Faded(0.5), leaf);
+    let c = unpack_rgba(out[0]);
+    assert!(c.r > 60 && c.g > 60, "half of each should be there, got {c:?}");
+    assert!(is_person(out[0]), "the settler is still under it, so the next leaf fades too");
+}
+
+#[test]
+fn the_settler_mark_rides_in_the_alpha_and_changes_nothing_visible() {
+    use grow::util::{is_person, mark_person, unpack_rgba, PERSON_ALPHA};
+    let color = grow::util::pack_rgba(120, 40, 200, 255);
+    let marked = mark_person(color);
+    assert!(is_person(marked));
+    assert!(!is_person(color), "an ordinary opaque pixel is not a settler");
+    let (before, after) = (unpack_rgba(color), unpack_rgba(marked));
+    assert_eq!((before.r, before.g, before.b), (after.r, after.g, after.b));
+    assert_eq!(after.a, 254, "one step off opaque");
+    assert_eq!(PERSON_ALPHA >> 24, 254);
+}
+
+#[test]
+fn the_view_reads_its_own_setting() {
+    use grow::sim::Foliage;
+    let mut view = grow::civ::config::ViewConfig::default();
+    assert_eq!(view.foliage_over_people(), Foliage::Solid);
+    view.foliage = "hatched".into();
+    assert_eq!(view.foliage_over_people(), Foliage::Hatched);
+    view.foliage = "faded".into();
+    view.foliage_alpha = 0.4;
+    assert_eq!(view.foliage_over_people(), Foliage::Faded(0.4));
+    // Anything else is what a plant is.
+    view.foliage = "nonsense".into();
+    assert_eq!(view.foliage_over_people(), Foliage::Solid);
+}
