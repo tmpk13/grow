@@ -593,6 +593,23 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
     sync_zoom(&sh.app);
 }
 
+/// Pulls the camera back to fill a stage that has just grown, and no further.
+/// Somebody who zoomed into one corner of a map keeps their place and simply
+/// sees more around it; somebody looking at the whole thing stops looking at it
+/// through a small window.
+pub fn fill_view(app: &mut App) {
+    let want = match app.mode {
+        Mode::Sprites => match app.sheet_dims() {
+            Some((w, h)) => app.viewport.fit_flat_zoom(w, h),
+            None => return,
+        },
+        _ => app.viewport.fit_zoom(&active_world_size(app)),
+    };
+    if app.viewport.zoom < want {
+        fit_view(app);
+    }
+}
+
 /// Frames whatever the mode is showing. A sheet is a handful of pixels across
 /// and wants a whole number zoom; a world is thousands and wants to fill the
 /// stage.
@@ -1220,6 +1237,12 @@ fn bind_keys(h: &Handle) {
             }
         }
         let mut sh = h2.borrow_mut();
+        if ke.code() == "Escape" && stage_only() && document().fullscreen_element().is_none() {
+            // With no fullscreen to leave, escape does nothing on its own, and
+            // the page would be showing the world with no obvious way back.
+            set_stage_only(&mut sh.app, false);
+            return;
+        }
         if ke.ctrl_key() || ke.meta_key() {
             match ke.key().to_ascii_lowercase().as_str() {
                 "z" if ke.shift_key() => {
@@ -1297,6 +1320,7 @@ fn bind_resize(h: &Handle, canvas: &HtmlCanvasElement) {
 fn bind_view_actions(h: &Handle) {
     let prefs = ui::prefs::Prefs::load();
     prefs.apply();
+    bind_fullscreen(h);
 
     if let Some(node) = by_id("btn-panel") {
         node.set_text_content(Some(collapse_label(prefs.collapsed)));
@@ -1306,14 +1330,9 @@ fn bind_view_actions(h: &Handle) {
             let mut prefs = ui::prefs::Prefs::load();
             prefs.collapsed = !prefs.collapsed;
             let mut sh = h2.borrow_mut();
-            // Folding the menu away hands its width to the map. Reading the
-            // canvas either side of the change and panning by half the
-            // difference keeps whatever was in the middle of the view in the
-            // middle of it, rather than pinned to the left edge.
-            let before = sh.app.viewport.canvas.get_bounding_client_rect().width();
             prefs.apply();
-            let after = sh.app.viewport.canvas.get_bounding_client_rect().width();
-            sh.app.viewport.pan((after - before) / 2.0, 0.0);
+            // Folding the menu away hands its width to the stage; the camera
+            // keeps the middle of the view in the middle across the change.
             sh.app.viewport.resize();
             prefs.save();
             label.set_text_content(Some(collapse_label(prefs.collapsed)));
@@ -1332,6 +1351,79 @@ fn bind_view_actions(h: &Handle) {
             });
         }
     }
+}
+
+/// Whether the page is showing the world and nothing else.
+fn stage_only() -> bool {
+    document()
+        .body()
+        .map(|b| b.class_list().contains("stage-only"))
+        .unwrap_or(false)
+}
+
+/// Folds every piece of chrome away, or brings it back. The camera is told
+/// afterwards because the stage has just changed size by most of the window.
+fn set_stage_only(app: &mut App, on: bool) {
+    if let Some(body) = document().body() {
+        let list = body.class_list();
+        let _ = if on { list.add_1("stage-only") } else { list.remove_1("stage-only") };
+    }
+    app.viewport.resize();
+    fill_view(app);
+    sync_zoom(app);
+    if let Some(node) = by_id("btn-full") {
+        node.set_text_content(Some(if on { "Leave fullscreen" } else { "Fullscreen" }));
+    }
+}
+
+/// The button, the escape hatch on the stage, and the browser's own way out.
+///
+/// Asking for the screen and folding the chrome away are two separate things,
+/// and either can happen without the other: a browser can refuse the request,
+/// and escape leaves the screen without telling the page anything except
+/// through `fullscreenchange`. Keeping them together means listening for that
+/// and following it.
+fn bind_fullscreen(h: &Handle) {
+    for id in ["btn-full", "btn-leave-full"] {
+        let btn = match by_id(id) {
+            Some(b) => b,
+            None => continue,
+        };
+        let h2 = h.clone();
+        on(btn.unchecked_ref(), "click", Scope::Global, move |_| {
+            let want = !stage_only();
+            set_stage_only(&mut h2.borrow_mut().app, want);
+            let doc = document();
+            if want {
+                if let Some(root) = doc.document_element() {
+                    let _ = root.request_fullscreen();
+                }
+            } else if doc.fullscreen_element().is_some() {
+                doc.exit_fullscreen();
+            }
+        });
+    }
+
+    let h2 = h.clone();
+    on(document().unchecked_ref(), "fullscreenchange", Scope::Global, move |_| {
+        let entered = document().fullscreen_element().is_some();
+        if !stage_only() {
+            // Fullscreen the page did not ask for, from the browser's own key.
+            return;
+        }
+        let mut sh = h2.borrow_mut();
+        if entered {
+            // The window only reaches its full size after the request settles,
+            // so this is the first moment the camera can be framed for it.
+            sh.app.viewport.resize();
+            fill_view(&mut sh.app);
+            sync_zoom(&sh.app);
+        } else {
+            // Leaving by escape or by the window manager says nothing else, so
+            // the chrome comes back from here.
+            set_stage_only(&mut sh.app, false);
+        }
+    });
 }
 
 fn collapse_label(collapsed: bool) -> &'static str {

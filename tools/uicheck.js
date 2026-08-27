@@ -262,6 +262,29 @@ await page.click('#btn-panel');
 await page.waitForTimeout(400);
 if (!(await page.locator('.panel').isVisible())) problems.push('showing the menu did not bring it back');
 
+// Fullscreen: every piece of chrome goes and the world keeps the window.
+await page.click('#btn-full');
+await page.waitForTimeout(900);
+if (await page.locator('.topbar').isVisible()) problems.push('fullscreen left the top bar on screen');
+if (await page.locator('.statusbar').isVisible()) problems.push('fullscreen left the status line on screen');
+if (!(await page.locator('.stage-escape').isVisible())) problems.push('fullscreen left no way out');
+await page.screenshot({ path: `${outDir}/14-fullscreen.png` });
+// Escape is the browser's own, and all the page sees of it is the event. A
+// browser that refused the request has none to leave, so the button stands in.
+const leftBy = await page.evaluate(() => {
+  if (!document.fullscreenElement) return 'button';
+  document.exitFullscreen();
+  return 'event';
+});
+if (leftBy === 'button') await page.click('#btn-leave-full');
+await page.waitForTimeout(900);
+if (!(await page.locator('.topbar').isVisible())) {
+  problems.push(`leaving fullscreen by ${leftBy} did not bring the chrome back`);
+}
+if ((await page.locator('#btn-full').textContent()).trim() !== 'Fullscreen') {
+  problems.push('the fullscreen button kept its leaving label');
+}
+
 // Text scale reaches the whole page through the root font size.
 const scaled = await page.evaluate(() => {
   const input = document.getElementById('ui-scale');

@@ -22,6 +22,9 @@
         <button id="btn-undo" class="btn" type="button" title="Undo (ctrl+z)" disabled>Undo</button>
         <button id="btn-redo" class="btn" type="button" title="Redo (ctrl+shift+z)" disabled>Redo</button>
         <button id="btn-panel" class="btn" type="button">Hide menu</button>
+        <button id="btn-full" class="btn" type="button" title="Just the world (esc to leave)">
+          Fullscreen
+        </button>
         <button id="btn-new" class="btn" type="button">New</button>
         <button id="btn-export" class="btn" type="button">Export</button>
         <label class="btn" for="file-import">Import</label>
@@ -41,6 +44,9 @@
         <div class="stage-toolbar" id="stage-toolbar"></div>
         <div class="stage-canvas-wrap">
           <canvas id="world-canvas"></canvas>
+          <!-- The only chrome left in fullscreen, and the way back out if the
+               browser refused the request and escape is doing nothing. -->
+          <button id="btn-leave-full" class="btn stage-escape" type="button">Leave fullscreen</button>
         </div>
         <div class="statusbar" id="statusbar"></div>
       </section>

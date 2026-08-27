@@ -93,6 +93,41 @@ body {
   }
 }
 
+/* Just the world: every piece of chrome goes, leaving the stage and one way
+   back out of it. Taken out of the layout rather than hidden in place, so the
+   stage reflows into the space each piece leaves. */
+.stage-only .topbar,
+.stage-only .panel,
+.stage-only .stage-toolbar,
+.stage-only .statusbar {
+  display: none;
+}
+
+.stage-only .layout {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+/* Faint until it is looked for, so it does not sit on top of the thing it is
+   there to get out of the way of. */
+.stage-escape {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 2;
+  opacity: 0.25;
+  transition: opacity 0.15s ease;
+}
+
+.stage-escape:hover,
+.stage-escape:focus-visible {
+  opacity: 1;
+}
+
+body:not(.stage-only) .stage-escape {
+  display: none;
+}
+
 /* Folded away, the map gets the window. The panel is taken out of the grid
    rather than hidden in place, so the stage reflows into the space. */
 .menu-collapsed .panel {

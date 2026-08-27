@@ -463,6 +463,12 @@ and are remembered separately from it:
   browser's own font setting, so a reader who has raised that keeps the increase.
 * **Hide menu** folds the panel away and gives the map the whole window. What
   was in the middle of the view stays there.
+* **Fullscreen** goes further: the top bar, the panel, the toolbar and the
+  status line all go, leaving the world and one faint button in the corner to
+  get back out. The browser is asked for the screen at the same time, so escape
+  leaves too; if it refuses, the button and escape still work. The camera is
+  pulled back to fill the space it gains, but never pushed in, so a view zoomed
+  into one corner keeps its place and simply shows more around it.
 
 ## Checks
 
@@ -500,8 +506,9 @@ not reading a single number.
 every tab, paints into a sampling box, draws on a sheet on the stage and stacks
 a layer on it, steps and plays the frames and sends the sheet to a settler
 motion, undoes and redoes both a layer and a panel field, resizes the world,
-queues a building, folds the menu away and back, checks the text scale reaches
-the root font size, and fails on any console error.
+queues a building, folds the menu away and back, goes fullscreen and leaves it
+again, checks the text scale reaches the root font size, and fails on any
+console error.
 
 ## Layout
 

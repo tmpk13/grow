@@ -44,6 +44,9 @@ pub struct Viewport {
     pub dpr: f64,
     pub show_grid: bool,
     pub show_occupancy: bool,
+    /// The canvas size as of the last resize, so a canvas that changes size
+    /// can keep what was in the middle of the view in the middle of it.
+    last_size: (f64, f64),
     /// One visible region, repacked for upload. Kept here so a frame does not
     /// allocate.
     scratch: Vec<u32>,
@@ -100,6 +103,7 @@ impl Viewport {
             dpr: 1.0,
             show_grid: false,
             show_occupancy: false,
+            last_size: (0.0, 0.0),
             scratch: Vec::new(),
         }
     }
@@ -118,6 +122,33 @@ impl Viewport {
             self.canvas.set_width(w);
             self.canvas.set_height(h);
         }
+        // Room appearing on one side of the canvas is not a reason for the
+        // world to slide to the other. Panning by half of whatever the canvas
+        // gained or lost keeps the middle of the view where it was, which is
+        // what a window resize, the menu folding away and going fullscreen all
+        // want. The first measurement has nothing to compare against.
+        let (was_w, was_h) = self.last_size;
+        let measured = rw > 0.0 && rh > 0.0 && was_w > 0.0 && was_h > 0.0;
+        if measured && (rw != was_w || rh != was_h) {
+            self.pan_x += (rw - was_w) / 2.0;
+            self.pan_y += (rh - was_h) / 2.0;
+        }
+        if rw > 0.0 && rh > 0.0 {
+            self.last_size = (rw, rh);
+        }
+    }
+
+    /// The zoom a world would be framed at, without framing it. Kept apart from
+    /// `fit` so a caller can ask whether the view is already at least that
+    /// wide before deciding to move the camera.
+    pub fn fit_zoom(&self, world: &World) -> f64 {
+        let (rw, rh) = self.rect();
+        if rw == 0.0 || rh == 0.0 {
+            return self.zoom;
+        }
+        let zx = rw / world.px_w as f64;
+        let zy = rh / world.px_h as f64;
+        clamp(zx.min(zy), 0.25, 24.0)
     }
 
     pub fn fit(&mut self, world: &World) {
@@ -125,9 +156,7 @@ impl Viewport {
         if rw == 0.0 || rh == 0.0 {
             return;
         }
-        let zx = rw / world.px_w as f64;
-        let zy = rh / world.px_h as f64;
-        self.zoom = clamp(zx.min(zy), 0.25, 24.0);
+        self.zoom = self.fit_zoom(world);
         self.pan_x = (rw - world.px_w as f64 * self.zoom) / 2.0;
         self.pan_y = (rh - world.px_h as f64 * self.zoom) / 2.0;
     }
@@ -207,11 +236,22 @@ impl Viewport {
         if rw <= 0.0 || rh <= 0.0 || w <= 0 || h <= 0 {
             return;
         }
-        let margin = 0.85;
-        let fit = (rw / w as f64).min(rh / h as f64) * margin;
-        self.zoom = clamp(fit.floor().max(1.0), 1.0, 64.0);
+        self.zoom = self.fit_flat_zoom(w, h);
         self.pan_x = (rw - w as f64 * self.zoom) / 2.0;
         self.pan_y = (rh - h as f64 * self.zoom) / 2.0;
+    }
+
+    /// The same, without moving the camera.
+    pub fn fit_flat_zoom(&self, w: i32, h: i32) -> f64 {
+        let (rw, rh) = self.rect();
+        if rw <= 0.0 || rh <= 0.0 || w <= 0 || h <= 0 {
+            return self.zoom;
+        }
+        // A margin, so the sheet is not drawn edge to edge against the stage,
+        // and a whole number so a sprite is a whole number of screen pixels an
+        // art pixel.
+        let fit = (rw / w as f64).min(rh / h as f64) * 0.85;
+        clamp(fit.floor().max(1.0), 1.0, 64.0)
     }
 
     /// Where a pointer is, as a pixel of a flat buffer. Off the buffer reads as
