@@ -1399,3 +1399,30 @@ body.moving-people.holding #world-canvas {
 .btn.toggle[aria-pressed="false"] {
   color: var(--text-dim);
 }
+
+/* The key list in the sprite editor. Folded away by default: a reference, not
+   a control. */
+.group.keys > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.group.keys > summary::-webkit-details-marker {
+  display: none;
+}
+
+.group.keys .stat {
+  gap: 0.5rem;
+}
+
+kbd.key {
+  min-width: 3.2em;
+  padding: 0.05rem 0.3rem;
+  border: var(--hairline) solid var(--line);
+  border-radius: 0.25rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.72rem;
+  text-align: center;
+}

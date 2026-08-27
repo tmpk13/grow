@@ -76,6 +76,13 @@ pub struct StartConfig {
     #[serde(with = "stock_map")]
     pub supplies: Stock,
     pub storehouse: bool,
+    /// Start over on its own once nobody is left alive. Off by default: a
+    /// settlement dying out is usually the thing somebody was watching for,
+    /// and clearing the evidence a minute later would be no help at all.
+    pub restart_when_gone: bool,
+    /// Seconds of settlement time to wait before doing it, so there is a
+    /// chance to look at what is left. Paused time does not count.
+    pub restart_after: f64,
 }
 
 impl Default for StartConfig {
@@ -85,7 +92,13 @@ impl Default for StartConfig {
         supplies[Res::Food as usize] = 24.0;
         supplies[Res::Fiber as usize] = 12.0;
         supplies[Res::Stone as usize] = 6.0;
-        StartConfig { population: 5, supplies, storehouse: true }
+        StartConfig {
+            population: 5,
+            supplies,
+            storehouse: true,
+            restart_when_gone: false,
+            restart_after: 30.0,
+        }
     }
 }
 

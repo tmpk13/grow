@@ -606,3 +606,4 @@ fn a_contact_shadow_stops_at_the_horizon() {
         "the shadow did not land at all, so the clamp is not what stopped it"
     );
 }
+

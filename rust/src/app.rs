@@ -945,6 +945,7 @@ fn sprite_toolbar(sh: &mut Shell, h: &Handle) -> Vec<Element> {
 
     let onion = ui::input_el("checkbox");
     onion.set_checked(sh.app.ui.onion);
+    let _ = onion.set_attribute("id", "onion");
     {
         let h2 = h.clone();
         on(onion.unchecked_ref(), "change", Scope::Toolbar, move |e| {
@@ -1396,6 +1397,12 @@ fn bind_keys(h: &Handle) {
             }
             return;
         }
+        if sh.app.mode == Mode::Sprites
+            && sprite_key(&mut sh, &ke.key().to_ascii_lowercase())
+        {
+            e.prevent_default();
+            return;
+        }
         match ke.code().as_str() {
             "Space" => {
                 e.prevent_default();
@@ -1774,8 +1781,28 @@ fn step_active(app: &mut App, dt: f64) {
             if let Some(civ) = &mut app.settlement {
                 civ.step(&app.state, dt);
             }
+            check_extinction(app);
         }
     }
+}
+
+/// Starts the settlement over once it has been empty long enough, if that is
+/// what it was told to do. The wait runs on settlement time, so a paused world
+/// stays where it is and a fast one gets there sooner.
+fn check_extinction(app: &mut App) {
+    let start = &app.state.civ.start;
+    if !start.restart_when_gone || app.pending_civ_reset {
+        return;
+    }
+    let empty = match app.settlement.as_ref().and_then(|civ| civ.extinct_for()) {
+        Some(t) => t,
+        None => return,
+    };
+    if empty < start.restart_after.max(0.0) {
+        return;
+    }
+    app.civ_restart();
+    app.set_note("nobody left; starting over");
 }
 
 fn start_frame_loop(h: Handle) {
@@ -2012,6 +2039,72 @@ fn active_frame(app: &App) -> i32 {
 
 /// Moves to another frame of the sheet, stopping playback: stepping and
 /// playing at once is two things trying to say which frame is showing.
+/// What the sprite editor answers to from the keyboard. Listed in the Draw
+/// panel wherever there is a keyboard to use them from, because a shortcut
+/// nobody can find is not a shortcut.
+pub const SPRITE_KEYS: [(&str, &str); 11] = [
+    ("B", "Pencil"),
+    ("E", "Eraser"),
+    ("G", "Fill"),
+    ("P", "Pick"),
+    ("X", "Mirror X"),
+    ("O", "Onion skin"),
+    ("Space", "Play or pause"),
+    (", .", "Frame back or on"),
+    ("[ ]", "Layer down or up"),
+    ("F", "Fit the sheet to the stage"),
+    ("Ctrl Z", "Undo; with shift, redo"),
+];
+
+fn step_layer(app: &mut App, delta: i32) {
+    let layers = match app.state.art.find(&app.ui.selected_sheet) {
+        Some(s) => s.layers.len() as i32,
+        None => return,
+    };
+    if layers < 1 {
+        return;
+    }
+    app.ui.sheet_layer = (app.ui.sheet_layer as i32 + delta).rem_euclid(layers) as usize;
+    app.rebuild_panel();
+}
+
+/// The tool keys and the two switches that live in the toolbar rather than in
+/// the panel. Returns whether the key was one of these.
+fn sprite_key(sh: &mut Shell, key: &str) -> bool {
+    match key {
+        "b" => sh.app.ui.tool = Tool::Pencil,
+        "e" => sh.app.ui.tool = Tool::Eraser,
+        "g" => sh.app.ui.tool = Tool::Fill,
+        "p" => sh.app.ui.tool = Tool::Pick,
+        "x" => sh.app.ui.mirror_x = !sh.app.ui.mirror_x,
+        "o" => {
+            sh.app.ui.onion = !sh.app.ui.onion;
+            // The onion switch is in the stage toolbar, which a panel rebuild
+            // does not touch, so it is set to match by hand.
+            if let Some(node) = by_id("onion") {
+                if let Ok(input) = node.dyn_into::<HtmlInputElement>() {
+                    input.set_checked(sh.app.ui.onion);
+                }
+            }
+        }
+        "," => {
+            step_frame(&mut sh.app, -1);
+            return true;
+        }
+        "[" => {
+            step_layer(&mut sh.app, -1);
+            return true;
+        }
+        "]" => {
+            step_layer(&mut sh.app, 1);
+            return true;
+        }
+        _ => return false,
+    }
+    sh.app.rebuild_panel();
+    true
+}
+
 fn step_frame(app: &mut App, delta: i32) {
     let frames = match app.state.art.find(&app.ui.selected_sheet) {
         Some(s) => s.frame_count(),

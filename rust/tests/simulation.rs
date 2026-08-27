@@ -891,3 +891,124 @@ fn a_settler_in_hand_is_left_out_of_the_tick() {
         "a settler put down never picked their life back up"
     );
 }
+
+// ---- dying back ----------------------------------------------------------
+
+/// One plant of one species on a world nothing else grows on, with a short
+/// life and a shrivel of the given length, stepped until it is past its age.
+/// Comes back with the id of the one that was planted: a species left to
+/// itself seeds more, and those are not the one being watched.
+fn dying_plant(species_id: &str, shrivel: f64) -> (Sim, State, i32) {
+    let mut state = State::new();
+    for sp in state.species.iter_mut() {
+        sp.enabled = sp.id == species_id;
+        sp.growth.max_age = 4.0;
+        sp.growth.shrivel = shrivel;
+    }
+    let index = state.species.iter().position(|s| s.id == species_id).expect("species");
+    let mut sim = Sim::new(&state, state.world.clone());
+    let (col, row) = (sim.world.cols / 2, sim.world.rows / 2);
+    let at = sim.try_spawn(&state, index, col, row, None).expect("somewhere to grow");
+    let id = sim.plants[at].id;
+    for _ in 0..50 {
+        sim.step(&state, 0.1, None);
+        sim.process_raster_queue(&state, 64);
+    }
+    (sim, state, id)
+}
+
+fn watched(sim: &Sim, id: i32) -> Option<&grow::plant::Plant> {
+    sim.plants.iter().find(|p| p.id == id)
+}
+
+#[test]
+fn a_plant_past_its_age_shrivels_rather_than_vanishing() {
+    let (mut sim, state, id) = dying_plant("sp-grass", 6.0);
+    let plant = watched(&sim, id).expect("still standing a second past its age");
+    assert!(plant.wither > 0.0, "and visibly on the way out");
+    assert!(plant.wither < 1.0, "but not gone in the same breath");
+
+    for _ in 0..80 {
+        sim.step(&state, 0.1, None);
+        sim.process_raster_queue(&state, 64);
+    }
+    assert!(watched(&sim, id).is_none(), "once dried out it is off the map");
+}
+
+#[test]
+fn a_faster_shrivel_clears_sooner() {
+    let (quick, _, quick_id) = dying_plant("sp-grass", 0.5);
+    assert!(
+        watched(&quick, quick_id).is_none(),
+        "half a second of shrivel is over a whole second past the age"
+    );
+
+    let (slow, _, slow_id) = dying_plant("sp-grass", 20.0);
+    let plant = watched(&slow, slow_id).expect("a long shrivel has barely started");
+    assert!(plant.wither < 0.2, "got {}", plant.wither);
+}
+
+#[test]
+fn a_shrivelling_plant_comes_apart_from_the_tips_down() {
+    let (mut sim, state, id) = dying_plant("sp-oak", 20.0);
+    let early = watched(&sim, id).expect("still there").bounds;
+
+    for _ in 0..120 {
+        sim.step(&state, 0.1, None);
+        sim.process_raster_queue(&state, 64);
+    }
+    let plant = watched(&sim, id).expect("twenty seconds is longer than twelve");
+    assert!(plant.wither > 0.4, "well into drying out, got {}", plant.wither);
+    assert!(
+        plant.bounds.y0 > early.y0,
+        "the top should have come down: {} then {}",
+        early.y0,
+        plant.bounds.y0
+    );
+    assert!(
+        plant.bounds.y1 >= early.y1 - 1,
+        "the foot should be the last of it to go: {} then {}",
+        early.y1,
+        plant.bounds.y1
+    );
+}
+
+#[test]
+fn nothing_shrivels_while_it_is_still_growing() {
+    let (sim, _) = run_lab(400);
+    assert!(!sim.plants.is_empty(), "nothing grew");
+    for p in &sim.plants {
+        assert_eq!(p.wither, 0.0, "a living plant should not be drying out");
+    }
+}
+
+// ---- starting over -------------------------------------------------------
+
+#[test]
+fn a_settlement_with_somebody_in_it_is_not_counted_as_gone() {
+    let (mut sim, state) = peopled(48, 24);
+    for _ in 0..40 {
+        sim.step(&state, 1.0 / state.civ.sim.tick_hz);
+    }
+    assert!(sim.people.iter().any(|p| p.alive), "the founders should be alive");
+    assert_eq!(sim.extinct_for(), None, "a living town is not waiting to restart");
+}
+
+#[test]
+fn an_empty_settlement_starts_counting_from_the_last_death() {
+    let (mut sim, state) = peopled(48, 24);
+    for i in sim.people.live_indices() {
+        sim.people[i].alive = false;
+    }
+    let at = sim.time;
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..40 {
+        sim.step(&state, dt);
+    }
+    let waited = sim.extinct_for().expect("nobody left, so it is counting");
+    assert!(waited > 0.0, "the wait should have started");
+    assert!(
+        (sim.time - at - waited).abs() < dt * 2.0,
+        "it should count from the death, not from being noticed"
+    );
+}

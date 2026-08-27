@@ -3,6 +3,17 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- Sprite editor keybinds: B, E, G, P for the tools, X mirror, O onion, comma
+  and full stop for frames, brackets for layers. The key is on the tool button
+  itself and the rest are in a folded Keys list, both only where there is a
+  keyboard to press them with.
+- Plants shrivel rather than vanishing. Past its age a plant browns toward
+  straw and comes apart from the tips down over a settable Shrivel (s),
+  defaulting to six seconds, and is only taken off the map once there is
+  nothing left. Re-drawn a dozen times over the whole death, not once a frame.
+- A settlement can start itself over once nobody is left alive, after a settable
+  wait in settlement time. Off by default, because a town dying out is usually
+  the thing being watched.
 - View menu: Grid, Occupancy and the label switches left the top bar for a
   fold-out block in the side panel, reachable from any tab of the mode. Labels
   are one switch per building category with walls and gates on their own and an

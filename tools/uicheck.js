@@ -195,6 +195,35 @@ await page.click('.group:has-text("Use as settler art") .btn:text-is("Walking")'
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${outDir}/08c-sheet.png` });
 
+// Keys: the tools answer to the keyboard, and say which key on a desktop.
+await page.click('.tab[data-tab="draw"]');
+await page.waitForTimeout(400);
+const toolLabel = (await page.textContent('#panel-body [data-find="pick"]')).trim();
+if (toolLabel !== 'Pick (P)') problems.push(`the pick tool reads "${toolLabel}", not "Pick (P)"`);
+if ((await page.locator('.group.keys').count()) === 0) problems.push('the key list is missing');
+const toolNow = () =>
+  page.$$eval('#panel-body .btn.active', (nodes) => (nodes[0] ? nodes[0].textContent.trim() : ''));
+await page.click('#world-canvas', { position: { x: 5, y: 5 } });
+for (const [key, want] of [
+  ['p', 'Pick (P)'],
+  ['e', 'Eraser (E)'],
+  ['g', 'Fill (G)'],
+  ['b', 'Pencil (B)'],
+]) {
+  await page.keyboard.press(key);
+  await page.waitForTimeout(250);
+  const now = await toolNow();
+  if (now !== want) problems.push(`pressing ${key} selected "${now}", not "${want}"`);
+}
+// The onion switch lives in the toolbar and has to follow the key too.
+const onionOn = () => page.isChecked('#onion');
+const wasOnion = await onionOn();
+await page.keyboard.press('o');
+await page.waitForTimeout(200);
+if ((await onionOn()) === wasOnion) problems.push('the onion key did not reach the toolbar switch');
+await page.keyboard.press('o');
+await page.waitForTimeout(200);
+
 // Settlement mode: founding the settlement runs the wilderness warmup, which
 // takes a moment, so give it room before touching the panels.
 await page.click('.mode:text-is("Settlement")');

@@ -88,6 +88,27 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             app.request_save();
         },
     ));
+    founding.push(app_bool(
+        h,
+        "Start over if everyone dies",
+        app.state.civ.start.restart_when_gone,
+        Some("off by default: a settlement dying out is usually the thing worth looking at"),
+        |app, v| {
+            app.state.civ.start.restart_when_gone = v;
+            app.request_save();
+        },
+    ));
+    founding.push(app_num(
+        h,
+        "Wait before starting over (s)",
+        app.state.civ.start.restart_after,
+        NumOpts { min: 0.0, max: 300.0, step: 5.0 },
+        Some("settlement time, so a paused world never counts down"),
+        |app, v| {
+            app.state.civ.start.restart_after = v;
+            app.request_save();
+        },
+    ));
     append(root, section("Founding party", founding));
 
     // The register first: it is what the panel is for, and the parameters

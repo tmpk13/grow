@@ -26,6 +26,14 @@ use crate::util::{
 };
 use crate::world::{Support, World};
 
+/// How many times a shrivel is re-drawn from start to finish. Enough that it
+/// reads as drying out, few enough that a field of plants dying at once does
+/// not cost a raster each per frame.
+const SHRIVEL_STEPS: f64 = 12.0;
+
+/// What everything fades to on the way out: dry straw, not the green it was.
+const DEAD_COLOR: u32 = pack_rgba(120, 98, 66, 255);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Mat {
@@ -166,6 +174,11 @@ pub struct Plant {
     pub seed: u32,
     pub age: f64,
     pub alive: bool,
+    /// How far through drying out this plant is, 0 while it is still growing
+    /// and 1 when there is nothing of it left. Nothing on the map disappears
+    /// between one frame and the next: past its age a plant browns and comes
+    /// apart from the tips down, and is only taken away when this reaches 1.
+    pub wither: f64,
     pub budget: f64,
     /// Atmospheric lift for far rows, set by the sim.
     pub depth_shade: f64,
@@ -265,6 +278,7 @@ impl Plant {
             sprite: vec![EMPTY_COLOR; n],
             bounds: Bounds { x0: 0, y0: 0, x1: -1, y1: -1 },
             dirty: true,
+            wither: 0.0,
             claimed_by: 0,
             tint: 0,
         };
@@ -312,7 +326,7 @@ impl Plant {
         }
         self.age += dt;
         if self.age > species.growth.max_age {
-            self.alive = false;
+            self.shrivel(dt, species.growth.shrivel);
             return;
         }
         if self.mature() {
@@ -710,9 +724,78 @@ impl Plant {
         }
 
         self.shade(env, scratch, species);
+        if self.wither > 0.0 {
+            self.dry_out();
+        }
         self.update_bounds();
         self.update_tint();
         self.dirty = false;
+    }
+
+    /// Past its age, a plant dries out rather than blinking off the map. It is
+    /// only re-drawn every so often through this: a shrivel is a handful of
+    /// visible steps, not one per frame, and re-rastering is the expensive
+    /// part of the whole simulation.
+    fn shrivel(&mut self, dt: f64, seconds: f64) {
+        let before = (self.wither * SHRIVEL_STEPS).floor();
+        self.wither += dt / seconds.max(0.05);
+        if (self.wither * SHRIVEL_STEPS).floor() != before {
+            self.dirty = true;
+        }
+        if self.wither >= 1.0 {
+            self.wither = 1.0;
+            self.alive = false;
+        }
+    }
+
+    /// Browns what is drawn and takes it apart from the tips down: the top of
+    /// a plant is the thin end and goes first, and a little noise per pixel
+    /// keeps the edge ragged rather than a line sweeping down the sprite.
+    fn dry_out(&mut self) {
+        let t = clamp01(self.wither);
+        // Read off the mask rather than the stored bounds: every raster stamps
+        // the whole plant again and this eats into it afterwards, so the
+        // bounds still describe the last drawing, not this one.
+        let (mut top, mut base) = (self.h, -1);
+        for y in 0..self.h {
+            let row = (y * self.w) as usize;
+            if self.mask[row..row + self.w as usize].iter().any(|m| *m != 0) {
+                if y < top {
+                    top = y;
+                }
+                base = y;
+            }
+        }
+        if base < top {
+            return;
+        }
+        let span = (base - top).max(1) as f64;
+        let dead = unpack_rgba(DEAD_COLOR);
+        for y in 0..self.h {
+            // 1 at the tips, 0 at the foot.
+            let height = ((base - y) as f64 / span).clamp(0.0, 1.0);
+            for x in 0..self.w {
+                let i = (y * self.w + x) as usize;
+                if self.mask[i] == 0 {
+                    continue;
+                }
+                let noise = hash2(x, y, self.seed as i32);
+                // The tips let go early, the foot hangs on to the end.
+                let gone = 0.12 + 0.72 * (1.0 - height) + 0.16 * noise;
+                if t >= gone {
+                    self.mask[i] = Mat::Empty as u8;
+                    self.sprite[i] = EMPTY_COLOR;
+                    continue;
+                }
+                // Browning runs ahead of the falling apart, so a plant is
+                // visibly dead before it starts to go.
+                let c = unpack_rgba(self.sprite[i]);
+                let k = clamp01(t * 1.6);
+                let mix = |from: u8, to: u8| (from as f64 + (to as f64 - from as f64) * k) as i32;
+                self.sprite[i] =
+                    pack_rgba(mix(c.r, dead.r), mix(c.g, dead.g), mix(c.b, dead.b), c.a as i32);
+            }
+        }
     }
 
     fn shade(&mut self, env: &RasterEnv, sc: &mut Scratch, species: &Species) {

@@ -559,6 +559,17 @@
     "mode_label": "Plant lab",
     "tab": "species",
     "tab_label": "Species",
+    "group": "Growth",
+    "label": "Shrivel (s)",
+    "hint": "how long a plant takes to dry out and come apart once it is past its age",
+    "anchor": "shrivel-s",
+    "kind": "field"
+  },
+  {
+    "mode": "lab",
+    "mode_label": "Plant lab",
+    "tab": "species",
+    "tab_label": "Species",
     "group": "Form and branching",
     "label": "Base width (px)",
     "anchor": "base-width-px",
@@ -1079,6 +1090,46 @@
     "label": "Draw",
     "hint": "the draw tab of sprite editor",
     "kind": "tab"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "draw",
+    "tab_label": "Draw",
+    "group": "Brush",
+    "label": "Pencil (B)",
+    "anchor": "pencil",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "draw",
+    "tab_label": "Draw",
+    "group": "Brush",
+    "label": "Eraser (E)",
+    "anchor": "eraser",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "draw",
+    "tab_label": "Draw",
+    "group": "Brush",
+    "label": "Fill (G)",
+    "anchor": "fill",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "draw",
+    "tab_label": "Draw",
+    "group": "Brush",
+    "label": "Pick (P)",
+    "anchor": "pick",
+    "kind": "button"
   },
   {
     "mode": "sprites",
@@ -2099,6 +2150,28 @@
     "label": "Arrive with a storehouse",
     "hint": "off means the first thing they do is build one",
     "anchor": "arrive-with-a-storehouse",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "Founding party",
+    "label": "Start over if everyone dies",
+    "hint": "off by default: a settlement dying out is usually the thing worth looking at",
+    "anchor": "start-over-if-everyone-dies",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "Founding party",
+    "label": "Wait before starting over (s)",
+    "hint": "settlement time, so a paused world never counts down",
+    "anchor": "wait-before-starting-over-s",
     "kind": "field"
   },
   {

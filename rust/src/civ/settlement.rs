@@ -337,6 +337,9 @@ pub struct Settlement {
     pub ground_step: i32,
     pub buffer_dirty: bool,
     pub warmup_done: f64,
+    /// Settlement time at which the last living settler died, or None while
+    /// somebody is still going. What the automatic restart counts from.
+    pub extinct_at: Option<f64>,
     pub ready: bool,
     pub terrain_version: u32,
     pub sprites: SpriteCache,
@@ -400,6 +403,7 @@ impl Settlement {
             ground_age: 0,
             buffer_dirty: true,
             warmup_done: 0.0,
+            extinct_at: None,
             ready: false,
             terrain_version: 0,
             sprites: SpriteCache::default(),
@@ -2199,6 +2203,12 @@ impl Settlement {
 
     // ---- main step -------------------------------------------------------
 
+    /// How long the settlement has been empty, in its own time. None while
+    /// anybody is alive, so a paused world never counts down.
+    pub fn extinct_for(&self) -> Option<f64> {
+        self.extinct_at.map(|at| self.time - at)
+    }
+
     pub fn step(&mut self, state: &State, dt: f64) {
         if !self.ready {
             return;
@@ -2240,6 +2250,15 @@ impl Settlement {
             if !self.people[pi].alive {
                 self.bury_person(state, pi);
             }
+        }
+
+        // Whether there is anybody left, noted the moment it changes so the
+        // restart counts from the death rather than from being noticed.
+        let anybody = !self.people.live_indices().is_empty();
+        match (anybody, self.extinct_at) {
+            (false, None) => self.extinct_at = Some(self.time),
+            (true, Some(_)) => self.extinct_at = None,
+            _ => {}
         }
 
         // After everyone has moved, because who is standing next to whom is

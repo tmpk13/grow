@@ -188,11 +188,22 @@ pub struct Growth {
     pub step_min: f64,
     pub step_max: f64,
     pub max_age: f64,
+    /// Seconds a plant takes to shrivel away once it is past its age. It dries
+    /// out and comes apart from the tips down over this long, and only then is
+    /// it off the map. Nothing here vanishes between one frame and the next.
+    pub shrivel: f64,
 }
 
 impl Default for Growth {
     fn default() -> Self {
-        Growth { rate_min: 0.6, rate_max: 1.4, step_min: 2.0, step_max: 4.0, max_age: 900.0 }
+        Growth {
+            rate_min: 0.6,
+            rate_max: 1.4,
+            step_min: 2.0,
+            step_max: 4.0,
+            max_age: 900.0,
+            shrivel: 6.0,
+        }
     }
 }
 
@@ -368,7 +379,7 @@ pub fn default_species_list() -> Vec<Species> {
     moss.size_class = SizeClass::Ground;
     moss.spawn = Spawn { rate: 0.5, max_count: 90, min_spacing: 1 };
     moss.spread = Spread { rate: 0.12, radius_min: 1.0, radius_max: 4.0 };
-    moss.growth = Growth { rate_min: 0.5, rate_max: 1.1, step_min: 1.0, step_max: 2.0, max_age: 3000.0 };
+    moss.growth = Growth { rate_min: 0.5, rate_max: 1.1, step_min: 1.0, step_max: 2.0, max_age: 3000.0, ..Growth::default() };
     moss.limits = SpeciesLimits { max_radius_cells: 3, max_height_px: 8.0, max_tips: 1 };
     moss.shade = Shade { core_wood: 3.0, core_leaf: 3.0, tones: 4, jitter: 0.09, behind_shade: 0.15, ..Shade::default() };
 
@@ -381,7 +392,7 @@ pub fn default_species_list() -> Vec<Species> {
     grass.slots.leaf = "mat-leaf".into();
     grass.spawn = Spawn { rate: 0.35, max_count: 70, min_spacing: 1 };
     grass.spread = Spread { rate: 0.06, radius_min: 1.0, radius_max: 5.0 };
-    grass.growth = Growth { rate_min: 1.0, rate_max: 2.0, step_min: 2.0, step_max: 4.0, max_age: 700.0 };
+    grass.growth = Growth { rate_min: 1.0, rate_max: 2.0, step_min: 2.0, step_max: 4.0, max_age: 700.0, ..Growth::default() };
     grass.form = Form {
         base_width: 2.0,
         taper: 0.86,
@@ -407,7 +418,7 @@ pub fn default_species_list() -> Vec<Species> {
     fern.size_class = SizeClass::Shrub;
     fern.spawn = Spawn { rate: 0.12, max_count: 30, min_spacing: 2 };
     fern.spread = Spread { rate: 0.03, radius_min: 2.0, radius_max: 6.0 };
-    fern.growth = Growth { rate_min: 0.8, rate_max: 1.6, step_min: 2.0, step_max: 4.0, max_age: 1200.0 };
+    fern.growth = Growth { rate_min: 0.8, rate_max: 1.6, step_min: 2.0, step_max: 4.0, max_age: 1200.0, ..Growth::default() };
     fern.form = Form {
         base_width: 3.0,
         taper: 0.9,
@@ -432,7 +443,7 @@ pub fn default_species_list() -> Vec<Species> {
     oak.size_class = SizeClass::Tree;
     oak.spawn = Spawn { rate: 0.05, max_count: 12, min_spacing: 5 };
     oak.spread = Spread { rate: 0.012, radius_min: 4.0, radius_max: 12.0 };
-    oak.growth = Growth { rate_min: 0.7, rate_max: 1.3, step_min: 3.0, step_max: 6.0, max_age: 4000.0 };
+    oak.growth = Growth { rate_min: 0.7, rate_max: 1.3, step_min: 3.0, step_max: 6.0, max_age: 4000.0, ..Growth::default() };
     oak.form = Form {
         base_width: 7.0,
         taper: 0.93,
@@ -459,7 +470,7 @@ pub fn default_species_list() -> Vec<Species> {
     ivy.size_class = SizeClass::Vine;
     ivy.spawn = Spawn { rate: 0.06, max_count: 12, min_spacing: 3 };
     ivy.spread = Spread { rate: 0.02, radius_min: 2.0, radius_max: 8.0 };
-    ivy.growth = Growth { rate_min: 1.1, rate_max: 2.2, step_min: 2.0, step_max: 3.0, max_age: 2500.0 };
+    ivy.growth = Growth { rate_min: 1.1, rate_max: 2.2, step_min: 2.0, step_max: 3.0, max_age: 2500.0, ..Growth::default() };
     ivy.form = Form {
         base_width: 2.0,
         taper: 0.98,
@@ -637,6 +648,14 @@ pub static SPECIES_SCHEMA: &[FieldGroup] = &[
             range_field!("Growth rate", growth.rate_min, growth.rate_max, 0.05, 6.0, 0.05, Some("segments per simulation second")),
             range_field!("Segment length (px)", growth.step_min, growth.step_max, 1.0, 14.0, 0.5, None),
             num_field!("Max age", growth.max_age, 10.0, 10000.0, 10.0, None),
+            num_field!(
+                "Shrivel (s)",
+                growth.shrivel,
+                0.2,
+                60.0,
+                0.2,
+                Some("how long a plant takes to dry out and come apart once it is past its age")
+            ),
         ],
     },
     FieldGroup {

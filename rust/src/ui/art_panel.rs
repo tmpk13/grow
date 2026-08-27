@@ -21,11 +21,11 @@ use crate::ui::{
 };
 use crate::util::{packed_to_hex, EMPTY_COLOR};
 
-const TOOLS: [(Tool, &str); 4] = [
-    (Tool::Pencil, "Pencil"),
-    (Tool::Eraser, "Eraser"),
-    (Tool::Fill, "Fill"),
-    (Tool::Pick, "Pick"),
+const TOOLS: [(Tool, &str, &str); 4] = [
+    (Tool::Pencil, "Pencil", "B"),
+    (Tool::Eraser, "Eraser", "E"),
+    (Tool::Fill, "Fill", "G"),
+    (Tool::Pick, "Pick", "P"),
 ];
 
 /// Most colors a sheet's palette row will show. Past this the row stops being
@@ -170,8 +170,42 @@ pub fn build_draw(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     // the panel exists so they can hand back the canvases.
     panel.layer_thumbs = layers_section(root, app, h);
     panel.frame_thumbs = frame_strip(root, app, h);
+    if let Some(keys) = keys_section() {
+        append(root, keys);
+    }
     panel.redraw(app);
     Box::new(panel)
+}
+
+/// The keys the editor answers to, on anything with a keyboard to press them
+/// with. Folded away, because it is a reference rather than a control.
+fn keys_section() -> Option<Element> {
+    if !crate::ui::has_keyboard() {
+        return None;
+    }
+    let body = el("div").class("group-body").get();
+    for (key, what) in crate::app::SPRITE_KEYS {
+        let _ = body.append_child(
+            &el("div")
+                .class("stat")
+                .child(&el("kbd").class("key").text(key).get())
+                .child(&el("span").class("stat-val").text(what).get())
+                .get(),
+        );
+    }
+    Some(
+        el("details")
+            .class("group keys")
+            .attr("data-group", "Keys")
+            .child(
+                &el("summary")
+                    .class("group-head")
+                    .child(&el("h3").text("Keys").get())
+                    .get(),
+            )
+            .child(&body)
+            .get(),
+    )
 }
 
 /// The sheet tab: which sheets there are, how large and how fast this one is,
@@ -467,13 +501,18 @@ fn nudge_row(h: &Handle) -> Element {
 
 fn tool_row(app: &App, h: &Handle) -> Element {
     let tools = el("div").class("btn-row").get();
-    for (tool, label) in TOOLS {
+    let keys = crate::ui::has_keyboard();
+    for (tool, label, key) in TOOLS {
         let h2 = h.clone();
         let class = if app.ui.tool == tool { "btn active" } else { "btn" };
+        // The key is on the button rather than only in a list, because the
+        // button is where somebody is looking when they want the tool.
+        let text = if keys { format!("{label} ({key})") } else { label.to_string() };
         let btn = el("button")
             .class(class)
             .attr("type", "button")
-            .text(label)
+            .attr("data-find", &crate::ui::slug(label))
+            .text(&text)
             .on("click", Scope::Panel, move |_| {
                 let mut sh = h2.borrow_mut();
                 sh.app.ui.tool = tool;

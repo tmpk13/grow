@@ -20,14 +20,6 @@ What is left. What is done is in TODO_COMPLETE.md.
       through the `app_*` helpers, or it puts a step on the stack that restores
       nothing. Worth a check that catches it rather than a rule to remember.
 
-- Sprite editor
-    - Should have keybinds and list them (if on desktop) example: Pick (P).
-
-- Plants should not just disapear when they die. Should shrivel away at a set speed.
-    - Default somewhat fast shrivel.
-
-- If everyone dies the sim restarts after a settable period default 30s. Can toggle off. Off by default.
-
 - Settings that restart the sim automatically should be changes to have a apply button. A * next to un-applied settings.
     - When switching menus without applying have a confirmation with 3 options.
 

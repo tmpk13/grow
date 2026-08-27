@@ -50,6 +50,7 @@ features = [
   "ImageData",
   "KeyboardEvent",
   "Location",
+  "MediaQueryList",
   "MouseEvent",
   "Node",
   "Performance",

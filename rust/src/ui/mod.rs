@@ -41,6 +41,18 @@ pub fn document() -> Document {
     window().document().expect("no document")
 }
 
+/// Whether this is something with a keyboard and a pointer that can hit a
+/// single pixel, which is the only place a shortcut is worth listing. A phone
+/// answers no to both.
+pub fn has_keyboard() -> bool {
+    window()
+        .match_media("(hover: hover) and (pointer: fine)")
+        .ok()
+        .flatten()
+        .map(|q| q.matches())
+        .unwrap_or(false)
+}
+
 pub fn by_id(id: &str) -> Option<Element> {
     document().get_element_by_id(id)
 }

@@ -171,6 +171,15 @@ middle button or a held ctrl drags, wheel or pinch zooms.
 * Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
   the art keeps its place and the new room is empty.
 
+### Keys
+
+On anything with a keyboard the tool buttons carry their key - **Pick (P)** -
+and the Draw panel has a folded **Keys** list with the rest of them: `B` pencil,
+`E` eraser, `G` fill, `P` pick, `X` mirror, `O` onion skin, space to play,
+`,` and `.` for the frame before and after, `[` and `]` for the layer below and
+above, `F` to fit the sheet to the stage. Nothing is listed on a phone, which
+has no keys to press.
+
 ## The grid system
 
 The world is a 2.5D area: a ground plane seen at an angle. Columns run left to
@@ -484,6 +493,29 @@ Kept sheets are the one thing it leaves standing. Art outlives the project it
 was drawn in, which is the whole point of keeping it separately, and a button
 for clearing a stuck page is not a reason to lose it; a kept sheet goes when it
 is deleted from the sprite editor's Sheet tab.
+
+### Dying back
+
+Nothing on the map blinks out. A plant past its **Max age** dries out over
+**Shrivel (s)** instead: it browns toward straw and comes apart from the tips
+down, the thin end first, with a little noise per pixel so the edge stays
+ragged. Only when there is nothing left is it taken off the map and its cells
+handed back. A plant that is cut down is a different thing and goes at once,
+because somebody carried it away.
+
+The default is six seconds, which is fast enough to read as dying rather than
+as a slow fade. The shrivel is re-drawn a dozen times from start to finish, not
+once a frame, because re-rastering is the expensive part of the simulation and
+a field can die at once.
+
+### Starting over
+
+Under **Founding party**, **Start over if everyone dies** brings the settlement
+back after **Wait before starting over (s)** with nobody left alive. It is off
+by default: a town dying out is usually the thing being watched for, and
+clearing the evidence half a minute later would be no help. The wait runs on
+settlement time, so a paused world never counts down and a fast one gets there
+sooner.
 
 ## Finding a setting
 
