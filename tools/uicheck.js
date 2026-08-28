@@ -539,9 +539,17 @@ if ((await page.locator('.made-search .btn.toggle:has-text("Meaning")').count())
 await page.fill('.made-search input', '');
 await page.waitForTimeout(300);
 await page.click('.made-search .btn.toggle:has-text("Every slot")');
-await page.waitForTimeout(700);
-if ((await page.locator('.made-slot').count()) < 100) {
-  problems.push('Every slot did not list them all');
+// The panel is rebuilt on the next frame and there are a hundred and thirty
+// slots to draw, so this waits for them rather than guessing at how long a
+// busy settlement takes to get round to it.
+await page
+  .waitForFunction(() => document.querySelectorAll('.made-slot').length >= 100, null, {
+    timeout: 8000,
+  })
+  .catch(() => {});
+const slots = await page.locator('.made-slot').count();
+if (slots < 100) {
+  problems.push(`Every slot listed ${slots} of them`);
 }
 await page.click('.made-search .btn.toggle:has-text("Every slot")');
 await page.waitForTimeout(400);
@@ -574,6 +582,33 @@ if (townAfter !== townBefore) {
   problems.push(`the town was ${townBefore} and is ${townAfter} after the map grew`);
 }
 await page.screenshot({ path: `${outDir}/11b-grown.png` });
+
+// Left alone, the map takes the whole window on its own, and the first sign of
+// life hands the menus back. Not the browser's fullscreen: this is the page
+// folding its own chrome away, which is the only kind an untouched window can
+// have.
+const idleBox = '#panel-body [data-find="fullscreen-when-idle-s"] input[type=number]';
+await page.fill(idleBox, '2');
+await page.dispatchEvent(idleBox, 'input');
+// The move is what re-arms the wait with the value just typed, and is the last
+// thing that touches the page before it is left alone.
+await page.mouse.move(900, 500);
+await page.waitForTimeout(4000);
+if (!(await page.evaluate(() => document.body.classList.contains('settled')))) {
+  problems.push('the map never took the window after being left alone');
+}
+if (!(await page.evaluate(() => document.body.classList.contains('stage-only')))) {
+  problems.push('settling in left the menus up');
+}
+await page.screenshot({ path: `${outDir}/11c-settled.png` });
+await page.mouse.move(700, 400);
+await page.waitForTimeout(600);
+if (await page.evaluate(() => document.body.classList.contains('settled'))) {
+  problems.push('moving the pointer did not hand the menus back');
+}
+await page.fill(idleBox, '0');
+await page.dispatchEvent(idleBox, 'input');
+await page.mouse.move(710, 410);
 
 await page.click('.mode[data-mode="sprites"]');
 await page.waitForTimeout(800);
