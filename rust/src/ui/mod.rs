@@ -313,13 +313,6 @@ pub fn value_of(e: &Event) -> String {
         .unwrap_or_default()
 }
 
-pub fn checked_of(e: &Event) -> bool {
-    e.target()
-        .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
-        .map(|i| i.checked())
-        .unwrap_or(false)
-}
-
 pub fn select_value_of(e: &Event) -> String {
     e.target()
         .and_then(|t| t.dyn_into::<HtmlSelectElement>().ok())
@@ -518,14 +511,9 @@ pub fn bool_field(
     label: &str,
     value: bool,
     hint: Option<&str>,
-    mut on_input: impl FnMut(bool) + 'static,
+    on_input: impl FnMut(bool) + 'static,
 ) -> Element {
-    let box_ = input_el("checkbox");
-    box_.set_checked(value);
-    on(box_.unchecked_ref(), "change", Scope::Panel, move |e| {
-        on_input(checked_of(&e));
-    });
-    row(label, box_.unchecked_into(), hint)
+    row(label, check_button(value, label, Scope::Panel, on_input), hint)
 }
 
 pub fn text_field(
@@ -566,24 +554,56 @@ pub fn button(text: &str, scope: Scope, mut on_click: impl FnMut() + 'static) ->
         .get()
 }
 
+/// Whether a switch is on. The state lives in the attribute rather than in a
+/// property, so it survives the page being read back out of itself and a
+/// listener can be attached to the node without holding the value.
+pub fn pressed(node: &Element) -> bool {
+    node.get_attribute("aria-pressed").as_deref() == Some("true")
+}
+
+/// A switch in the control column of a settings row: square, pressed in when
+/// it is on, with a check drawn in it. The name is beside it already, so the
+/// button carries none, and the label it belongs to says what it is for
+/// anything reading the page rather than looking at it.
+pub fn check_button(
+    value: bool,
+    label: &str,
+    scope: Scope,
+    mut on_input: impl FnMut(bool) + 'static,
+) -> Element {
+    let button = el("button")
+        .class("btn toggle check")
+        .attr("type", "button")
+        .attr("aria-pressed", if value { "true" } else { "false" })
+        .attr("aria-label", label)
+        .get();
+    let node = button.clone();
+    on(button.unchecked_ref::<EventTarget>(), "click", scope, move |_| {
+        let next = !pressed(&node);
+        let _ = node.set_attribute("aria-pressed", if next { "true" } else { "false" });
+        on_input(next);
+    });
+    button
+}
+
 /// A button that stays pressed. Used where a checkbox beside a word would be
 /// a switch you have to read to know the state of: this one you can see.
 pub fn toggle_button(
     text: &str,
-    pressed: bool,
+    value: bool,
     scope: Scope,
     mut on_click: impl FnMut(bool) + 'static,
 ) -> Element {
     let button = el("button")
         .class("btn toggle")
         .attr("type", "button")
-        .attr("aria-pressed", if pressed { "true" } else { "false" })
+        .attr("aria-pressed", if value { "true" } else { "false" })
         .attr("data-find", &slug(text))
         .text(text)
         .get();
     let node = button.clone();
     on(button.unchecked_ref::<EventTarget>(), "click", scope, move |_| {
-        let next = node.get_attribute("aria-pressed").as_deref() != Some("true");
+        let next = !pressed(&node);
         let _ = node.set_attribute("aria-pressed", if next { "true" } else { "false" });
         on_click(next);
     });

@@ -403,7 +403,8 @@ for (const [key, want] of [
   if (now !== want) problems.push(`pressing ${key} selected "${now}", not "${want}"`);
 }
 // The onion switch lives in the toolbar and has to follow the key too.
-const onionOn = () => page.isChecked('#onion');
+const onionOn = async () =>
+  (await page.getAttribute('#onion', 'aria-pressed')) === 'true';
 const wasOnion = await onionOn();
 await page.keyboard.press('o');
 await page.waitForTimeout(200);
@@ -539,7 +540,8 @@ const picturesOn = await page.evaluate(() => {
   const label = [...document.querySelectorAll('#panel-body .field-label')].find((n) =>
     n.textContent.includes('Draw made things'),
   );
-  return label ? label.closest('.field').querySelector('input').checked : null;
+  const button = label?.closest('.field').querySelector('.btn.toggle');
+  return button ? button.getAttribute('aria-pressed') === 'true' : null;
 });
 if (picturesOn !== true) problems.push('sending a picture did not turn pictures on');
 await page.screenshot({ path: `${outDir}/10f-made-filled.png` });
@@ -816,18 +818,42 @@ if (await page.evaluate(() => !document.getElementById('find-results').hasAttrib
   problems.push('escape did not put the results list away');
 }
 
-// Text scale reaches the whole page through the root font size.
+// Text scale reaches the whole page through the root font size, but only once
+// the slider is let go: what it resizes is the page the slider is sitting in,
+// so applying it mid drag walks it out from under the pointer. The box beside
+// it reads the value on the way, and is a way in of its own.
 const scaled = await page.evaluate(() => {
+  const px = () => parseFloat(getComputedStyle(document.documentElement).fontSize);
   const input = document.getElementById('ui-scale');
-  const before = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  const box = document.getElementById('ui-scale-box');
+  const before = px();
   input.value = '1.5';
   input.dispatchEvent(new Event('input', { bubbles: true }));
-  const after = parseFloat(getComputedStyle(document.documentElement).fontSize);
-  input.value = '1';
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  return after / before;
+  const dragging = px() / before;
+  const reads = box.value;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  const released = px() / before;
+  box.value = '125';
+  box.dispatchEvent(new Event('change', { bubbles: true }));
+  const typed = px() / before;
+  const follows = input.value;
+  box.value = '100';
+  box.dispatchEvent(new Event('change', { bubbles: true }));
+  return { dragging, reads, released, typed, follows };
 });
-if (scaled < 1.4) problems.push(`text scale moved the root size by ${scaled.toFixed(2)}, not 1.5`);
+if (scaled.dragging !== 1) {
+  problems.push(`the page resized by ${scaled.dragging.toFixed(2)} while the slider was held`);
+}
+if (scaled.reads !== '150') problems.push(`the size box read ${scaled.reads} mid drag, not 150`);
+if (scaled.released < 1.4) {
+  problems.push(`letting the slider go moved the root size by ${scaled.released.toFixed(2)}, not 1.5`);
+}
+if (Math.abs(scaled.typed - 1.25) > 0.02) {
+  problems.push(`typing 125 into the size box moved the root size by ${scaled.typed.toFixed(2)}`);
+}
+if (scaled.follows !== '1.25') {
+  problems.push(`the slider read ${scaled.follows} after the box was typed into, not 1.25`);
+}
 
 // The settlement survives a reload. The page is told it is going away, which
 // is what writes the world down between the timed saves, and then reloaded:

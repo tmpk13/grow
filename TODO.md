@@ -12,11 +12,5 @@ What is left. What is done is in TODO_COMPLETE.md.
 
 - Need to be able to expand map mid settlement.
 
-- Text size needs a numerical input. Maybe make a confirm on text size as it moves while trying to adjust. 
-
-## Sprite editor
-- Grid toggle should be a toggle button. 
-    - Make all check boxes toggle buttons. (Add a check to checkmark when on for the toggle). 
-
 # Experimental
 - Make experimental features tab with toggle (default off). 

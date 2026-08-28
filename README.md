@@ -144,8 +144,8 @@ middle button or a held ctrl drags, wheel or pinch zooms.
 * A **sheet** is a frame size, a rate, and a stack of layers. The toolbar picks
   which one; the **Sheet** tab names, resizes, adds and removes them.
 * **Layers** stack bottom to top; the row you pick is the one you draw on, the
-  checkbox hides one without throwing it away, and **Merge down** folds one into
-  the layer beneath it. Up to eight.
+  switch beside it hides one without throwing it away, and **Merge down** folds
+  one into the layer beneath it. Up to eight.
 * **Frames** run along the strip in the panel and are stepped through from the
   toolbar (or `.`). Add an empty one, duplicate the current one to nudge a pose
   rather than redraw it, or shuffle one left and right. Up to twenty four.
@@ -690,6 +690,10 @@ and are remembered separately from it:
 * **Text** scales every label, control and panel. Everything in the stylesheet
   is sized in `rem` or fractions, and the root size is itself relative to the
   browser's own font setting, so a reader who has raised that keeps the increase.
+  The size is taken when the slider is let go rather than while it is dragged -
+  what it resizes is the page the slider is in, so applying it live walks it out
+  from under the pointer - and the box beside it takes a size in per cent for
+  anyone who would rather say one than hunt for it.
 * **Hide menu** folds the panel away and gives the map the whole window. What
   was in the middle of the view stays there.
 * **Fullscreen** goes further: the top bar, the panel, the toolbar and the

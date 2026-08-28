@@ -11,7 +11,7 @@ use crate::ui::color_wheel::{set_brush, Brush};
 use crate::ui::grid_editor::{self, GridEditor};
 use crate::ui::{
     app_button, app_danger_button, app_num, app_select, app_text, append, btn_row, button, clear,
-    clear_scope, el, input_el, on, section, window, NumOpts, Scope,
+    clear_scope, el, input_el, section, window, NumOpts, Scope,
 };
 use crate::util::{hex_to_packed, mix_packed, packed_to_hex, EMPTY_COLOR};
 
@@ -117,14 +117,12 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
 
     let mut brush = Brush::build(h, app);
 
-    let mirror = input_el("checkbox");
-    mirror.set_checked(app.ui.mirror_x);
-    {
+    let mirror = {
         let h2 = h.clone();
-        on(mirror.unchecked_ref(), "change", Scope::Panel, move |e| {
-            h2.borrow_mut().app.ui.mirror_x = crate::ui::checked_of(&e);
-        });
-    }
+        crate::ui::bool_field("Mirror X", app.ui.mirror_x, None, move |on| {
+            h2.borrow_mut().app.ui.mirror_x = on;
+        })
+    };
 
     let swatches = el("div").class("swatches").get();
 
@@ -167,7 +165,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let mut grid_rows = vec![mode_row, sync_buttons, atlas_settings(app, h), tool_buttons];
     grid_rows.append(&mut brush.rows);
     grid_rows.extend([
-        crate::ui::row("Mirror X", mirror.unchecked_into(), None),
+        mirror,
         swatches.clone(),
         wrap,
         ramp_row,

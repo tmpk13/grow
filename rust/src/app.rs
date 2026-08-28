@@ -1209,22 +1209,12 @@ fn sprite_toolbar(sh: &mut Shell, h: &Handle) -> Vec<Element> {
     }
     controls.push(el("span").class("readout").attr("id", "frame-readout").get());
 
-    let onion = ui::input_el("checkbox");
-    onion.set_checked(sh.app.ui.onion);
+    let h2 = h.clone();
+    let onion = ui::toggle_button("Onion", sh.app.ui.onion, Scope::Toolbar, move |on| {
+        h2.borrow_mut().app.ui.onion = on;
+    });
     let _ = onion.set_attribute("id", "onion");
-    {
-        let h2 = h.clone();
-        on(onion.unchecked_ref(), "change", Scope::Toolbar, move |e| {
-            h2.borrow_mut().app.ui.onion = ui::checked_of(&e);
-        });
-    }
-    controls.push(
-        el("label")
-            .class("inline")
-            .child(&el("span").text("Onion").get())
-            .child(onion.unchecked_ref())
-            .get(),
-    );
+    controls.push(onion);
 
     controls.push(zoom_control(sh, h));
     controls.push(ui::button("Fit", Scope::Toolbar, {
@@ -1236,21 +1226,10 @@ fn sprite_toolbar(sh: &mut Shell, h: &Handle) -> Vec<Element> {
         }
     }));
 
-    let grid = ui::input_el("checkbox");
-    grid.set_checked(sh.app.viewport.show_grid);
-    {
-        let h2 = h.clone();
-        on(grid.unchecked_ref(), "change", Scope::Toolbar, move |e| {
-            h2.borrow_mut().app.viewport.show_grid = ui::checked_of(&e);
-        });
-    }
-    controls.push(
-        el("label")
-            .class("inline")
-            .child(&el("span").text("Grid").get())
-            .child(grid.unchecked_ref())
-            .get(),
-    );
+    let h2 = h.clone();
+    controls.push(ui::toggle_button("Grid", sh.app.viewport.show_grid, Scope::Toolbar, move |on| {
+        h2.borrow_mut().app.viewport.show_grid = on;
+    }));
     controls.push(note_hint("left draws, right erases, middle or ctrl drags"));
     controls
 }
@@ -1802,17 +1781,59 @@ fn bind_view_actions(h: &Handle) {
         });
     }
 
-    if let Some(node) = by_id("ui-scale") {
-        if let Ok(input) = node.dyn_into::<HtmlInputElement>() {
-            input.set_value(&format!("{}", prefs.scale));
-            on(input.unchecked_ref(), "input", Scope::Global, move |e| {
-                let v: f64 = ui::value_of(&e).parse().unwrap_or(1.0);
-                let mut prefs = ui::prefs::Prefs::load();
-                prefs.scale = clamp(v, ui::prefs::SCALE_MIN, ui::prefs::SCALE_MAX);
-                prefs.apply();
-                prefs.save();
-            });
-        }
+    bind_text_scale(prefs.scale);
+}
+
+/// How large everything is drawn. What the slider changes is the size of the
+/// page it is sitting in, so dragging it moves it out from under the pointer:
+/// it is applied when it is let go, and until then the number box beside it is
+/// what says where it has got to. The box is also the way to say a size
+/// exactly, in per cent, which is the unit anybody thinks in.
+fn bind_text_scale(scale: f64) {
+    let slider = by_id("ui-scale").and_then(|n| n.dyn_into::<HtmlInputElement>().ok());
+    let box_ = by_id("ui-scale-box").and_then(|n| n.dyn_into::<HtmlInputElement>().ok());
+    let (slider, box_) = match (slider, box_) {
+        (Some(s), Some(b)) => (s, b),
+        _ => return,
+    };
+    let as_percent = |v: f64| format!("{}", (v * 100.0).round());
+    slider.set_value(&format!("{scale}"));
+    box_.set_value(&as_percent(scale));
+
+    let apply = |v: f64| {
+        let mut prefs = ui::prefs::Prefs::load();
+        prefs.scale = clamp(v, ui::prefs::SCALE_MIN, ui::prefs::SCALE_MAX);
+        prefs.apply();
+        prefs.save();
+        prefs.scale
+    };
+
+    {
+        let box_ = box_.clone();
+        on(slider.unchecked_ref(), "input", Scope::Global, move |e| {
+            let v: f64 = ui::value_of(&e).parse().unwrap_or(1.0);
+            box_.set_value(&as_percent(v));
+        });
+    }
+    {
+        let box_ = box_.clone();
+        on(slider.unchecked_ref(), "change", Scope::Global, move |e| {
+            let v: f64 = ui::value_of(&e).parse().unwrap_or(1.0);
+            box_.set_value(&as_percent(apply(v)));
+        });
+    }
+    {
+        let slider = slider.clone();
+        on(box_.unchecked_ref(), "change", Scope::Global, move |e| {
+            let v: f64 = ui::value_of(&e).parse().unwrap_or(100.0) / 100.0;
+            let settled = apply(v);
+            slider.set_value(&format!("{settled}"));
+            if let Some(node) = by_id("ui-scale-box") {
+                if let Ok(input) = node.dyn_into::<HtmlInputElement>() {
+                    input.set_value(&format!("{}", (settled * 100.0).round()));
+                }
+            }
+        });
     }
 }
 
@@ -2445,9 +2466,8 @@ fn sprite_key(sh: &mut Shell, key: &str) -> bool {
             // The onion switch is in the stage toolbar, which a panel rebuild
             // does not touch, so it is set to match by hand.
             if let Some(node) = by_id("onion") {
-                if let Ok(input) = node.dyn_into::<HtmlInputElement>() {
-                    input.set_checked(sh.app.ui.onion);
-                }
+                let _ = node
+                    .set_attribute("aria-pressed", if sh.app.ui.onion { "true" } else { "false" });
             }
         }
         "," => {

@@ -17,7 +17,7 @@ use crate::ui::color_wheel::Brush;
 use crate::ui::paint::Surface;
 use crate::ui::{
     app_button, app_danger_button, app_num, app_text, append, btn_row, button, clear,
-    danger_button, el, note, on, row, section, window, NumOpts, Scope, Tap,
+    danger_button, el, note, on, section, window, NumOpts, Scope, Tap,
 };
 use crate::util::{packed_to_hex, EMPTY_COLOR};
 
@@ -472,7 +472,7 @@ fn place_images(h: &Handle, images: Vec<crate::civ::sprites::Frame>) {
 fn nudge_row(h: &Handle) -> Element {
     // A nudge does not rebuild the panel, so the switch beside the buttons is
     // read off the page rather than kept in the shell's state.
-    let whole = crate::ui::input_el("checkbox");
+    let whole = crate::ui::check_button(false, "Every layer", Scope::Panel, |_| {});
     let mut buttons = Vec::new();
     for (label, dx, dy) in [
         ("Nudge left", -1, 0),
@@ -486,7 +486,7 @@ fn nudge_row(h: &Handle) -> Element {
             let mut sh = h2.borrow_mut();
             sh.app.record(label, true);
             let (layer, frame) = (sh.app.ui.sheet_layer, sh.app.ui.sheet_frame);
-            let every = whole.checked();
+            let every = crate::ui::pressed(&whole);
             // A selection wins over both: it is the smaller thing somebody
             // asked for, and dragging it out is a deliberate act.
             let picked = sh
@@ -502,7 +502,7 @@ fn nudge_row(h: &Handle) -> Element {
     }
     let scope = el("label")
         .class("inline")
-        .child(whole.unchecked_ref())
+        .child(&whole)
         .child(&el("span").text("whole sheet").get())
         .get();
     el("div").class("btn-row").children(buttons).child(&scope).get()
@@ -572,15 +572,13 @@ fn marquee_row(app: &App, h: &Handle) -> Option<Element> {
 }
 
 fn mirror_row(app: &App, h: &Handle) -> Element {
-    let mirror = crate::ui::input_el("checkbox");
-    mirror.set_checked(app.ui.mirror_x);
-    {
-        let h2 = h.clone();
-        on(mirror.unchecked_ref(), "change", Scope::Panel, move |e| {
-            h2.borrow_mut().app.ui.mirror_x = crate::ui::checked_of(&e);
-        });
-    }
-    row("Mirror X", mirror.unchecked_into(), Some("paints the same pixel on both sides"))
+    let h2 = h.clone();
+    crate::ui::bool_field(
+        "Mirror X",
+        app.ui.mirror_x,
+        Some("paints the same pixel on both sides"),
+        move |on| h2.borrow_mut().app.ui.mirror_x = on,
+    )
 }
 
 /// The layer stack, drawn top of the pile first the way it is looked at.
@@ -599,12 +597,12 @@ fn layers_section(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasEleme
             .unwrap();
         thumbs.push((thumb.clone(), i));
 
-        let eye = crate::ui::input_el("checkbox");
-        eye.set_checked(layer.visible);
-        {
-            let h2 = h.clone();
-            on(eye.unchecked_ref(), "change", Scope::Panel, move |e| {
-                let visible = crate::ui::checked_of(&e);
+        let h2 = h.clone();
+        let eye = crate::ui::check_button(
+            layer.visible,
+            "Layer shown",
+            Scope::Panel,
+            move |visible| {
                 let mut sh = h2.borrow_mut();
                 sh.app.record("layer visible", false);
                 with_sheet(&mut sh.app, |s| {
@@ -612,8 +610,8 @@ fn layers_section(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasEleme
                         l.visible = visible;
                     }
                 });
-            });
-        }
+            },
+        );
 
         let name = crate::ui::input_el("text");
         name.set_value(&layer.name);
@@ -979,17 +977,11 @@ fn zip_section(app: &App, h: &Handle) -> Element {
     rows.push(list);
 
     let h2 = h.clone();
-    rows.push(row(
+    rows.push(crate::ui::bool_field(
         "One file per frame too",
-        crate::ui::input_el("checkbox")
-            .tap(|i| i.set_checked(app.ui.zip_frames))
-            .tap(|i| {
-                on(i.unchecked_ref(), "change", Scope::Panel, move |e| {
-                    h2.borrow_mut().app.ui.zip_frames = crate::ui::checked_of(&e);
-                });
-            })
-            .unchecked_into(),
+        app.ui.zip_frames,
         Some("as well as the strip, not instead of it"),
+        move |on| h2.borrow_mut().app.ui.zip_frames = on,
     ));
 
     let h2 = h.clone();
@@ -1020,25 +1012,21 @@ fn store_section(app: &App, h: &Handle) -> Element {
     )];
 
     let prefs = crate::ui::prefs::Prefs::load();
-    let switch = crate::ui::input_el("checkbox");
-    switch.set_checked(prefs.keep_sprites);
-    {
-        let h2 = h.clone();
-        on(switch.unchecked_ref(), "change", Scope::Panel, move |e| {
+    let h2 = h.clone();
+    rows.push(crate::ui::bool_field(
+        "Keep a copy",
+        prefs.keep_sprites,
+        Some("every save copies the project's sheets in here"),
+        move |on| {
             let mut prefs = crate::ui::prefs::Prefs::load();
-            prefs.keep_sprites = crate::ui::checked_of(&e);
+            prefs.keep_sprites = on;
             prefs.save();
             let mut sh = h2.borrow_mut();
             if prefs.keep_sprites {
                 crate::ui::sprite_store::keep(&sh.app.state.art);
             }
             sh.app.rebuild_panel();
-        });
-    }
-    rows.push(row(
-        "Keep a copy",
-        switch.unchecked_into(),
-        Some("every save copies the project's sheets in here"),
+        },
     ));
 
     let list = el("div").class("kept-list").get();

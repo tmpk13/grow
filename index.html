@@ -41,6 +41,20 @@
         <label class="inline" for="ui-scale" title="Size of every label and control">
           <span>Text</span>
           <input id="ui-scale" type="range" min="0.75" max="1.75" step="0.05" />
+          <!-- The page is what the slider resizes, so it is applied when the
+               slider is let go rather than while it is being dragged. The box
+               reads the value on the way there, and is the way to say one
+               exactly. -->
+          <input
+            id="ui-scale-box"
+            class="num scale-box"
+            type="number"
+            min="75"
+            max="175"
+            step="5"
+            aria-label="Text size, per cent"
+          />
+          <span class="unit">%</span>
         </label>
         <button id="btn-undo" class="btn" type="button" title="Undo (ctrl+z)" disabled>Undo</button>
         <button id="btn-redo" class="btn" type="button" title="Redo (ctrl+shift+z)" disabled>Redo</button>

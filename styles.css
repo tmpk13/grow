@@ -156,6 +156,16 @@ body:not(.stage-only) .stage-escape {
   grid-template-rows: 1fr;
 }
 
+.topbar-actions .scale-box {
+  width: 3.2rem;
+  flex: 0 0 auto;
+}
+
+.topbar-actions .unit {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
 .topbar-actions .inline input[type="range"] {
   width: clamp(3.5rem, 6vw, 7rem);
 }
@@ -294,12 +304,6 @@ input[type="color"] {
   border: var(--hairline) solid var(--line);
   background: none;
   border-radius: 0.25rem;
-}
-
-input[type="checkbox"] {
-  accent-color: var(--accent);
-  width: 1rem;
-  height: 1rem;
 }
 
 .btn {
@@ -1445,6 +1449,37 @@ body.moving-people.holding #world-canvas {
 
 .btn.toggle[aria-pressed="false"] {
   color: var(--text-dim);
+}
+
+/* A tick on whatever is on, so the state is not carried by color alone. Two
+   borders on a rotated box rather than a character: a glyph brings its own
+   baseline and its own idea of how much room to leave beside itself, and a
+   check mark is not in every font a browser might fall back to. */
+.btn.toggle[aria-pressed="true"]::before {
+  content: "";
+  display: inline-block;
+  width: 0.3em;
+  height: 0.55em;
+  margin-right: 0.4em;
+  border: solid currentColor;
+  border-width: 0 0.14em 0.14em 0;
+  transform: translateY(-0.08em) rotate(45deg);
+}
+
+/* The switch in the control column of a settings row. Square, because the
+   name of the setting is already beside it, and the same height as the number
+   boxes and sliders it lines up with. */
+.btn.toggle.check {
+  width: 1.6em;
+  height: 1.6em;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn.toggle.check[aria-pressed="true"]::before {
+  margin-right: 0;
 }
 
 /* The key list in the sprite editor. Folded away by default: a reference, not

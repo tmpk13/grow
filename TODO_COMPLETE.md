@@ -3,6 +3,12 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) Every checkbox is a toggle button: square and pressed in with a check
+  drawn in it for the settings rows, the word on it for the switches in the
+  toolbar and beside the search box. There is no checkbox left in the program.
+- (LLM) Text size is applied when the slider is let go rather than while it is
+  dragged, since what it resizes is the page the slider is sitting in, and
+  there is a number box beside it that takes a size in per cent.
 - (LLM) A running settlement survives a reload. It is written to a store of its
   own every twenty seconds and again when the page is closed or hidden; coming
   back picks the same town up on the same day rather than founding a new one.
