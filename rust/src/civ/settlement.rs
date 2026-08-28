@@ -116,6 +116,14 @@ pub struct Building {
     /// them out; damp ground nearby and buckets carried up fill them again.
     /// Nothing but a farm uses it.
     pub water: f64,
+    /// Days this home has stood with nobody living in it.
+    #[serde(default)]
+    pub empty_days: f64,
+    /// How far gone it is, from sound at 0 to a heap on the ground at 1. Only
+    /// a home ever has one: a workshop nobody is at is between shifts, while a
+    /// house nobody lives in is on its way to being a ruin.
+    #[serde(default)]
+    pub decay: f64,
 }
 
 /// What a building is, through a save and back: the definition is one of the
@@ -316,6 +324,17 @@ pub struct Stats {
 ///
 /// A free function because the search borrows the map, and a method would want
 /// the settlement at the same time.
+/// What the configuration says is in the way, as one number. Zero is nothing:
+/// the switch and the threshold are the same question asked twice, and the
+/// pathfinder only wants the answer.
+fn block_mass(state: &State) -> f64 {
+    if state.civ.people.avoid_plants {
+        state.civ.people.avoid_mass.max(0.01)
+    } else {
+        0.0
+    }
+}
+
 fn step_cost(kind: u8, traffic: f32, swim: f32, base: i32) -> i32 {
     if kind == Cell::Water as u8 {
         return (base as f32 * swim.max(1.0)).round() as i32;
@@ -331,6 +350,11 @@ pub struct Settlement {
     /// configuration each tick. Held here because the pathfinder reads it from
     /// inside a closure that has already borrowed the map.
     pub swim_cost: f32,
+    /// How much plant has to be standing in a cell before people walk round it
+    /// rather than through it, in cells of mass. Taken from the configuration
+    /// each tick, beside the swim cost and for the same reason. Zero lets
+    /// everybody through everything.
+    pub block_mass: f64,
     pub rng: Rng,
     pub blocked: Vec<u8>,
     pub build_grid: Vec<i32>,
@@ -340,6 +364,11 @@ pub struct Settlement {
     /// building lookup to answer it.
     pub gates: Vec<u8>,
     pub traffic: Vec<f32>,
+    /// Cells a standing plant is in the way in. Rebuilt with the coarse plant
+    /// index rather than on every growth step: it is read by the pathfinder,
+    /// which cannot afford to ask the plant list, and a second stale is a
+    /// settler taking one step round a tree that has just come down.
+    pub plant_block: Vec<u8>,
     pub paths: PathGrid,
     pub water_paths: PathGrid,
     pub buildings: Vec<Building>,
@@ -417,11 +446,13 @@ impl Settlement {
             plant_sim,
             terrain,
             swim_cost: state.civ.people.swim_cost as f32,
+            block_mass: block_mass(state),
             rng: Rng::new(state.civ.seed),
             blocked: vec![0; n],
             build_grid: vec![0; n],
             gates: vec![0; n],
             traffic: vec![0.0; n],
+            plant_block: vec![0; n],
             paths: PathGrid::default(),
             water_paths: PathGrid::default(),
             buildings: Vec::new(),
@@ -497,6 +528,7 @@ impl Settlement {
         self.build_grid = vec![0; n];
         self.gates = vec![0; n];
         self.traffic = vec![0.0; n];
+        self.plant_block = vec![0; n];
         self.paths.resize(cols, rows);
         self.water_paths.resize(cols, rows);
         self.plant_index.resize(cols, rows);
@@ -961,12 +993,13 @@ impl Settlement {
         let build = &self.build_grid;
         let gates = &self.gates;
         let traffic = &self.traffic;
+        let plants = &self.plant_block;
         let passable = |c: i32, r: i32| {
             if c < 0 || c >= cols || r < 0 || r >= rows {
                 return false;
             }
             let i = (r * cols + c) as usize;
-            build[i] == 0 || gates[i] != 0
+            (build[i] == 0 || gates[i] != 0) && plants[i] == 0
         };
         let swim = swim_cost;
         let cost = |i: usize, base: i32| step_cost(kind[i], traffic[i], swim, base);
@@ -1125,6 +1158,8 @@ impl Settlement {
             name,
             guests: Vec::new(),
             water: 1.0,
+            empty_days: 0.0,
+            decay: 0.0,
         };
         self.buildings.push(b);
         let bi = self.buildings.len() - 1;
@@ -2381,6 +2416,8 @@ impl Settlement {
         }
         let cfg = &state.civ;
         self.swim_cost = cfg.people.swim_cost as f32;
+        self.block_mass = block_mass(state);
+        self.plant_sim.fall_time = cfg.work.fall_time.max(0.05);
         self.time += dt;
         self.ticks += 1;
         self.refresh_colonies();
@@ -2520,9 +2557,78 @@ impl Settlement {
             };
             self.colonies[ci].econ.push_history(&state.civ.economy, sample);
         }
+        self.crumble_tick(state);
         // The archive is only trimmed here, where nothing is holding a slot.
         self.people.prune(state.civ.people_archive.max(50));
         self.refresh_colonies();
+    }
+
+    /// A house nobody lives in comes down, a day at a time.
+    ///
+    /// Not the moment it empties: a home between one owner and the next is
+    /// somewhere the town is about to put somebody, and pulling it down would
+    /// be the opposite of what a town does with a spare bed. Past the wait it
+    /// starts to go, and somebody moving in at any point puts it right again
+    /// at the same rate it was going wrong. Every town's houses are looked at,
+    /// including a town with nobody left in it: an abandoned settlement
+    /// falling in is the whole reason for this.
+    fn crumble_tick(&mut self, state: &State) {
+        let cfg = &state.civ.build;
+        if !cfg.crumble {
+            return;
+        }
+        let wait = cfg.crumble_after.max(0.0);
+        let over = cfg.crumble_days.max(0.5);
+        let salvage = clamp01(cfg.crumble_salvage);
+        let mut fallen: Vec<i32> = Vec::new();
+        for bi in 0..self.buildings.len() {
+            let b = &self.buildings[bi];
+            if b.def.housing <= 0 || !b.built || b.upgrading {
+                continue;
+            }
+            // Somebody living here, rather than somebody on the deed: a house
+            // whose household has died is empty however the register reads.
+            let lived_in = b.residents.iter().any(|&id| self.people.is_alive(id));
+            let b = &mut self.buildings[bi];
+            if lived_in {
+                b.empty_days = 0.0;
+                b.decay = (b.decay - 1.0 / over).max(0.0);
+            } else {
+                b.empty_days += 1.0;
+                if b.empty_days > wait {
+                    b.decay += 1.0 / over;
+                }
+            }
+            if b.decay >= 1.0 {
+                fallen.push(b.id);
+            }
+        }
+        for id in fallen {
+            let bi = match self.building_index(id) {
+                Some(bi) => bi,
+                None => continue,
+            };
+            let at = self.access_cell(bi);
+            let rubble: Vec<(Res, f64)> = self.buildings[bi]
+                .cost
+                .iter()
+                .map(|&(res, n)| (res, (n * salvage).round()))
+                .filter(|&(_, n)| n >= 1.0)
+                .collect();
+            let (label, colony) = (self.buildings[bi].label(), self.buildings[bi].colony);
+            self.remove_building(bi);
+            // What it was built from is left where it stood, so a town that
+            // has one fall in gets some of its timber back if anybody is left
+            // to fetch it.
+            for (res, n) in rubble {
+                self.add_pile(at.0, at.1, res, n);
+            }
+            if let Some(ci) = self.colony_index(colony) {
+                let day = self.day;
+                self.colonies[ci].econ.log_event(format!("{label} fell in"), day);
+            }
+            self.ground_dirty = true;
+        }
     }
 
     fn decay_food(&mut self, state: &State, ci: usize) {
@@ -3166,13 +3272,21 @@ impl Settlement {
         (plant.height_px + plant.radius_px * 2.0) / cell_px
     }
 
-    /// Refills the coarse plant buckets. Everything that asks "what is growing
-    /// near here" reads these rather than the plant list.
+    /// Refills the coarse plant buckets, and with them the grid of cells a
+    /// plant is standing in the way in. Everything that asks "what is growing
+    /// near here" reads these rather than the plant list, and so does the
+    /// pathfinder, which cannot afford to ask anything else.
     pub fn rebuild_plant_index(&mut self) {
         let (cols, rows) = (self.world().cols, self.world().rows);
         if self.plant_index.cols == 0 || self.plant_index.buckets.is_empty() {
             self.plant_index.resize(cols, rows);
         }
+        if self.plant_block.len() != (cols * rows) as usize {
+            self.plant_block = vec![0; (cols * rows) as usize];
+        } else {
+            self.plant_block.fill(0);
+        }
+        let block_mass = self.block_mass;
         let mut index = std::mem::take(&mut self.plant_index);
         for bucket in &mut index.buckets {
             bucket.clear();
@@ -3183,7 +3297,7 @@ impl Settlement {
         // it beats hashing a species name once per plant on the map.
         let taught = self.lore.known();
         for plant in &self.plant_sim.plants {
-            if !plant.alive {
+            if !plant.standing() {
                 continue;
             }
             let mass = ((plant.height_px + plant.radius_px * 2.0) / cell_px) as f32;
@@ -3206,6 +3320,18 @@ impl Settlement {
                 lore,
             });
             index.slot_of.insert(plant.id, (b, slot));
+            // Only the cell the stem is in: a canopy is walked under, and a
+            // wood that shut every cell it shaded would be a wall. Only
+            // something with a stem, either: a mat or a tuft is trodden over,
+            // however much of it there is.
+            let woody = matches!(
+                plant.size_class,
+                SizeClass::Shrub | SizeClass::Tree | SizeClass::Vine
+            );
+            if woody && block_mass > 0.0 && mass as f64 >= block_mass {
+                let i = (plant.row * cols + plant.col) as usize;
+                self.plant_block[i] = 1;
+            }
         }
         self.plant_index = index;
     }

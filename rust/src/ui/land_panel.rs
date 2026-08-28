@@ -136,6 +136,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         app_bool(h, "River current", view.current,
             Some("ripples along the flow, baked into the ground"),
             |app, v| { app.state.civ.view.current = v; app.civ_repaint(); }),
+        app_num(h, "Fullscreen when idle (s)", view.idle_fullscreen,
+            NumOpts { min: 0.0, max: 600.0, step: 5.0 },
+            Some("with nobody touching anything for this long the map takes the whole window; \
+                  a moved pointer, a key or a touch hands the menus back. Zero never does it"),
+            |app, v| { app.state.civ.view.idle_fullscreen = v; app.request_save(); }),
         app_bool(h, "Draw only what is on screen", view.cull,
             Some("off is slower and only useful when something looks wrong at the edge"),
             |app, v| { app.state.civ.view.cull = v; app.civ_repaint(); }),

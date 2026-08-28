@@ -43,6 +43,20 @@ const MAX_WORK: f64 = 4.0;
 /// said they want that one; a camp is only guessing.
 const MIN_MASS_SHARE: f64 = 0.5;
 
+/// A claim no settler can hold, put on a plant the moment it is cut so that
+/// nobody sets off for it in the second before the index is next rebuilt.
+pub const CUT_CLAIM: u32 = u32::MAX;
+
+/// Where a fall starts. Small rather than zero, because zero is what standing
+/// means and the whole world reads the difference.
+const FALL_START: f64 = 1e-6;
+
+/// Whether this plant goes over when it is cut rather than simply being gone.
+/// A mat is cut back, a tuft is pulled, and everything that stands up falls.
+fn falls(plant: &crate::plant::Plant) -> bool {
+    plant.size_class != SizeClass::Ground && plant.height_px >= plant.cell_px as f64
+}
+
 /// Plant masses of one species that have to be cut by hand before the lesson is
 /// most of the way learned.
 const LESSON: f64 = 10.0;
@@ -280,7 +294,10 @@ impl Settlement {
     /// is carried: the hand has nowhere to put it, which is the whole point of
     /// the tool.
     fn reap(&mut self, state: &State, plant_id: i32) -> Option<Cut> {
-        let index = self.plant_sim.plant_index(plant_id).filter(|&i| self.plant_sim.plants[i].alive)?;
+        let index = self
+            .plant_sim
+            .plant_index(plant_id)
+            .filter(|&i| self.plant_sim.plants[i].standing())?;
         let class = self.plant_sim.plants[index].size_class;
         let (yields, regrow) = hand_job(class)?;
         let mass = self.plant_mass(&self.plant_sim.plants[index]);
@@ -315,8 +332,9 @@ impl Settlement {
     }
 
     /// What is left of a plant that has been harvested: ground cover is cut
-    /// back and grows again, anything else is taken away. Shared by the settler
-    /// who did it as a day's work and by the hand that did it directly.
+    /// back and grows again, anything that stands up goes over, and the rest is
+    /// taken away where it stood. Shared by the settler who did it as a day's
+    /// work and by the hand that did it directly.
     pub fn take_plant(&mut self, index: usize, cut_back: bool, regrow: f64) {
         if cut_back {
             let plant = &mut self.plant_sim.plants[index];
@@ -328,6 +346,20 @@ impl Settlement {
             let id = plant.id;
             self.plant_sim.raster_queue.push_back(id);
             self.claim_plant(id, 0);
+        } else if falls(&self.plant_sim.plants[index]) {
+            // The ground is given back the moment the cut is made rather than
+            // when the picture finishes: what is coming down is out of the
+            // world already, and something else may start growing under it.
+            let plant = &mut self.plant_sim.plants[index];
+            plant.felled = FALL_START;
+            plant.claimed_by = 0;
+            let (layer, id) = (plant.layer, plant.id);
+            let cells = std::mem::take(&mut plant.cells);
+            self.plant_sim.world.release(layer, &cells, id);
+            // The index is rebuilt on a timer of its own, and until it is, this
+            // is what keeps the next gatherer from walking to a tree that is
+            // already on its way down.
+            self.claim_plant(id, CUT_CLAIM);
         } else {
             self.plant_sim.remove_plant_at(index);
         }

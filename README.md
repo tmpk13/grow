@@ -42,6 +42,9 @@ the file directly.
 
 ## Modes
 
+The tool opens on the settlement, because that is the thing that runs; the lab
+and the sprite editor are where what it is made of gets authored.
+
 The three buttons above the panel tabs switch modes (or press `m` to go round
 them). Each has its own tabs, its own toolbar and its own stage; all three read
 the same project, so anything drawn in the lab or the sprite editor shows up in
@@ -502,6 +505,23 @@ population. Pick any available tech to make it the target.
   once there are enough people to want them, and they can be queued by hand from
   the Build panel like anything else. The light is added over the night tint
   rather than cut out of it, because a lamp gives light off.
+* **A cut tree goes over.** Nothing with a stem in it vanishes out of the hand
+  that cut it: it tips from its foot, over a second or so, and is only off the
+  map once it is lying down. The ground it stood on is free from the moment of
+  the cut, because something else may start growing there. Ground cover, which
+  is cut back rather than pulled up, has nothing to tip.
+* **Trees are in the way.** A shrub, tree or vine with enough of itself grown
+  shuts the one cell its stem is in, so people walk round it rather than
+  through it. Only the stem: a canopy is walked under, and a wood is walked
+  through rather than round. Both the switch and how much of a plant counts are
+  in the People panel, and turning it off is how it used to be.
+* **A house nobody lives in falls in.** Past a wait, an empty home loses its
+  roof from the ridge outward and then its walls from the top down, weathering
+  as it goes. When there is nothing left the ground comes back and a share of
+  what it was built from is left lying in the rubble for anybody still around
+  to fetch. Somebody moving in at any point puts it right again at the same
+  rate it was going wrong, so a town between owners loses nothing - and a town
+  that has died out does not stand forever.
 * **Water is crossable, at a price.** A step into water costs the pathfinder
   several steps of dry ground, so a river is swum only when walking round it
   would be much further, and a swimmer moves at a fraction of walking speed and
@@ -718,6 +738,15 @@ and are remembered separately from it:
   leaves too; if it refuses, the button and escape still work. The camera is
   pulled back to fill the space it gains, but never pushed in, so a view zoomed
   into one corner keeps its place and simply shows more around it.
+
+A settlement left alone does the same thing on its own. With nobody touching
+anything for **Fullscreen when idle** seconds - twenty by default, in the Land
+panel's View section, zero for never - the chrome folds away and the map takes
+the window. This is not the browser's fullscreen: a window nobody has touched
+cannot ask for the screen, the request needs a gesture behind it and would be
+refused. There is nothing to press to get out of it either, because anything at
+all gets out of it: a moved pointer, a key, a touch. It waits for the
+settlement only, and never while a question is on the screen.
 
 ## Checks
 

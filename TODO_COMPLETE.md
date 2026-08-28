@@ -3,6 +3,31 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A cut plant goes over rather than vanishing out of the hand that cut
+  it: anything with a stem tips from its foot over a settable second or so and
+  is only off the map once it is down. The ground it stood on is given back at
+  once, so something else can start growing under it.
+- (LLM) People walk round trees. A shrub, tree or vine with enough of itself
+  standing in a cell shuts that one cell to the pathfinder, the trunk only, so
+  a wood is walked through rather than round. Settable, and the grid is saved
+  with the settlement because it is worked out on a timer and a restored town
+  would otherwise walk round a tree it had not noticed yet.
+- (LLM) A house nobody lives in falls in. Past a settable wait it loses its
+  roof from the ridge out and then its walls from the top down, weathering as
+  it goes; when it is gone the ground comes back and a quarter of what it was
+  built from is left lying in the rubble. Somebody moving in at any point puts
+  it right again at the same rate.
+- (LLM) The tool opens on the settlement rather than the plant lab, and with
+  nobody touching anything for twenty seconds the map takes the whole window on
+  its own. That is the page folding its own chrome away rather than the browser
+  going fullscreen - an untouched window cannot ask for the screen - and a
+  moved pointer, a key or a touch hands the menus straight back. Settable, zero
+  never does it.
+- (LLM) Anything left on the ground rots over a week rather than four days, and
+  the setting says so.
+- (LLM) A saved settlement comes back bit for bit. serde_json's default float
+  parser is not correctly rounded, so a number written exactly came back a
+  fraction out and a fortnight later it was a different town.
 - (LLM) A Harvest switch over the map: hold or drag over what is growing and it
   comes down, with a bar per plant that fills while the pointer is on it and
   runs back out if it is let go of too soon. What a cut is worth is left where

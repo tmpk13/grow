@@ -145,6 +145,13 @@ body:not(.stage-only) .stage-escape {
   display: none;
 }
 
+/* Settled into the window on its own rather than because somebody asked for it.
+   There is nothing to press to get out of it: the first sign of life anywhere,
+   a moved pointer included, hands the menus straight back. */
+.settled .stage-escape {
+  display: none;
+}
+
 /* Folded away, the map gets the window. The panel is taken out of the grid
    rather than hidden in place, so the stage reflows into the space. */
 .menu-collapsed .panel {

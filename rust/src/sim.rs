@@ -14,6 +14,11 @@ use crate::world::{World, WorldConfig};
 
 const SHADOW_COLOR: u32 = pack_rgba(6, 10, 14, 255);
 
+/// How far over a cut plant goes before it is taken off the map. Not the whole
+/// quarter turn: a trunk on the ground still has its own thickness, and the
+/// last few degrees are the ones that read as sinking into the soil.
+const FALL_ANGLE: f64 = 1.42;
+
 /// Ramps are looked up per pixel during shading, so they are resolved once per
 /// species and cached until the sampling boxes change.
 #[derive(Default)]
@@ -89,6 +94,9 @@ pub struct Sim {
     /// many instances of it the world carries. The settlement map runs richer
     /// than the lab because it is larger and because people eat what grows.
     pub wild_scale: f64,
+    /// Seconds a cut plant takes to go over. Set from the settlement, which is
+    /// the only place anything is ever cut down.
+    pub fall_time: f64,
 }
 
 impl Sim {
@@ -108,6 +116,7 @@ impl Sim {
             buffer_dirty: true,
             raster_queue: VecDeque::new(),
             wild_scale: 1.0,
+            fall_time: 1.2,
         };
         sim.reset(state.seed);
         sim
@@ -136,7 +145,20 @@ impl Sim {
         self.ticks += 1;
         self.spawn_phase(state, dt, blocked);
 
+        let fall = self.fall_time.max(0.05);
         for i in (0..self.plants.len()).rev() {
+            if self.plants[i].felled > 0.0 {
+                // Coming down. Nothing grows, shades or seeds from here: the
+                // only thing left to do with it is finish the fall. The buffer
+                // is not marked dirty for this, because the settlement redraws
+                // what the camera can see every frame anyway and marking it
+                // would rebuild the cached ground once per tick of the fall.
+                self.plants[i].felled += dt / fall;
+                if self.plants[i].felled >= 1.0 {
+                    self.remove_plant_at(i);
+                }
+                continue;
+            }
             let species = match state.species.iter().find(|s| s.id == self.plants[i].species_id) {
                 Some(s) => s,
                 None => {
@@ -168,7 +190,7 @@ impl Sim {
             let mine: Vec<(i32, i32)> = self
                 .plants
                 .iter()
-                .filter(|p| p.species_id == sp.id)
+                .filter(|p| p.species_id == sp.id && p.standing())
                 .map(|p| (p.col, p.row))
                 .collect();
             if mine.len() as f64 >= limits.max_instances as f64 * scale {
@@ -361,6 +383,10 @@ impl Sim {
         }
         let anchor_x = w.anchor_x(plant.col);
         let anchor_y = w.anchor_y(plant.row);
+        if plant.felled > 0.0 {
+            self.blit_falling(buf, index, over);
+            return;
+        }
         if shadows && plant.size_class != SizeClass::Ground && plant.radius_px > 1.0 {
             cast_shadow(w, buf, anchor_x, anchor_y, plant);
         }
@@ -400,6 +426,68 @@ impl Sim {
                     continue;
                 }
                 *dst = v;
+            }
+        }
+    }
+
+    /// A plant on its way over: the same sprite, turned about its foot.
+    ///
+    /// The destination is walked rather than the source, and each pixel asks
+    /// the sprite what was there, because a forward pass would leave the
+    /// picture full of holes as it turns. The angle runs as the square of how
+    /// far through the fall it is, so a tree leans, then goes.
+    fn blit_falling(&self, buf: &mut [u32], index: usize, over: Foliage) {
+        let plant = &self.plants[index];
+        let w = &self.world;
+        let b = plant.bounds;
+        let t = clamp(plant.felled, 0.0, 1.0);
+        let angle = FALL_ANGLE * t * t * plant.fall_dir();
+        let (sin, cos) = angle.sin_cos();
+        let anchor_x = w.anchor_x(plant.col);
+        let anchor_y = w.anchor_y(plant.row);
+        // The box the turned sprite lands in, from its own four corners.
+        let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+        for (cx, cy) in [(b.x0, b.y0), (b.x1, b.y0), (b.x0, b.y1), (b.x1, b.y1)] {
+            let u = (cx - plant.ox) as f64;
+            let v = (cy - plant.oy) as f64;
+            let dx = (u * cos - v * sin).round() as i32;
+            let dy = (u * sin + v * cos).round() as i32;
+            x0 = x0.min(anchor_x + dx - 1);
+            y0 = y0.min(anchor_y + dy - 1);
+            x1 = x1.max(anchor_x + dx + 1);
+            y1 = y1.max(anchor_y + dy + 1);
+        }
+        for wy in y0.max(0)..=y1.min(w.px_h - 1) {
+            let drow = (wy * w.px_w) as usize;
+            let v = (wy - anchor_y) as f64;
+            for wx in x0.max(0)..=x1.min(w.px_w - 1) {
+                let u = (wx - anchor_x) as f64;
+                let sx = (plant.ox as f64 + u * cos + v * sin).round() as i32;
+                let sy = (plant.oy as f64 - u * sin + v * cos).round() as i32;
+                if sx < b.x0 || sx > b.x1 || sy < b.y0 || sy > b.y1 {
+                    continue;
+                }
+                let value = plant.sprite[(sy * plant.w + sx) as usize];
+                if value == 0 {
+                    continue;
+                }
+                let dst = &mut buf[drow + wx as usize];
+                if over != Foliage::Solid && crate::util::is_person(*dst) {
+                    match over {
+                        Foliage::Solid => {}
+                        Foliage::Hatched => {
+                            if (wx + wy) % 2 != 0 {
+                                *dst = crate::util::mark_person(value);
+                            }
+                        }
+                        Foliage::Faded(alpha) => {
+                            *dst =
+                                crate::util::mark_person(crate::util::mix_packed(*dst, value, alpha));
+                        }
+                    }
+                    continue;
+                }
+                *dst = value;
             }
         }
     }

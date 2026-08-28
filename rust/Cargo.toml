@@ -11,7 +11,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `float_roundtrip` is what makes a saved settlement come back bit for bit.
+# Without it the parser is not correctly rounded: a number is written exactly
+# and read back a fraction out, and a hundred days later that is a different
+# town.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "=0.2.127"

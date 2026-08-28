@@ -967,6 +967,17 @@ pub struct BuildConfig {
     /// People a stall needs behind it to be worth keeping. A counter takes its
     /// keeper out of every other trade, which a hamlet cannot afford.
     pub stall_customers: i32,
+    /// Whether a house nobody lives in falls down on its own.
+    pub crumble: bool,
+    /// Days a home stands empty before it starts to go. Long enough that a
+    /// house between owners is not a ruin, short enough that a town that has
+    /// died out does not stand forever.
+    pub crumble_after: f64,
+    /// Days from the first crack to the ground. Somebody moving in at any
+    /// point puts it right again at the same rate.
+    pub crumble_days: f64,
+    /// Share of what it was built from left lying in the rubble.
+    pub crumble_salvage: f64,
 }
 
 impl Default for BuildConfig {
@@ -1004,6 +1015,10 @@ impl Default for BuildConfig {
             stall_margin: 0.35,
             stalls_per_town: 4,
             stall_customers: 8,
+            crumble: true,
+            crumble_after: 4.0,
+            crumble_days: 8.0,
+            crumble_salvage: 0.25,
         }
     }
 }

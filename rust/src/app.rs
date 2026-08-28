@@ -793,7 +793,9 @@ pub fn start() -> Result<(), JsValue> {
         sim,
         settlement: None,
         viewport,
-        mode: Mode::Lab,
+        // The settlement is what the tool is for; the lab and the sprite
+        // editor are where what it is made of gets authored.
+        mode: Mode::Settlement,
         ui: ui_state,
         env: Env::default(),
         scratch: Scratch::default(),
@@ -835,8 +837,8 @@ pub fn start() -> Result<(), JsValue> {
     {
         let mut sh = handle.borrow_mut();
         let sh = &mut *sh;
-        show_mode(sh, &handle, Mode::Lab);
-        sh.app.viewport.fit(&sh.app.sim.world);
+        show_mode(sh, &handle, Mode::Settlement);
+        fit_view(&mut sh.app);
     }
 
     start_frame_loop(handle);
@@ -1964,6 +1966,11 @@ fn set_stage_only(app: &mut App, on: bool) {
     if let Some(body) = document().body() {
         let list = body.class_list();
         let _ = if on { list.add_1("stage-only") } else { list.remove_1("stage-only") };
+        if !on {
+            // However the chrome comes back, the page is no longer showing the
+            // map because it was left alone.
+            let _ = list.remove_1("settled");
+        }
     }
     app.viewport.resize();
     fill_view(app);
@@ -2001,7 +2008,7 @@ fn bind_fullscreen(h: &Handle) {
         });
     }
 
-    bind_idle_fade();
+    bind_idle(h);
 
     let h2 = h.clone();
     on(document().unchecked_ref(), "fullscreenchange", Scope::Global, move |_| {
@@ -2029,43 +2036,99 @@ fn bind_fullscreen(h: &Handle) {
 /// fullscreen gets out of the way as well.
 const IDLE_MS: i32 = 2_500;
 
-/// Fades the escape hatch out once nothing has moved for a while, and brings it
-/// back on the first sign of life. Only the class is managed here; what it does
-/// is the stylesheet's business, and it does nothing at all outside fullscreen.
-fn bind_idle_fade() {
-    /// The callback the timer fires, held for as long as the page is up.
+/// How long after settling into fullscreen the page ignores being woken.
+/// Folding the menu away moves everything that was under the pointer, and a
+/// browser is entitled to report that as a pointer move; without this the map
+/// would come straight back out of the state it just went into.
+const SETTLE_GRACE_MS: f64 = 800.0;
+
+/// Two things wait on nobody touching anything: the escape hatch fades out of
+/// a fullscreen that was asked for, and the settlement takes the whole window
+/// on its own once it has been left alone long enough.
+///
+/// Settling in is deliberately not the browser's fullscreen. A window nobody
+/// has touched for twenty seconds cannot ask for the screen - the request
+/// needs a gesture behind it and would be refused - so this folds the page's
+/// own chrome away instead, and anything at all puts it back.
+fn bind_idle(h: &Handle) {
+    /// A callback a timer fires, held for as long as the page is up.
     type Arm = Rc<RefCell<Option<Closure<dyn FnMut()>>>>;
-    let timer: Rc<Cell<i32>> = Rc::new(Cell::new(0));
-    let arm: Arm = Rc::new(RefCell::new(None));
+    let fade_timer: Rc<Cell<i32>> = Rc::new(Cell::new(0));
+    let settle_timer: Rc<Cell<i32>> = Rc::new(Cell::new(0));
+    let settled_at: Rc<Cell<f64>> = Rc::new(Cell::new(0.0));
+
+    let fade: Arm = Rc::new(RefCell::new(None));
     {
-        let arm2 = arm.clone();
-        *arm.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-            let _ = &arm2;
+        let fade2 = fade.clone();
+        *fade.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+            let _ = &fade2;
             if let Some(body) = document().body() {
                 let _ = body.class_list().add_1("idle");
             }
         }) as Box<dyn FnMut()>));
     }
 
+    let settle: Arm = Rc::new(RefCell::new(None));
+    {
+        let settle2 = settle.clone();
+        let h2 = h.clone();
+        let at = settled_at.clone();
+        *settle.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+            let _ = &settle2;
+            if stage_only() || !can_settle(&h2) {
+                return;
+            }
+            if let Some(body) = document().body() {
+                let _ = body.class_list().add_1("settled");
+            }
+            at.set(ui::now());
+            set_stage_only(&mut h2.borrow_mut().app, true);
+        }) as Box<dyn FnMut()>));
+    }
+
+    let h2 = h.clone();
     let wake = move |_: Event| {
         let body = match document().body() {
             Some(b) => b,
             None => return,
         };
-        let _ = body.class_list().remove_1("idle");
-        if timer.get() != 0 {
-            window().clear_timeout_with_handle(timer.get());
-            timer.set(0);
+        if body.class_list().contains("settled") {
+            // The page stirred the pointer itself by folding the menu away.
+            if ui::now() - settled_at.get() < SETTLE_GRACE_MS {
+                return;
+            }
+            let _ = body.class_list().remove_1("settled");
+            settled_at.set(0.0);
+            set_stage_only(&mut h2.borrow_mut().app, false);
         }
-        if !body.class_list().contains("stage-only") {
+        let _ = body.class_list().remove_1("idle");
+        for timer in [&fade_timer, &settle_timer] {
+            if timer.get() != 0 {
+                window().clear_timeout_with_handle(timer.get());
+                timer.set(0);
+            }
+        }
+        if body.class_list().contains("stage-only") {
+            if let Some(cb) = fade.borrow().as_ref() {
+                if let Ok(id) = window().set_timeout_with_callback_and_timeout_and_arguments_0(
+                    cb.as_ref().unchecked_ref(),
+                    IDLE_MS,
+                ) {
+                    fade_timer.set(id);
+                }
+            }
             return;
         }
-        if let Some(cb) = arm.borrow().as_ref() {
+        let after = settle_after(&h2);
+        if after <= 0.0 {
+            return;
+        }
+        if let Some(cb) = settle.borrow().as_ref() {
             if let Ok(id) = window().set_timeout_with_callback_and_timeout_and_arguments_0(
                 cb.as_ref().unchecked_ref(),
-                IDLE_MS,
+                (after * 1000.0).clamp(1000.0, 3_600_000.0) as i32,
             ) {
-                timer.set(id);
+                settle_timer.set(id);
             }
         }
     };
@@ -2074,6 +2137,31 @@ fn bind_idle_fade() {
     for event in ["pointermove", "pointerdown", "keydown", "wheel", "fullscreenchange"] {
         on(window().unchecked_ref(), event, Scope::Global, wake.clone());
     }
+    // Nothing has to happen for the first wait to start: a page opened and left
+    // alone is exactly the case this is for.
+    wake(Event::new("wake").unwrap());
+}
+
+/// How long the map waits before taking the window, in seconds. Zero is never,
+/// which is what it means everywhere but the settlement.
+fn settle_after(h: &Handle) -> f64 {
+    let sh = match h.try_borrow() {
+        Ok(sh) => sh,
+        Err(_) => return 0.0,
+    };
+    if sh.app.mode != Mode::Settlement {
+        return 0.0;
+    }
+    sh.app.state.civ.view.idle_fullscreen.max(0.0)
+}
+
+/// Whether now is a moment to fold the chrome away. A question waiting on an
+/// answer is chrome somebody is in the middle of, however still they are.
+fn can_settle(h: &Handle) -> bool {
+    if settle_after(h) <= 0.0 {
+        return false;
+    }
+    !by_id("confirm").map(|n| !n.has_attribute("hidden")).unwrap_or(false)
 }
 
 fn collapse_label(collapsed: bool) -> &'static str {

@@ -85,12 +85,17 @@ fn a_cut_by_hand_leaves_what_it_was_worth_on_the_ground() {
 
     let cut = cut_once(&mut sim, &state, at);
     assert!(!cut.gains.is_empty(), "the cut paid out nothing at all");
-    let left = sim
-        .plant_sim
-        .plant_index(id)
-        .map(|i| sim.plant_mass(&sim.plant_sim.plants[i]))
-        .unwrap_or(0.0);
-    assert!(left < was, "the plant under the pointer is the size it was");
+    // Three things a cut can leave: nothing, a plant cut back to grow again, or
+    // one on its way to the ground. What it may not leave is the plant that
+    // was there, standing and the size it was.
+    match sim.plant_sim.plant_index(id) {
+        None => {}
+        Some(i) if !sim.plant_sim.plants[i].standing() => {}
+        Some(i) => assert!(
+            sim.plant_mass(&sim.plant_sim.plants[i]) < was,
+            "the plant under the pointer is standing and the size it was",
+        ),
+    }
     assert!(sim.piles.len() > before, "the cut left nothing on the ground");
     assert!(
         sim.piles.iter().any(|p| p.by_hand && p.n > 0.0),

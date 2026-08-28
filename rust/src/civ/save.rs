@@ -28,7 +28,7 @@ use crate::state::State;
 /// Bumped whenever the shape below changes in a way an older file cannot be
 /// read into. There is no upgrade path: a settlement is a thing being watched,
 /// not a document, and starting a fresh one costs a moment.
-pub const SNAPSHOT_VERSION: u32 = 2;
+pub const SNAPSHOT_VERSION: u32 = 3;
 
 /// The world a saved settlement grew on, as one string. Everything the map is
 /// built from is in here, so two settlements with the same key stand on the
@@ -71,6 +71,12 @@ pub struct Snapshot {
     pub next_boat_id: i32,
     /// Where the ground has been walked into paths.
     pub traffic: Vec<f32>,
+    /// Which cells a plant is standing in the way in. Worked out from the
+    /// plants, but only on a timer, and the pathfinder reads it: a restored
+    /// settlement that rebuilt it a second early would walk round a tree the
+    /// saved one had not noticed yet, and come apart from there.
+    #[serde(default)]
+    pub plant_block: Vec<u8>,
     /// What is left in each deposit, in the order the terrain lays them out.
     /// The rest of the map is made fresh from the seed.
     pub deposits: Vec<f64>,
@@ -117,6 +123,7 @@ struct SnapshotRef<'a> {
     boats: &'a [Boat],
     next_boat_id: i32,
     traffic: &'a [f32],
+    plant_block: &'a [u8],
     deposits: Vec<f64>,
     time: f64,
     day: i32,
@@ -158,6 +165,7 @@ pub fn capture(sim: &Settlement, state: &State) -> String {
         boats: &sim.boats,
         next_boat_id: sim.next_boat_id,
         traffic: &sim.traffic,
+        plant_block: &sim.plant_block,
         deposits: sim.terrain.deposits.iter().map(|d| d.amount).collect(),
         time: sim.time,
         day: sim.day,
@@ -271,6 +279,11 @@ pub fn restore(sim: &mut Settlement, state: &State, snap: Snapshot) -> Result<()
     sim.people.reindex();
     sim.rebuild_plant_index();
     sim.plant_index.timer = snap.plant_index_timer;
+    // After the rebuild, which would otherwise have worked out a fresher one
+    // than the settlement was saved with.
+    if snap.plant_block.len() == sim.plant_block.len() {
+        sim.plant_block = snap.plant_block;
+    }
     sim.refresh_colonies();
     sim.ready = true;
     sim.ground_dirty = true;

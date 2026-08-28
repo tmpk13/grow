@@ -7,7 +7,7 @@ use grow::civ::settlement::{Rect, Settlement};
 use grow::civ::sprites::{motion_of, natural_cmp, Clip, Motion, PeopleSprites, MAX_FRAME_PX};
 use grow::civ::terrain::Cell;
 use grow::sim::Sim;
-use grow::species::SIZE_CLASSES;
+use grow::species::{SizeClass, SIZE_CLASSES};
 use grow::state::State;
 
 fn run_lab(ticks: usize) -> (Sim, State) {
@@ -210,7 +210,11 @@ fn a_town_outlives_its_founders() {
             lived += 1;
         }
         births += sim.births as usize;
-        married += sim.people.iter().filter(|p| p.spouse != 0).count();
+        // Everyone who was married at the end of their own story rather than
+        // the couples left standing on the last day: a hundred days of a five
+        // person town is chaotic, and who is alive and paired off when the
+        // clock stops is a lottery. Whether anybody ever married is not.
+        married += sim.people.archive().iter().filter(|p| p.spouse != 0).count();
         // Births have to be spread over the couples. One mother accounting for
         // most of a generation is the failure, and it is not enough to check
         // that more than one mother exists: the one couple picked every day
@@ -240,7 +244,7 @@ fn a_town_outlives_its_founders() {
     );
     assert!(
         married >= SEEDS.len(),
-        "only {married} married adults across {} towns",
+        "only {married} settlers ever married across {} towns",
         SEEDS.len()
     );
 }
@@ -687,6 +691,156 @@ fn water_is_crossed_or_walked_round_according_to_what_a_swim_costs() {
     sim.swim_cost = 500.0;
     let round = sim.find_path(c - 2, r, c + 2, r);
     assert!(!wet(&sim, &round), "a swim priced out of reach was taken anyway");
+}
+
+#[test]
+fn a_trunk_is_walked_round_rather_than_through() {
+    let mut state = State::new();
+    state.civ.world.cols = 96;
+    state.civ.world.rows = 40;
+    state.civ.terrain.warmup = 240.0;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+
+    // A plant the pathfinder has marked as being in the way, with dry open
+    // ground two steps to either side of it.
+    let (cols, rows) = (sim.world().cols, sim.world().rows);
+    let stem = (1..rows - 1)
+        .flat_map(|r| (2..cols - 2).map(move |c| (c, r)))
+        .find(|&(c, r)| {
+            sim.plant_block[(r * cols + c) as usize] != 0
+                && sim.walkable(c - 2, r)
+                && sim.walkable(c + 2, r)
+                && !sim.in_water(c - 1, r)
+                && !sim.in_water(c + 1, r)
+                && sim.plant_block[(r * cols + c - 1) as usize] == 0
+                && sim.plant_block[(r * cols + c + 1) as usize] == 0
+        });
+    let (c, r) = match stem {
+        Some(at) => at,
+        None => panic!("nothing grew that anybody would have to walk round"),
+    };
+    let through = |path: &Option<Vec<(i32, i32)>>| {
+        path.as_ref().is_some_and(|p| p.contains(&(c, r)))
+    };
+
+    let round = sim.find_path(c - 2, r, c + 2, r);
+    assert!(round.is_some(), "the two sides of a tree are not connected at all");
+    assert!(!through(&round), "the way round a trunk went straight through it");
+
+    // Told that nothing is ever in the way, the same request takes the short
+    // line across the cell the tree is standing in.
+    sim.block_mass = 0.0;
+    sim.rebuild_plant_index();
+    let across = sim.find_path(c - 2, r, c + 2, r);
+    assert!(through(&across), "with nothing in the way the walk still went round");
+}
+
+/// A town that has died out does not stand forever. This empties one rather
+/// than waiting a hundred days for it to empty itself, because what is being
+/// checked is what happens to the houses afterward.
+#[test]
+fn the_houses_of_a_town_with_nobody_left_fall_in() {
+    let mut state = State::new();
+    state.civ.world.cols = 48;
+    state.civ.world.rows = 24;
+    state.civ.terrain.warmup = 60.0;
+    state.civ.build.crumble_after = 2.0;
+    state.civ.build.crumble_days = 4.0;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    let day = (state.civ.people.day_length / dt).round() as i32;
+    let mut home = None;
+    for _ in 0..40 {
+        for _ in 0..day {
+            sim.step(&state, dt);
+        }
+        home = sim.buildings.iter().find(|b| b.def.housing > 0 && b.built).map(|b| b.id);
+        if home.is_some() {
+            break;
+        }
+    }
+    let id = home.expect("nobody built a house in forty days");
+    let (col, row) = match sim.building_index(id) {
+        Some(bi) => (sim.buildings[bi].col, sim.buildings[bi].row),
+        None => unreachable!(),
+    };
+    for pi in sim.people.live_indices() {
+        sim.people.retire(pi);
+    }
+
+    // Standing empty is not the same as coming down: it takes the wait and
+    // the fall together before there is nothing left.
+    for _ in 0..day * 2 {
+        sim.step(&state, dt);
+    }
+    let standing = match sim.building_index(id) {
+        Some(bi) => sim.buildings[bi].decay,
+        None => panic!("an empty house was pulled down on the spot"),
+    };
+    assert!(standing < 1.0, "a house went in two days when it takes six");
+
+    // Then it goes, and the ground it stood on comes back with it.
+    for _ in 0..day * 10 {
+        sim.step(&state, dt);
+        if sim.building_index(id).is_none() {
+            break;
+        }
+    }
+    assert!(sim.building_index(id).is_none(), "an empty house never fell in");
+    assert!(sim.walkable(col, row), "the ground under a fallen house is still shut");
+}
+
+#[test]
+fn a_cut_tree_goes_over_before_it_goes_away() {
+    let mut state = State::new();
+    state.civ.world.cols = 64;
+    state.civ.world.rows = 28;
+    state.civ.terrain.warmup = 240.0;
+    state.civ.work.fall_time = 2.0;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+
+    let tallest = sim
+        .plant_sim
+        .plants
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.size_class != SizeClass::Ground)
+        .max_by(|a, b| a.1.height_px.total_cmp(&b.1.height_px))
+        .map(|(i, p)| (i, p.id, p.col, p.row));
+    let (index, id, col, row) = match tallest {
+        Some(found) => found,
+        None => panic!("nothing grew that could be felled"),
+    };
+    let cells_before = sim.plant_sim.world.occupant(3, col, row);
+
+    sim.take_plant(index, false, 0.0);
+    let at = sim.plant_sim.plant_index(id).expect("a felled tree is still on the map");
+    assert!(!sim.plant_sim.plants[at].standing(), "a cut tree is still standing");
+    assert!(sim.plant_sim.plants[at].alive, "a cut tree was taken away where it stood");
+    if cells_before != 0 {
+        assert_eq!(
+            sim.plant_sim.world.occupant(3, col, row),
+            0,
+            "the ground under a felled tree is still claimed by it",
+        );
+    }
+
+    // It turns further every tick, and is off the map once it is down.
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    sim.step(&state, dt);
+    let leaning = sim.plant_sim.plant_index(id).map(|i| sim.plant_sim.plants[i].felled);
+    assert!(leaning.unwrap_or(0.0) > 0.0, "the fall did not start");
+    for _ in 0..(2.0 / dt).ceil() as i32 + 2 {
+        sim.step(&state, dt);
+    }
+    assert!(
+        sim.plant_sim.plant_index(id).is_none(),
+        "a tree that finished falling is still on the map",
+    );
 }
 
 #[test]

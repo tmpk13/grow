@@ -1,4 +1,4 @@
-// Loads the tool in a headless browser, clicks through both modes and every
+// Loads the tool in a headless browser, clicks through every mode and every
 // tab in them, and reports any console error or uncaught exception. Writes
 // screenshots next to the output path given as the first argument.
 //
@@ -42,6 +42,20 @@ if ((await page.locator('.tab').count()) === 0) {
   server.kill();
   process.exit(1);
 }
+
+// The settlement is the mode the tool opens in, and founding it runs the
+// wilderness warmup, which blocks for a moment.
+await page.waitForTimeout(9000);
+await page.screenshot({ path: `${outDir}/00-opening.png` });
+if ((await page.getAttribute('.mode.active', 'data-mode')) !== 'settlement') {
+  problems.push('the tool did not open on the settlement');
+}
+if (!/day \d+/.test(await page.evaluate(() => document.getElementById('statusbar').textContent))) {
+  problems.push('the settlement it opened on is not running');
+}
+// Everything below works the lab over first, so go there by hand.
+await page.click('.mode:text-is("Plant lab")');
+await page.waitForTimeout(800);
 
 // The speed slider is logarithmic from a quarter to two hundred, so a
 // multiplier has to be converted to a position on it.

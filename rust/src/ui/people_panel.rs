@@ -143,6 +143,15 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         people_num(h, "Cost of a swim", p.swim_cost, 1.0, 40.0, 0.5,
             Some("how much dearer a step into water is than one onto ground: high enough and \
                   a river is only ever walked round"), |c, v| c.swim_cost = v),
+        app_bool(h, "Walk round plants", p.avoid_plants,
+            Some("a trunk is something to go round rather than through; off is the way it was, \
+                  with people passing straight through trees"),
+            |app, v| { app.state.civ.people.avoid_plants = v; app.request_save(); }),
+        people_num(h, "In the way above", p.avoid_mass, 0.5, 12.0, 0.5,
+            Some("how much of a shrub, tree or vine has to be standing in a cell before it is \
+                  walked round, in cells; a sapling below it is stepped over, and mats and \
+                  tufts always are"),
+            |c, v| c.avoid_mass = v),
         people_num(h, "Carry capacity", p.carry_capacity, 1.0, 80.0, 1.0, Some("one load; the rest is left where it fell"), |c, v| c.carry_capacity = v),
         people_num(h, "Work rate", p.work_rate, 0.1, 4.0, 0.1, Some("global multiplier on every kind of work"), |c, v| c.work_rate = v),
         people_num(h, "Laborer share", p.laborer_share, 0.0, 0.9, 0.05, Some("adults kept out of workplaces to haul and build"), |c, v| c.laborer_share = v),
@@ -256,7 +265,14 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
 
     append(root, section("More rates", vec![
         work_num(h, "Cleared ground yield", w.clear_yield, 0.0, 1.0, 0.05, Some("share of a plant recovered when a building is raised over it"), |c, v| c.clear_yield = v),
-        work_num(h, "Dropped load life (days)", w.pile_life, 0.2, 30.0, 0.2, None, |c, v| c.pile_life = v),
+        work_num(h, "A tree takes to fall (s)", w.fall_time, 0.1, 10.0, 0.1,
+            Some("anything with a stem goes over where it stood rather than vanishing out of \
+                  the hand that cut it"),
+            |c, v| c.fall_time = v),
+        work_num(h, "Dropped load life (days)", w.pile_life, 0.2, 30.0, 0.2,
+            Some("anything left on the ground, cut by hand or dropped by somebody working, rots \
+                  away over this long if nobody fetches it"),
+            |c, v| c.pile_life = v),
         work_num(h, "Replanning interval (s)", w.plan_interval, 0.1, 10.0, 0.1, None, |c, v| c.plan_interval = v),
         work_num(h, "Plant index rebuild (s)", w.plant_index_interval, 0.2, 20.0, 0.2,
             Some("how often the coarse map of what is growing where is refreshed"), |c, v| c.plant_index_interval = v),

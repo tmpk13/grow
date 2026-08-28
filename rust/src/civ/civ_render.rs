@@ -394,10 +394,16 @@ fn building_key(
     night: bool,
     detail: Detail,
 ) -> SpriteKey {
-    let stage = if b.built {
-        9
-    } else {
+    let stage = if !b.built {
         (((b.work_done / b.work.max(1.0)) * 8.0).floor() as i32).min(8)
+    } else if b.decay > 0.0 {
+        // Past the finished stage, one number per visible step of falling in.
+        // Quantized, because the picture is cached by this key and a house
+        // coming down over a week would otherwise be a new sprite every day
+        // for no difference anybody can see.
+        10 + ruin_stage(b.decay)
+    } else {
+        9
     };
     SpriteKey::Building {
         def: b.def as *const _ as usize,
@@ -521,6 +527,56 @@ pub fn building_sprite(
     sprite
 }
 
+/// Visible steps between a sound house and a heap on the ground.
+const RUIN_STEPS: i32 = 6;
+
+/// Which of those steps a house is on. Nothing about the shape changes below
+/// the first one, so a house that has only just started to go is still drawn
+/// whole.
+fn ruin_stage(decay: f64) -> i32 {
+    ((decay * RUIN_STEPS as f64).floor() as i32).clamp(0, RUIN_STEPS)
+}
+
+/// The color everything left standing is weathered toward.
+const WEATHERED: u32 = pack_rgba(74, 68, 58, 255);
+
+/// What is left of a house nobody has lived in for a long time.
+///
+/// The roof goes first and from the ridge outward, since that is the part with
+/// nothing under it; a wall gives way from the top of its span and holds on
+/// longest at its corners. What is still standing is weathered toward the
+/// color of the ground, so a half fallen house reads as old rather than as a
+/// house with holes in it.
+fn ruin(px: &mut [u32], w: i32, h: i32, roof_bottom: i32, decay: f64, seed: i32) {
+    let t = ruin_stage(decay) as f64 / RUIN_STEPS as f64;
+    if t <= 0.0 {
+        return;
+    }
+    let wall_span = (h - roof_bottom - 1).max(1) as f64;
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) as usize;
+            if px[i] == 0 {
+                continue;
+            }
+            let noise = hash2(x, y, seed + 31);
+            let side = ((x as f64 / (w - 1).max(1) as f64) - 0.5).abs() * 2.0;
+            let hold = if y < roof_bottom {
+                let down = y as f64 / (roof_bottom - 1).max(1) as f64;
+                0.08 + 0.40 * down + 0.10 * side + 0.16 * noise
+            } else {
+                let down = (y - roof_bottom) as f64 / wall_span;
+                0.52 + 0.26 * down + 0.14 * side + 0.16 * noise
+            };
+            if t >= hold {
+                px[i] = 0;
+                continue;
+            }
+            px[i] = mix_packed(px[i], WEATHERED, t * 0.55);
+        }
+    }
+}
+
 /// A front wall standing on the near edge of the footprint with a roof laid
 /// over the depth of it, which is the same 2.5D projection the plants stand in.
 fn house_sprite(
@@ -615,6 +671,10 @@ fn house_sprite(
             let c = shade(&trim, 0.55, post_top, h);
             put(&mut px, x, post_top, c);
         }
+    }
+
+    if b.decay > 0.0 {
+        ruin(&mut px, w, h, roof_bottom, b.decay, seed);
     }
 
     Rc::new(Sprite { w, h, px, ox: eave, oy: h })
@@ -1357,6 +1417,10 @@ fn ensure_ground(sim: &mut Settlement, state: &State) {
             if plant.size_class == SizeClass::Ground || plant.radius_px <= 1.0 {
                 continue;
             }
+            // A tree on its way over has left the ground it was shading.
+            if !plant.standing() {
+                continue;
+            }
             cast_shadow(
                 world,
                 &mut ground,
@@ -1545,7 +1609,10 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
         // A conservative box: the anchor plus the sprite's own extent.
         let ax = world.anchor_x(plant.col);
         let ay = world.anchor_y(plant.row);
-        let r = plant.radius_px.max(2.0) as i32 + 2;
+        // A plant coming down reaches sideways by as much as it stands up, so
+        // the box it is tested against has to hold it lying flat.
+        let reach = if plant.standing() { 0.0 } else { plant.height_px };
+        let r = (plant.radius_px + reach).max(2.0) as i32 + 2;
         let up = plant.height_px as i32 + 2;
         if !view.overlaps(ax - r, ay - up, ax + r + 1, ay + r + 1) {
             continue;

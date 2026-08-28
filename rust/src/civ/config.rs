@@ -42,7 +42,9 @@ pub struct WorkConfig {
     pub min_harvest_mass: f64,
     pub clear_yield: f64,
     /// What a felled plant leaves on the ground rots away over roughly this
-    /// many days if nobody comes back for it.
+    /// many days if nobody comes back for it. A week by default: long enough
+    /// that a town with other work on gets to a cut eventually, short enough
+    /// that what nobody ever wanted does not lie there for good.
     pub pile_life: f64,
     /// Fraction of a full load a hauler is willing to fetch for a workshop.
     pub restock_share: f64,
@@ -61,6 +63,10 @@ pub struct WorkConfig {
     pub farm_dry_yield: f64,
     /// A farm below this asks for a bucket rather than working the field.
     pub farm_thirsty: f64,
+    /// How long a cut plant takes to go over. It is off the map at the end of
+    /// it, so this is also how long the ground it stood on shows a tree lying
+    /// across it.
+    pub fall_time: f64,
     pub plan_interval: f64,
     /// Simulated seconds between rebuilds of the coarse plant index every
     /// gathering decision reads. Higher is cheaper and staler.
@@ -77,7 +83,7 @@ impl Default for WorkConfig {
             farm_rate: 0.6,
             min_harvest_mass: 1.5,
             clear_yield: 0.5,
-            pile_life: 4.0,
+            pile_life: 7.0,
             restock_share: 1.0,
             farm_water_use: 0.002,
             farm_soak_reach: 3,
@@ -85,6 +91,7 @@ impl Default for WorkConfig {
             farm_bucket: 0.4,
             farm_dry_yield: 0.35,
             farm_thirsty: 0.35,
+            fall_time: 1.2,
             plan_interval: 0.5,
             plant_index_interval: 1.0,
         }
@@ -179,6 +186,11 @@ pub struct ViewConfig {
     /// Draw only what the camera can see. Off is slower and only useful when
     /// something looks wrong at the edge of the view.
     pub cull: bool,
+    /// Real seconds of nobody touching anything before the map takes the whole
+    /// window on its own. Zero never does it. This is the page folding its own
+    /// chrome away rather than the browser going fullscreen: a window nobody
+    /// has touched cannot ask for the screen, and would not be given it.
+    pub idle_fullscreen: f64,
 }
 
 /// The label switches, in the order they are shown. `None` is the town names,
@@ -275,6 +287,7 @@ impl Default for ViewConfig {
             current: true,
             detail_zoom: 1.0,
             cull: true,
+            idle_fullscreen: 20.0,
         }
     }
 }

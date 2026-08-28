@@ -202,6 +202,14 @@ pub struct PeopleConfig {
     pub inn_price: f64,
     /// Age at which a settler starts looking for a spouse.
     pub marry_age: f64,
+    /// Anything with a stem in it is walked round rather than through. Off is
+    /// the way it used to be, with people passing through trunks.
+    pub avoid_plants: bool,
+    /// How much of a shrub, tree or vine has to be standing in a cell before it
+    /// is in the way, in cells of mass. A sapling below it is stepped over, and
+    /// mats and tufts are stepped over whatever they weigh: what is in the way
+    /// is a trunk, not foliage.
+    pub avoid_mass: f64,
 }
 
 impl Default for PeopleConfig {
@@ -238,6 +246,8 @@ impl Default for PeopleConfig {
             savings_share: 0.65,
             inn_price: 2.0,
             marry_age: 17.0,
+            avoid_plants: true,
+            avoid_mass: 2.0,
         }
     }
 }

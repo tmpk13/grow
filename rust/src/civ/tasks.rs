@@ -1389,7 +1389,9 @@ pub fn run_task(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
         }
         Task::Harvest { plant_id, hint, yields, regrow, phase, .. } => {
             let index = match sim.plant_sim.plant_at(plant_id, hint) {
-                Some(i) if sim.plant_sim.plants[i].alive => i,
+                // A plant somebody else has already cut is on its way to the
+                // ground; there is nothing left to walk to.
+                Some(i) if sim.plant_sim.plants[i].standing() => i,
                 _ => {
                     sim.people[pi].clear_task();
                     return;

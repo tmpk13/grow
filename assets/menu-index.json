@@ -2096,6 +2096,17 @@
     "tab": "land",
     "tab_label": "Land",
     "group": "View",
+    "label": "Fullscreen when idle (s)",
+    "hint": "with nobody touching anything for this long the map takes the whole window; a moved pointer, a key or a touch hands the menus back. Zero never does it",
+    "anchor": "fullscreen-when-idle-s",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
     "label": "Draw only what is on screen",
     "hint": "off is slower and only useful when something looks wrong at the edge",
     "anchor": "draw-only-what-is-on-screen",
@@ -2361,6 +2372,28 @@
     "label": "Cost of a swim",
     "hint": "how much dearer a step into water is than one onto ground: high enough and a river is only ever walked round",
     "anchor": "cost-of-a-swim",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "Body and day",
+    "label": "Walk round plants",
+    "hint": "a trunk is something to go round rather than through; off is the way it was, with people passing straight through trees",
+    "anchor": "walk-round-plants",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "Body and day",
+    "label": "In the way above",
+    "hint": "how much of a shrub, tree or vine has to be standing in a cell before it is walked round, in cells; a sapling below it is stepped over, and mats and tufts always are",
+    "anchor": "in-the-way-above",
     "kind": "field"
   },
   {
@@ -2860,7 +2893,19 @@
     "tab": "people",
     "tab_label": "People",
     "group": "More rates",
+    "label": "A tree takes to fall (s)",
+    "hint": "anything with a stem goes over where it stood rather than vanishing out of the hand that cut it",
+    "anchor": "a-tree-takes-to-fall-s",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "More rates",
     "label": "Dropped load life (days)",
+    "hint": "anything left on the ground, cut by hand or dropped by somebody working, rots away over this long if nobody fetches it",
     "anchor": "dropped-load-life-days",
     "kind": "field"
   },

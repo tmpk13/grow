@@ -290,6 +290,14 @@ pub struct Plant {
     pub dirty: bool,
     /// Settler currently on their way to cut this plant down.
     pub claimed_by: u32,
+    /// How far through coming down this plant is, from 0 while it stands to 1
+    /// when it is off the map. A cut plant is not taken away where it stood:
+    /// it tips over from the foot first, and only then goes. Nothing else in
+    /// the world sees a plant that is falling - it is out of the index, out of
+    /// the way and past being cut again - so this is the one flag that says
+    /// the sprite is drawn turned rather than upright.
+    #[serde(default)]
+    pub felled: f64,
     /// One color standing for the whole plant, averaged over the sprite at
     /// raster time. Zoomed far enough out a plant is drawn as this and nothing
     /// else, which is what keeps a forest of thousands legible and cheap.
@@ -364,6 +372,7 @@ impl Plant {
             dirty: true,
             wither: 0.0,
             claimed_by: 0,
+            felled: 0.0,
             tint: 0,
         };
         plant.init_tips(species);
@@ -390,6 +399,21 @@ impl Plant {
             support: None,
             alive: true,
         });
+    }
+
+    /// Upright and part of the world. A plant that has been cut is neither.
+    pub fn standing(&self) -> bool {
+        self.alive && self.felled <= 0.0
+    }
+
+    /// Which way it goes over, from its own seed, so the same tree in the same
+    /// world always falls the same way.
+    pub fn fall_dir(&self) -> f64 {
+        if self.seed.is_multiple_of(2) {
+            1.0
+        } else {
+            -1.0
+        }
     }
 
     pub fn alive_tip_count(&self) -> i32 {

@@ -90,6 +90,39 @@ fn a_saved_settlement_comes_back_the_same() {
     );
 }
 
+/// The books above are rounded to four places to read as a report. This is the
+/// same question asked to the last bit: a settlement is chaotic enough that one
+/// settler's load being a fraction out is a different town a fortnight later,
+/// and the way that happens is a number written exactly and parsed back badly.
+#[test]
+fn a_saved_settlement_comes_back_to_the_last_bit() {
+    let state = State::new();
+    let mut original = founded(&state, 6.0);
+    let snapshot = Snapshot::from_json(&capture(&original, &state)).expect("reads back");
+    let mut loaded = Settlement::new(&state);
+    restore(&mut loaded, &state, snapshot).expect("the world matches");
+
+    // Every plant comes back waiting to be drawn again, because its pixels are
+    // the one thing the file leaves out. Draw both out first, or the only
+    // difference found is the queue.
+    original.plant_sim.process_raster_queue(&state, usize::MAX);
+    loaded.plant_sim.process_raster_queue(&state, usize::MAX);
+
+    for (what, a, b) in [
+        ("the settlers", json(&original.people), json(&loaded.people)),
+        ("the books", json(&original.colonies), json(&loaded.colonies)),
+        ("what is standing", json(&original.buildings), json(&loaded.buildings)),
+        ("what is on the ground", json(&original.piles), json(&loaded.piles)),
+        ("the wilderness", json(&original.plant_sim.plants), json(&loaded.plant_sim.plants)),
+    ] {
+        assert_eq!(a, b, "{what} came back changed");
+    }
+}
+
+fn json<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_string(value).expect("writes")
+}
+
 #[test]
 fn a_restored_settlement_carries_on_the_same_way() {
     let state = State::new();

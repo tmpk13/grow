@@ -670,6 +670,14 @@ pathfinder reads. A gate is the one thing that claims a cell and still lets
 people cross it, so it gets a grid of its own: the passability test runs once
 per neighbor per expanded cell and cannot afford a building lookup to answer it.
 
+A third grid says which cells a trunk is standing in, and people walk round
+those. Only the cell the stem is in and only for a shrub, tree or vine with
+enough of itself grown: a canopy is walked under, and a meadow that shut every
+cell a tuft grew in would be a wall. It is filled by the pass that fills the
+coarse plant index rather than on every growth step, and saved with the
+settlement, because a restored town that rebuilt it a second early would walk
+round a tree the saved one had not noticed yet.
+
 ```mermaid
 flowchart TD
   cell["cell (col,row)"]
@@ -1201,10 +1209,41 @@ flowchart TD
   split -->|no| pile["pile left on the ground"]
   pile --> claim["a free pair of hands claims it"]
   claim --> carry
-  pile --> rot["rots over pile_life days"]
+  pile --> rot["rots over pile_life days,<br/>a week by default"]
   carry --> full{"store has room<br/>and wants it?"}
   full -->|yes| stock["stock"]
   full -->|no| pile
+```
+
+## What comes down
+
+Two things on the map end by falling rather than by being taken away, and both
+are a state of the thing itself rather than a separate entity, so both are in
+the save for nothing.
+
+A cut plant with a stem in it keeps its place in the plant list with `felled`
+running from 0 to 1: the sim turns it about its foot instead of growing it, and
+takes it off the map at the end. The ground it stood on is given back at the
+moment of the cut, because something else may start growing under it and
+because a tree on its way down is past being cut again.
+
+A home with nobody living in it counts empty days, and past a settable wait
+starts losing its roof from the ridge outward and then its walls from the top
+down. It reverses at the same rate, so somebody moving in puts it right. When
+it is gone the footprint is released and a share of what it was built from is
+left on the ground as piles.
+
+```mermaid
+flowchart TD
+  cut["a plant is cut"] --> stem{"has a stem?"}
+  stem -->|no| gone["off the map"]
+  stem -->|yes| over["felled 0 to 1,<br/>turned about its foot"]
+  over --> free["cells released at once"]
+  over --> gone
+  empty["a home loses its household"] --> wait["empty_days counts up"]
+  wait --> crumble["past crumble_after,<br/>decay 0 to 1"]
+  crumble --> back["somebody moves in:<br/>put right at the same rate"]
+  crumble --> fell["footprint released,<br/>rubble left as piles"]
 ```
 
 ## Settlement drawing
