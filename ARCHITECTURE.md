@@ -97,6 +97,7 @@ flowchart TD
     cfg["civ/config.rs<br/>every parameter"]
     names["civ/names.rs"]
     csave["civ/save.rs<br/>a running settlement, written down"]
+    hand["civ/harvest.rs<br/>cutting by hand, and what it teaches"]
   end
 
   render["render.rs<br/>camera, overlays, previews"]
@@ -183,6 +184,10 @@ flowchart TD
   boats --> colony
   tasks --> people
   tasks --> res
+  tasks --> hand
+  sett --> hand
+  hand --> bdefs
+  main --> hand
   planner --> bdefs
   civrender --> sampler
 ```
@@ -789,19 +794,21 @@ wants a lamp; coin says who can have one.
 
 ## Picking a settler up
 
-The stage is one canvas and a press on it can mean three things. The mode
-decides two of them and one switch decides the third: a press draws in the
-sprite editor, and in the settlement with **Move people** on it picks up
-whoever is under the pointer. Everything else drags the map, including a press
-on empty ground with the switch on, so turning it on does not cost the camera
-the whole stage. The middle button and a held control key drag whatever the
-mode is, the same way they do while drawing.
+The stage is one canvas and a press on it can mean four things. The mode
+decides one of them and two exclusive switches decide the others: a press draws
+in the sprite editor, and in the settlement with **Move people** on it picks up
+whoever is under the pointer, or with **Harvest** on it cuts what is growing
+under it. Everything else drags the map, including a press on empty ground with
+Move people on, so turning that on does not cost the camera the whole stage.
+The middle button and a held control key drag whatever the mode is, the same
+way they do while drawing.
 
 ```mermaid
 flowchart TD
   press["a press on the stage"] --> mode{"what is this press?"}
   mode -->|sprite editor,<br/>plain press| brush["a stroke"]
   mode -->|settlement,<br/>Move people on| who{"anybody within<br/>reach of the point?"}
+  mode -->|settlement,<br/>Harvest on| cut["a cut:<br/>see Cutting by hand"]
   mode -->|middle, ctrl,<br/>two fingers, anything else| pan["pan, zoom, pinch"]
   who -->|no| pan
   who -->|yes| hold["hold them:<br/>give the task up properly,<br/>step outside, stop sleeping"]
@@ -839,6 +846,64 @@ Somebody can die of old age in your hand; holding is dropped rather than
 dragging a body about. The switch itself lives in `app.ui` rather than in the
 project: it is how somebody is using the map right now, not something about the
 map, so it is not saved and undo does not step through it.
+
+## Cutting by hand
+
+The other thing a press on the settlement can mean. It is the only way material
+is put into the world from outside the simulation, and it is deliberately not a
+way to put material into a store: a cut leaves piles on the ground, and a person
+still has to walk out and carry them in. Everything downstream of that is the
+machinery the settlement already had.
+
+```mermaid
+flowchart TD
+  down["press, with Harvest on"] --> aim{"a plant under<br/>the point?"}
+  aim -->|no| nothing["nothing; the press is still a cut,<br/>so a drag can find one"]
+  aim -->|yes| bar["a cut on that plant:<br/>work = 0.3s + 0.16s per cell of it"]
+  bar --> frame["each frame of holding<br/>puts real seconds into it"]
+  frame --> done{"enough spent?"}
+  done -->|no, and the pointer moved off| linger["half a second of grace,<br/>then the progress runs back out<br/>and the bar goes"]
+  done -->|yes| reap["cut: ground cover cut back,<br/>anything else taken away"]
+  reap --> piles["what it was worth,<br/>left where it stood, marked as asked for"]
+  reap --> lore["the species is remembered"]
+  piles --> fetch["the next settler to decide<br/>fetches it before their own work"]
+  lore --> want["gatherers walk further for<br/>that species and take it smaller"]
+```
+
+Four things are worth saying about the shape of it.
+
+* **It runs on the frame clock, in real seconds.** Every other rate in the
+  settlement is in simulated seconds and scales with the speed slider. A hand
+  does not: it works at the rate somebody is holding the pointer down at, which
+  means it also works with the world paused, which is when somebody clearing a
+  patch deliberately is most likely to be doing it.
+* **A cut is per plant, and there can be several.** A drag across a thicket
+  leaves a row of part cut plants behind it, each with its own bar and its own
+  decision about whether enough was spent on it. What is not finished leaks back
+  out after half a second of not being touched, so a pointer crossing a plant on
+  its way somewhere leaves nothing behind.
+* **What it leaves is an ordinary pile with a flag on it.** `Pile.by_hand` is
+  the whole of the coupling to the rest of the settlement. `choose_task` looks
+  for one before it looks at the settler's own trade, and `start_labor` scores
+  one twelve points above an ordinary load and lets somebody walk sixty cells
+  for it instead of forty. The one thing that outranks it is a town running out
+  of food, which fetches food and nothing else whatever was asked for.
+* **The lesson is on the settlement, not on a colony.** The pointer is not a
+  member of any town, and what it demonstrates on one side of the map is watched
+  from both. `Lore` stores raw mass cut per species; what the gatherers read is
+  `mass / (mass + 10)`, which saturates, so the tenth tree of a species is worth
+  far less as a lesson than the first. It reaches them through the plant index:
+  every mark carries the interest in its own species, worked out when the
+  buckets are filled, because a gathering decision reads a few hundred marks and
+  none of them carries a species name to look anything up with.
+
+What is drawn over the map is a wash of faint ellipses around everything
+cuttable in view and a firm one around whatever the pointer is on, with a bar
+over anything part cut. The thinning to a few hundred outlines is a stride over
+what is in view rather than the first few hundred found: the buckets are read in
+map order, so taking the first few hundred outlined the far edge of the view and
+nothing else. Whatever is under the pointer and whatever is part cut are kept
+regardless of what the stride does with them.
 
 ## The ladder of homes
 
@@ -1124,6 +1189,10 @@ A person carries one load. Anything a felled tree yields beyond that stays
 where it fell until somebody comes back for it, and rots if nobody does. The
 same happens to a delivery the store has no room for, which is what makes the
 next storehouse worth building.
+
+A pile left by the hand is the same pile with a flag on it, and the flag is what
+makes somebody fetch it before they go and find work of their own. See
+[Cutting by hand](#cutting-by-hand).
 
 ```mermaid
 flowchart TD

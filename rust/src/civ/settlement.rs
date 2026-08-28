@@ -26,6 +26,7 @@ use crate::civ::buildings::{
 use crate::civ::civ_render::{composite_settlement, Detail, Item, SpriteCache};
 use crate::civ::colony::Colony;
 use crate::civ::economy::{run_caravan, stock_targets, update_prices, Sample};
+use crate::civ::harvest::{HandCut, Lore};
 use crate::civ::names::{inn_name, place_name};
 use crate::civ::pathing::PathGrid;
 use crate::civ::people::{day_fraction, day_number, daylight, Person, Profession, Traits};
@@ -166,6 +167,10 @@ pub struct Pile {
     pub n: f64,
     pub claimed_by: u32,
     pub seed: u32,
+    /// Cut by hand rather than dropped by somebody working. A load that was
+    /// asked for outranks the work a settler would have chosen for themselves.
+    #[serde(default)]
+    pub by_hand: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -186,8 +191,19 @@ pub struct PlantMark {
     pub col: i32,
     pub row: i32,
     pub mass: f32,
+    /// The picture rather than the cell: how far the plant stands up out of the
+    /// ground and how far it spreads either side, in world pixels. What a
+    /// pointer aims at is what it can see, and what is drawn round a plant has
+    /// to be the shape of the plant.
+    pub height_px: f32,
+    pub radius_px: f32,
     pub class: SizeClass,
     pub claimed_by: u32,
+    /// How much the towns have been taught to want this species, worked out
+    /// when the buckets are filled. Carried here rather than looked up per
+    /// candidate: every gathering decision reads this for a few hundred marks
+    /// and none of them has the species name to look up with.
+    pub lore: f32,
 }
 
 /// Buckets of plant marks over the map. Rebuilt on a timer rather than kept
@@ -343,6 +359,11 @@ pub struct Settlement {
     /// hungry, but they do not walk, work or take on anything new until they
     /// are put down again.
     pub held: u32,
+    /// Plants the pointer is part way through cutting. Not saved: a hold that
+    /// was interrupted is not something to come back to.
+    pub hand: Vec<HandCut>,
+    /// What cutting by hand has taught the gatherers.
+    pub lore: Lore,
     pub boats: Vec<Boat>,
     pub next_boat_id: i32,
     pub plant_index: PlantIndex,
@@ -413,6 +434,8 @@ impl Settlement {
             next_colony_id: 1,
             focus: 0,
             held: 0,
+            hand: Vec::new(),
+            lore: Lore::default(),
             boats: Vec::new(),
             next_boat_id: 1,
             plant_index: PlantIndex::default(),
@@ -483,6 +506,8 @@ impl Settlement {
         self.next_building_id = 1;
         self.piles.clear();
         self.next_pile_id = 1;
+        self.hand.clear();
+        self.lore.clear();
         self.people.clear();
         self.colonies.clear();
         self.next_colony_id = 1;
@@ -1917,9 +1942,11 @@ impl Settlement {
 
     // ---- piles -----------------------------------------------------------
 
-    pub fn add_pile(&mut self, col: i32, row: i32, res: Res, n: f64) {
+    /// Leaves a load on the ground and says which pile it went into, so a
+    /// caller with something to say about that pile can find it again.
+    pub fn add_pile(&mut self, col: i32, row: i32, res: Res, n: f64) -> Option<usize> {
         if n <= 0.0 {
-            return;
+            return None;
         }
         // The spot is resolved before the merge, or a load dropped on a blocked
         // cell would start a new pile on every single delivery.
@@ -1927,17 +1954,27 @@ impl Settlement {
         if let Some(existing) = self
             .piles
             .iter_mut()
-            .find(|q| q.col == spot.0 && q.row == spot.1 && q.res == res)
+            .position(|q| q.col == spot.0 && q.row == spot.1 && q.res == res)
         {
-            existing.n += n;
+            self.piles[existing].n += n;
             self.buffer_dirty = true;
-            return;
+            return Some(existing);
         }
         let id = self.next_pile_id;
         self.next_pile_id += 1;
         let seed = self.rng.seed();
-        self.piles.push(Pile { id, col: spot.0, row: spot.1, res, n, claimed_by: 0, seed });
+        self.piles.push(Pile {
+            id,
+            col: spot.0,
+            row: spot.1,
+            res,
+            n,
+            claimed_by: 0,
+            seed,
+            by_hand: false,
+        });
         self.buffer_dirty = true;
+        Some(self.piles.len() - 1)
     }
 
     pub fn take_pile(&mut self, index: usize, n: f64) -> f64 {
@@ -3142,11 +3179,19 @@ impl Settlement {
         }
         index.slot_of.clear();
         let cell_px = self.world().cell_px as f64;
+        // Usually empty, and never more than a handful of entries: a scan over
+        // it beats hashing a species name once per plant on the map.
+        let taught = self.lore.known();
         for plant in &self.plant_sim.plants {
             if !plant.alive {
                 continue;
             }
             let mass = ((plant.height_px + plant.radius_px * 2.0) / cell_px) as f32;
+            let lore = taught
+                .iter()
+                .find(|(id, _)| *id == plant.species_id)
+                .map(|&(_, interest)| interest as f32)
+                .unwrap_or(0.0);
             let b = index.bucket_of(plant.col, plant.row);
             let slot = index.buckets[b].len();
             index.buckets[b].push(PlantMark {
@@ -3154,8 +3199,11 @@ impl Settlement {
                 col: plant.col,
                 row: plant.row,
                 mass,
+                height_px: plant.height_px as f32,
+                radius_px: plant.radius_px as f32,
                 class: plant.size_class,
                 claimed_by: plant.claimed_by,
+                lore,
             });
             index.slot_of.insert(plant.id, (b, slot));
         }

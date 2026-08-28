@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::civ::boats::Boat;
 use crate::civ::colony::Colony;
+use crate::civ::harvest::Lore;
 use crate::civ::settlement::{Building, Obituary, Pile, Settlement};
 use crate::civ::people_db::PeopleDb;
 use crate::civ::terrain::Cell;
@@ -27,7 +28,7 @@ use crate::state::State;
 /// Bumped whenever the shape below changes in a way an older file cannot be
 /// read into. There is no upgrade path: a settlement is a thing being watched,
 /// not a document, and starting a fresh one costs a moment.
-pub const SNAPSHOT_VERSION: u32 = 1;
+pub const SNAPSHOT_VERSION: u32 = 2;
 
 /// The world a saved settlement grew on, as one string. Everything the map is
 /// built from is in here, so two settlements with the same key stand on the
@@ -62,6 +63,10 @@ pub struct Snapshot {
     pub colonies: Vec<Colony>,
     pub next_colony_id: i32,
     pub focus: usize,
+    /// What cutting by hand has taught the gatherers. Not derivable from
+    /// anything else in the file: it is a record of what was asked for.
+    #[serde(default)]
+    pub lore: Lore,
     pub boats: Vec<Boat>,
     pub next_boat_id: i32,
     /// Where the ground has been walked into paths.
@@ -108,6 +113,7 @@ struct SnapshotRef<'a> {
     colonies: &'a [Colony],
     next_colony_id: i32,
     focus: usize,
+    lore: &'a Lore,
     boats: &'a [Boat],
     next_boat_id: i32,
     traffic: &'a [f32],
@@ -148,6 +154,7 @@ pub fn capture(sim: &Settlement, state: &State) -> String {
         colonies: &sim.colonies,
         next_colony_id: sim.next_colony_id,
         focus: sim.focus,
+        lore: &sim.lore,
         boats: &sim.boats,
         next_boat_id: sim.next_boat_id,
         traffic: &sim.traffic,
@@ -234,6 +241,9 @@ pub fn restore(sim: &mut Settlement, state: &State, snap: Snapshot) -> Result<()
     sim.colonies = snap.colonies;
     sim.next_colony_id = snap.next_colony_id;
     sim.focus = snap.focus.min(sim.colonies.len().saturating_sub(1));
+    // Read back before the plant buckets are filled: every mark carries what
+    // the towns have been taught about its species.
+    sim.lore = snap.lore;
     sim.boats = snap.boats;
     sim.next_boat_id = snap.next_boat_id;
     if snap.traffic.len() == sim.traffic.len() {

@@ -4,7 +4,7 @@
 use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData};
 
-use crate::civ::civ_render::{building_labels, colony_labels, lamp_lights};
+use crate::civ::civ_render::{building_labels, colony_labels, harvest_marks, lamp_lights};
 use crate::civ::settlement::{Rect, Settlement};
 use crate::plant::Plant;
 use crate::species::LAYER_COUNT;
@@ -24,6 +24,14 @@ fn round_up(v: i32, step: i32) -> i32 {
         ((v + step - 1) / step) * step
     }
 }
+
+/// How many cuttable plants the pulse is drawn round at once. A view of a
+/// forest is thousands; past a few hundred outlines the screen is a haze and
+/// the rest cost frames for nothing.
+const HARVEST_MARK_LIMIT: usize = 400;
+
+/// Seconds for one breath of the pulse.
+const PULSE_SECONDS: f64 = 2.4;
 
 const LAYER_COLORS: [&str; 5] = [
     "rgba(120, 220, 140, 0.30)",
@@ -516,6 +524,73 @@ impl Viewport {
         }
         if lit {
             ctx.set_global_composite_operation("source-over").ok();
+        }
+    }
+
+    /// What the hand tool shows: a slow pulse round everything that could be
+    /// cut, and a bar over whatever is being cut right now.
+    ///
+    /// Drawn on the canvas over the finished frame rather than into it. Both
+    /// halves change every frame while nothing about the world does, and a
+    /// pulse composited into the pixel buffer would mean repainting the band
+    /// around every plant on screen sixty times a second.
+    pub fn draw_harvest_overlay(
+        &self,
+        sim: &Settlement,
+        state: &State,
+        hover: Option<i32>,
+        ts: f64,
+    ) {
+        let marks = harvest_marks(sim, state, HARVEST_MARK_LIMIT, hover);
+        if marks.is_empty() {
+            return;
+        }
+        let ctx = &self.ctx;
+        // Slow enough to read as breathing rather than blinking.
+        let pulse = (ts / 1000.0 * std::f64::consts::TAU / PULSE_SECONDS).sin() * 0.5 + 0.5;
+        let wash = 0.10 + pulse * 0.13;
+        let lit = 0.45 + pulse * 0.35;
+        ctx.set_line_width((self.zoom * 0.5).clamp(1.0, 2.5));
+        for hot in [false, true] {
+            ctx.set_stroke_style_str(&format!(
+                "rgba(168, 232, 150, {:.3})",
+                if hot { lit } else { wash }
+            ));
+            for mark in marks.iter().filter(|m| m.hot == hot) {
+                let rx = mark.half_w * self.zoom + 2.0;
+                let ry = mark.height * 0.5 * self.zoom + 2.0;
+                if rx < 1.5 || ry < 1.5 {
+                    continue;
+                }
+                let sx = self.pan_x + mark.x * self.zoom;
+                let sy = self.pan_y + (mark.y - mark.height * 0.5) * self.zoom;
+                ctx.begin_path();
+                let _ = ctx.ellipse(sx, sy, rx, ry, 0.0, 0.0, std::f64::consts::TAU);
+                ctx.stroke();
+            }
+        }
+        for mark in marks.iter().filter(|m| m.cut.is_some()) {
+            let (done, alpha) = match mark.cut {
+                Some(cut) => cut,
+                None => continue,
+            };
+            // Held clear of the top of the plant, and never smaller than a bar
+            // somebody could read: this is the one thing on screen that says
+            // how much longer to hold on for.
+            let w = (mark.half_w * 2.0 * self.zoom).clamp(18.0, 64.0);
+            let h = 4.0;
+            let sx = self.pan_x + mark.x * self.zoom - w / 2.0;
+            let sy = self.pan_y + (mark.y - mark.height) * self.zoom - h * 2.5;
+            // The track is outlined as well as filled: an unlit bar over dark
+            // foliage is the same color as the foliage, and the length left to
+            // go is half of what the bar is saying.
+            ctx.set_fill_style_str(&format!("rgba(8, 12, 18, {:.3})", 0.7 * alpha));
+            ctx.fill_rect(sx - 1.0, sy - 1.0, w + 2.0, h + 2.0);
+            ctx.set_line_width(1.0);
+            ctx.set_stroke_style_str(&format!("rgba(214, 232, 210, {:.3})", 0.5 * alpha));
+            ctx.stroke_rect(sx - 0.5, sy - 0.5, w + 1.0, h + 1.0);
+            ctx.set_fill_style_str(&format!("rgba(196, 244, 168, {alpha:.3})"));
+            ctx.fill_rect(sx, sy, w * done, h);
         }
     }
 

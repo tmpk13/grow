@@ -514,6 +514,21 @@ population. Pick any available tech to make it the target.
   properly, so nothing is left reserved for a delivery nobody is coming to make,
   and they plan again from where they land. A press on empty ground still drags
   the map, as do the middle button and a held control key.
+* **What you cut, they fetch.** Turn on **Harvest** above the map and a press
+  on something growing starts cutting it: hold, or drag across a patch, and a
+  bar over each plant fills as the work goes in. Let go too soon and the bar
+  runs back out and leaves nothing. What a finished cut is worth is left lying
+  where the plant stood, exactly as an overfull load would be, and a settler
+  fetches it before they go and find work of their own - a hungry town excepted,
+  which fetches food first whatever was asked for. Everything that could be cut
+  pulses faintly while the switch is on, and whatever is under the pointer
+  pulses firmly.
+* **They learn what you cut for.** Every cut is remembered against the species
+  it was made on. Gatherers walk further for a species that has been cut for
+  them and take a smaller specimen of it than they would otherwise have
+  bothered with, so clearing a stand of one plant by hand turns the whole town
+  toward it. What has been taught is listed under Learned by hand in the Tech
+  panel.
 * **Everybody knows somebody.** Standing near each other is how settlers meet,
   and what they make of each other follows from how alike they are. It decides
   who they marry - among people of a like age, never across a generation - whose
@@ -524,7 +539,8 @@ population. Pick any available tech to make it the target.
 Play/pause (space), single step (`.`), fit (`f`), a speed multiplier up to 200x
 on a logarithmic slider, wheel or pinch to zoom, drag to pan, plus grid and
 occupancy overlays. In the settlement, Move people turns a press on the map into
-picking a settler up rather than dragging the view. The status bar
+picking a settler up rather than dragging the view, and Harvest turns it into
+cutting what is growing. The status bar
 shows tick count, simulation time, plant counts per species, the redraw queue
 and frame rate; in the settlement it shows the day and hour, the towns, the
 population, what is built, the stores, the fleet and the current drawing detail.

@@ -6,6 +6,7 @@ pub mod civ_render;
 pub mod colony;
 pub mod config;
 pub mod economy;
+pub mod harvest;
 pub mod names;
 pub mod people;
 pub mod pathing;

@@ -3,6 +3,16 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A Harvest switch over the map: hold or drag over what is growing and it
+  comes down, with a bar per plant that fills while the pointer is on it and
+  runs back out if it is let go of too soon. What a cut is worth is left where
+  the plant stood and marked as asked for, which puts it in front of the work a
+  settler would otherwise have chosen - a town short of food excepted. Every cut
+  is remembered against its species, and the gatherers walk further for a
+  species that has been cut for them and take it smaller than they would have
+  bothered with; what has been taught is listed in the Tech panel. Everything
+  cuttable in view pulses faintly, and whatever is under the pointer pulses
+  firmly.
 - (LLM) Every checkbox is a toggle button: square and pressed in with a check
   drawn in it for the settings rows, the word on it for the switches in the
   toolbar and beside the search box. There is no checkbox left in the program.

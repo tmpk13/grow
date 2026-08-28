@@ -117,6 +117,17 @@ pub struct UiState {
     /// rather than in the project: it is how somebody is using the map right
     /// now, not something about the map.
     pub move_people: bool,
+    /// The stage cuts what is growing rather than dragging the map. The other
+    /// half of the same idea, and never on at the same time as it.
+    pub harvest: bool,
+    /// Where the pointer is while it is held down to cut, in client pixels, or
+    /// nothing when it is not. The cut runs on the frame clock rather than on
+    /// pointer moves: holding still on one plant is the whole gesture.
+    pub cut_at: Option<(f64, f64)>,
+    /// Where the pointer last was over the map with cutting switched on,
+    /// pressed or not, so what a press would take can be shown before it is
+    /// pressed.
+    pub hover_at: Option<(f64, f64)>,
     /// The corners a marquee was dragged between, in sheet pixels, kept raw so
     /// the anchor survives the drag. Read through `marquee_rect`.
     pub marquee: Option<(i32, i32, i32, i32)>,
@@ -758,6 +769,9 @@ pub fn start() -> Result<(), JsValue> {
         playing: false,
         play_time: 0.0,
         move_people: false,
+        harvest: false,
+        cut_at: None,
+        hover_at: None,
         marquee: None,
         made_search: String::new(),
         made_all: false,
@@ -874,6 +888,14 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
         } else {
             list.remove_1("painting")
         };
+    }
+    if mode != Mode::Settlement {
+        // Nothing half cut survives leaving the map it was being cut on.
+        sh.app.ui.cut_at = None;
+        sh.app.ui.hover_at = None;
+        if let Some(civ) = &mut sh.app.settlement {
+            civ.drop_cuts();
+        }
     }
     if mode != Mode::Sprites && sh.app.ui.tool == Tool::Select {
         // The marquee belongs to the sheet, and the sampling grid has no row
@@ -1134,6 +1156,14 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
             move |on| {
                 let mut sh = h2.borrow_mut();
                 sh.app.ui.move_people = on;
+                if on {
+                    sh.app.ui.harvest = false;
+                    set_pressed("harvest-mode", false);
+                    sh.app.ui.cut_at = None;
+                    if let Some(civ) = &mut sh.app.settlement {
+                        civ.drop_cuts();
+                    }
+                }
                 sync_grab_cursor(&sh.app);
                 let note = if on {
                     "drag a settler to put them somewhere else - ctrl or middle drag moves the map"
@@ -1149,6 +1179,37 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
             "drag settlers about; ctrl or the middle button still moves the map",
         );
         controls.push(move_people);
+
+        // Cutting by hand is the other thing a press can mean, so it sits
+        // beside picking somebody up and turns that off rather than fighting
+        // it for the press.
+        let h2 = h.clone();
+        let harvest = ui::toggle_button("Harvest", sh.app.ui.harvest, Scope::Toolbar, move |on| {
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.harvest = on;
+            if on {
+                sh.app.ui.move_people = false;
+                set_pressed("move-people", false);
+            }
+            sh.app.ui.cut_at = None;
+            sh.app.ui.hover_at = None;
+            if let Some(civ) = &mut sh.app.settlement {
+                civ.drop_cuts();
+            }
+            sync_grab_cursor(&sh.app);
+            let note = if on {
+                "hold on what is growing to cut it - it is left on the ground for the town"
+            } else {
+                "the stage moves the map again"
+            };
+            sh.app.set_note(note);
+        });
+        let _ = harvest.set_attribute("id", "harvest-mode");
+        let _ = harvest.set_attribute(
+            "title",
+            "hold or drag over plants to cut them; what they yield is left where they stood",
+        );
+        controls.push(harvest);
     }
 
     let _ = toolbar.append_child(&el("div").class("toolbar-row").children(controls).get());
@@ -1339,6 +1400,7 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             if list.len() > 1 {
                 end_stroke(&h2, &stroke);
                 end_grab(&h2, &grab);
+                h2.borrow_mut().app.ui.cut_at = None;
                 return;
             }
             let mut sh = h2.borrow_mut();
@@ -1351,6 +1413,14 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                     set_holding(true);
                     return;
                 }
+            }
+            if cuts(&sh.app, pe) {
+                // Every press is a cut, whether or not it landed on something:
+                // the pointer is dragged over a patch as often as it is held
+                // on one plant, and the map is moved with ctrl or the middle
+                // button while the switch is on.
+                sh.app.ui.cut_at = Some((pe.client_x() as f64, pe.client_y() as f64));
+                return;
             }
             if !paints(&sh.app, pe) {
                 return;
@@ -1390,6 +1460,15 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
         on(canvas.unchecked_ref(), "pointermove", Scope::Global, move |e: Event| {
             let pe = e.dyn_ref::<web_sys::PointerEvent>().unwrap();
             let (x, y) = (pe.client_x() as f64, pe.client_y() as f64);
+            {
+                // Before the press list: a pointer that is not down does not
+                // reach the rest of this, and hovering is most of what the
+                // cutting switch is for.
+                let mut sh = h2.borrow_mut();
+                if sh.app.mode == Mode::Settlement && sh.app.ui.harvest {
+                    sh.app.ui.hover_at = Some((x, y));
+                }
+            }
             let mut list = touches.borrow_mut();
             let previous = match list.iter_mut().find(|(id, _, _)| *id == pe.pointer_id()) {
                 Some(slot) => {
@@ -1403,6 +1482,10 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             let mut sh = h2.borrow_mut();
             if list.len() < 2 && grab.get() != 0 {
                 drag_held(&mut sh.app, x, y);
+                return;
+            }
+            if list.len() < 2 && sh.app.ui.cut_at.is_some() {
+                sh.app.ui.cut_at = Some((x, y));
                 return;
             }
             if list.len() < 2 && stroke.borrow().is_some() {
@@ -1476,6 +1559,11 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             }
             end_stroke(&h2, &stroke);
             end_grab(&h2, &grab);
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.cut_at = None;
+            if event == "pointerleave" {
+                sh.app.ui.hover_at = None;
+            }
         });
     }
     {
@@ -1502,6 +1590,18 @@ const GRAB_REACH: f64 = 1.6;
 fn grabs(app: &App, pe: &web_sys::PointerEvent) -> bool {
     app.mode == Mode::Settlement
         && app.ui.move_people
+        && app.settlement.is_some()
+        && !pe.ctrl_key()
+        && pe.button() != 1
+        && pe.buttons() & 4 == 0
+}
+
+/// Whether this press cuts what is growing rather than dragging the map. The
+/// same rules as picking somebody up: only in the settlement, only with the
+/// switch on, and never for the presses that mean "move the camera".
+fn cuts(app: &App, pe: &web_sys::PointerEvent) -> bool {
+    app.mode == Mode::Settlement
+        && app.ui.harvest
         && app.settlement.is_some()
         && !pe.ctrl_key()
         && pe.button() != 1
@@ -1554,17 +1654,30 @@ fn end_grab(h: &Handle, grab: &Rc<Cell<u32>>) {
 }
 
 /// What the stage says a press will do: an open hand where settlers can be
-/// picked up, a closed one while one is in hand.
+/// picked up, a closed one while one is in hand, and crossed lines where what
+/// is growing can be cut.
 fn sync_grab_cursor(app: &App) {
     let body = match document().body() {
         Some(b) => b,
         None => return,
     };
     let list = body.class_list();
-    let on = app.mode == Mode::Settlement && app.ui.move_people;
+    let settlement = app.mode == Mode::Settlement;
+    let on = settlement && app.ui.move_people;
     let _ = if on { list.add_1("moving-people") } else { list.remove_1("moving-people") };
+    let cutting = settlement && app.ui.harvest;
+    let _ = if cutting { list.add_1("harvesting") } else { list.remove_1("harvesting") };
     if !on {
         set_holding(false);
+    }
+}
+
+/// Presses or unpresses a switch that something else turned off. The two stage
+/// switches are exclusive, so each has to be able to show that the other one
+/// took the press.
+fn set_pressed(id: &str, on: bool) {
+    if let Some(node) = by_id(id) {
+        let _ = node.set_attribute("aria-pressed", if on { "true" } else { "false" });
     }
 }
 
@@ -2242,6 +2355,7 @@ fn frame(h: &Handle, ts: f64) {
         sh.app.accumulator = 0.0;
     }
 
+    run_cut(&mut sh.app, dt_real);
     draw(&mut sh.app, cfg.raster_budget);
 
     if let Some(panel) = &mut sh.panel {
@@ -2271,6 +2385,42 @@ fn frame(h: &Handle, ts: f64) {
     if sh.app.civ_stepped && ui::now() >= sh.app.civ_save_at {
         sh.app.civ_save_at = ui::now() + CIV_SAVE_INTERVAL_MS;
         save_settlement(&mut sh.app);
+    }
+}
+
+/// One frame of cutting by hand. Real seconds rather than settlement seconds:
+/// a hand works at the rate somebody is holding the pointer down at, whatever
+/// speed the world is being watched at, and works with the world paused.
+fn run_cut(app: &mut App, dt: f64) {
+    if app.mode != Mode::Settlement {
+        return;
+    }
+    let busy = app.ui.cut_at.is_some()
+        || app.settlement.as_ref().is_some_and(|civ| !civ.hand.is_empty());
+    if !busy {
+        return;
+    }
+    let at = match (app.ui.cut_at, app.settlement.as_ref()) {
+        (Some((x, y)), Some(civ)) => {
+            let world = civ.world().clone();
+            app.viewport.ground_at(x, y, &world)
+        }
+        _ => None,
+    };
+    let cut = match &mut app.settlement {
+        Some(civ) => civ.hand_harvest(&app.state, at, dt),
+        None => None,
+    };
+    if let Some(cut) = cut {
+        let what = cut
+            .gains
+            .iter()
+            .map(|&(res, n)| format!("{n:.0} {}", res.label().to_lowercase()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let verb = if cut.cut_back { "cut back" } else { "cut down" };
+        app.set_note(&format!("{verb} {}: {what} on the ground", cut.species));
+        app.civ_stepped = true;
     }
 }
 
@@ -2328,6 +2478,13 @@ fn draw(app: &mut App, budget: usize) {
             civ.buffer = buffer;
             app.viewport.draw_civ_overlay(&civ, &app.state);
             app.viewport.draw_colony_labels(&civ, &app.state);
+            if app.ui.harvest {
+                let point = app.ui.cut_at.or(app.ui.hover_at);
+                let hover = point
+                    .and_then(|(x, y)| app.viewport.ground_at(x, y, &world))
+                    .and_then(|(gx, gy)| civ.harvestable_at(&app.state, gx, gy));
+                app.viewport.draw_harvest_overlay(&civ, &app.state, hover, app.last_ts);
+            }
             if app.viewport.show_occupancy {
                 app.viewport.draw_occupancy(&world);
             }

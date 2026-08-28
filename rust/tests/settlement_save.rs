@@ -3,7 +3,7 @@
 
 use grow::civ::civ_render::Detail;
 use grow::civ::resources::RES_IDS;
-use grow::civ::save::{capture, restore, Snapshot};
+use grow::civ::save::{capture, restore, Snapshot, SNAPSHOT_VERSION};
 use grow::civ::settlement::{Rect, Settlement};
 use grow::state::State;
 
@@ -130,6 +130,8 @@ fn a_settlement_saved_for_another_world_is_refused() {
 fn a_file_from_another_version_is_refused() {
     let state = State::new();
     let sim = founded(&state, 1.0);
-    let raw = capture(&sim, &state).replace("\"version\":1", "\"version\":999");
+    let stamp = format!("\"version\":{SNAPSHOT_VERSION}");
+    let raw = capture(&sim, &state).replace(&stamp, "\"version\":999");
+    assert!(!raw.contains(&stamp), "the version stamp is not where the test looked for it");
     assert!(Snapshot::from_json(&raw).is_err());
 }

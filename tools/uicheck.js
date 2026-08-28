@@ -693,6 +693,117 @@ await page.waitForTimeout(200);
 if (await page.evaluate(() => document.body.classList.contains('moving-people'))) {
   problems.push('turning the move people switch off left the stage picking settlers up');
 }
+
+// Cutting by hand: the switch is exclusive with moving people, a held press on
+// something growing takes it down, and a press let go of too soon does not.
+await page.click('#move-people');
+await page.waitForTimeout(150);
+await page.click('#harvest-mode');
+await page.waitForTimeout(200);
+if (!(await page.evaluate(() => document.body.classList.contains('harvesting')))) {
+  problems.push('the harvest switch did not change what a press on the stage does');
+}
+if (await page.evaluate(() => document.body.classList.contains('moving-people'))) {
+  problems.push('turning harvesting on left the stage picking settlers up as well');
+}
+if (
+  (await page.evaluate(() => document.getElementById('move-people').getAttribute('aria-pressed'))) !==
+  'false'
+) {
+  problems.push('the move people button still reads as on with harvesting on');
+}
+
+const stagePress = (x, y, type) =>
+  page.evaluate(
+    ({ x, y, type }) => {
+      const canvas = document.getElementById('world-canvas');
+      const r = canvas.getBoundingClientRect();
+      canvas.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 1,
+          clientX: r.left + x * r.width,
+          clientY: r.top + y * r.height,
+          bubbles: true,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+        }),
+      );
+      return (document.getElementById('save-note').textContent || '').trim();
+    },
+    { x, y, type },
+  );
+const noteNow = () =>
+  page.evaluate(() => (document.getElementById('save-note').textContent || '').trim());
+const stageHover = (x, y) =>
+  page.evaluate(
+    ({ x, y }) => {
+      const canvas = document.getElementById('world-canvas');
+      const r = canvas.getBoundingClientRect();
+      canvas.dispatchEvent(
+        new PointerEvent('pointermove', {
+          pointerId: 1,
+          clientX: r.left + x * r.width,
+          clientY: r.top + y * r.height,
+          bubbles: true,
+          buttons: 0,
+        }),
+      );
+    },
+    { x, y },
+  );
+
+// The pulse over what can be cut, and the firmer outline on whatever the
+// pointer is over. Nothing to assert from out here beyond the frame surviving
+// it, so this is a picture to look at.
+await stageHover(0.5, 0.6);
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${outDir}/11f-harvest-hover.png` });
+
+// A press let go of at once is not a cut, however green the ground under it.
+await stagePress(0.5, 0.6, 'pointerdown');
+await page.waitForTimeout(90);
+await stagePress(0.5, 0.6, 'pointerup');
+await page.waitForTimeout(400);
+if (/^cut /.test(await noteNow())) {
+  problems.push('a press let go of at once still cut something down');
+}
+
+// Holding is what cuts. Where the plants are on screen is not knowable from
+// out here, so the stage is swept a point at a time until something comes
+// down. The clock stays stopped: a hand works whether the world is running or
+// not, which is worth checking here rather than only in the tests.
+let cutNote = null;
+let cutAt = { x: 0.5, y: 0.6 };
+for (let y = 0.3; y < 0.95 && !cutNote; y += 0.12) {
+  for (let x = 0.1; x < 0.95 && !cutNote; x += 0.08) {
+    await stagePress(x, y, 'pointerdown');
+    await page.waitForTimeout(700);
+    const note = await noteNow();
+    await stagePress(x, y, 'pointerup');
+    if (/^cut /.test(note)) {
+      cutNote = note;
+      cutAt = { x, y };
+    }
+  }
+}
+if (!cutNote) {
+  problems.push('holding the pointer over the map cut nothing anywhere on it');
+} else {
+  console.log(`cut by hand: ${cutNote}`);
+  if (!/on the ground$/.test(cutNote)) {
+    problems.push(`a cut did not say what it left behind: "${cutNote}"`);
+  }
+  // Part way through a cut is when there is a bar to see.
+  await stagePress(cutAt.x, cutAt.y, 'pointerdown');
+  await page.waitForTimeout(260);
+  await page.screenshot({ path: `${outDir}/11g-harvest-holding.png` });
+  await stagePress(cutAt.x, cutAt.y, 'pointerup');
+}
+await page.click('#harvest-mode');
+await page.waitForTimeout(200);
+if (await page.evaluate(() => document.body.classList.contains('harvesting'))) {
+  problems.push('turning the harvest switch off left the stage cutting');
+}
 await resume();
 
 // Back to the lab and in again: both sims have to survive the switch.

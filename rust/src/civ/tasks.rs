@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::civ::buildings::{Job, BUILDINGS};
 use crate::civ::economy::{buy_food, pay_wage, stock_targets};
+use crate::civ::harvest::{lore_patience, lore_weight};
 use crate::civ::people::{carry_limit, is_work_time, Profession};
 use crate::civ::resources::{take_stock, Res};
 use crate::civ::settlement::Settlement;
@@ -664,6 +665,11 @@ pub fn choose_task(sim: &mut Settlement, state: &State, pi: usize) {
             .as_ref()
             .is_some_and(|job| job.produces().iter().any(|&(r, _)| r == Res::Food))
     });
+    // A load cut by hand was asked for, and outranks whatever this settler
+    // would have picked for themselves - their own trade included.
+    if start_gleaning(sim, state, pi, food_short) {
+        return;
+    }
     if food_short && !food_work && start_forage(sim, state, pi) {
         return;
     }
@@ -823,6 +829,46 @@ pub fn start_forage(sim: &mut Settlement, state: &State, pi: usize) -> bool {
     start_harvest(sim, state, pi, None, WILD_JOB)
 }
 
+/// How far somebody will go for a load that was cut by hand. Further than for
+/// one that merely fell somewhere: this one was pointed at.
+const GLEAN_REACH: f64 = 60.0;
+
+/// Fetching what the pointer cut. This is the whole of what the hand tool does
+/// to the town's plans: it puts a load on the ground and marks it as asked for,
+/// and the next settler to make a decision goes and gets it.
+fn start_gleaning(sim: &mut Settlement, state: &State, pi: usize, food_short: bool) -> bool {
+    let ci = sim.colony_of(pi);
+    let person_id = sim.people[pi].id;
+    let (px, py) = (sim.people[pi].x, sim.people[pi].y);
+    let mut best: Option<(f64, i32)> = None;
+    for pile in &sim.piles {
+        if !pile.by_hand || (pile.claimed_by != 0 && pile.claimed_by != person_id) {
+            continue;
+        }
+        // A town running out of food fetches food and nothing else, however
+        // loudly the pointer asked for the rest of it.
+        if food_short && pile.res != Res::Food {
+            continue;
+        }
+        if !sim.wanted(state, ci, pile.res) {
+            continue;
+        }
+        let d = (pile.col as f64 - px).hypot(pile.row as f64 - py);
+        if d > GLEAN_REACH {
+            continue;
+        }
+        match best {
+            Some((near, _)) if near <= d => {}
+            _ => best = Some((d, pile.id)),
+        }
+    }
+    let pile_id = match best {
+        Some((_, id)) => id,
+        None => return false,
+    };
+    take_labor_task(sim, pi, LaborOption::Pickup { pile_id })
+}
+
 pub fn start_wander(sim: &mut Settlement, pi: usize) {
     let c = clampi(sim.people[pi].cell_col() + sim.rng.int(-4, 4), 0, sim.world().cols - 1);
     let r = clampi(sim.people[pi].cell_row() + sim.rng.int(-4, 4), 0, sim.world().rows - 1);
@@ -894,11 +940,18 @@ fn pick_plant(
     radius: f64,
 ) -> Option<i32> {
     let person_id = sim.people[pi].id;
-    let min = state.civ.work.min_harvest_mass as f32;
+    let min = state.civ.work.min_harvest_mass;
     let mut best = None;
     let mut best_score = 0.0;
     sim.plant_index.near(origin.0, origin.1, radius, |mark| {
-        if mark.mass < min || !job.classes.contains(&mark.class) {
+        if !job.classes.contains(&mark.class) {
+            return;
+        }
+        // A species somebody has been cutting by hand is one worth going out
+        // of the way for, and worth taking smaller than the camp would have
+        // bothered with.
+        let interest = mark.lore as f64;
+        if (mark.mass as f64) < min * lore_patience(interest) {
             return;
         }
         if mark.claimed_by != 0 && mark.claimed_by != person_id {
@@ -908,7 +961,7 @@ fn pick_plant(
         if d > radius {
             return;
         }
-        let score = mark.mass as f64 / (2.0 + d);
+        let score = mark.mass as f64 * lore_weight(interest) / (2.0 + d);
         if score > best_score {
             best_score = score;
             best = Some(mark.id);
@@ -1042,11 +1095,14 @@ pub fn start_labor(sim: &mut Settlement, state: &State, pi: usize) -> bool {
             continue;
         }
         let d = (pile.col as f64 - px).hypot(pile.row as f64 - py);
-        // Nobody walks across the map for a pile another town will get to.
-        if d > 40.0 {
+        // Nobody walks across the map for a pile another town will get to,
+        // unless it was cut by hand, in which case somebody asked for it.
+        let reach = if pile.by_hand { GLEAN_REACH } else { 40.0 };
+        if d > reach {
             continue;
         }
-        options.push((19.0 - d * 0.2, LaborOption::Pickup { pile_id: pile.id }));
+        let asked = if pile.by_hand { 12.0 } else { 0.0 };
+        options.push((19.0 + asked - d * 0.2, LaborOption::Pickup { pile_id: pile.id }));
     }
 
     for (si, site) in sim.buildings.iter().enumerate() {
@@ -1403,19 +1459,7 @@ pub fn run_task(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
                 }
                 sim.colonies[ci].econ.record_produced(res, total);
             }
-            if cut_back {
-                let plant = &mut sim.plant_sim.plants[index];
-                plant.radius_px *= regrow;
-                plant.height_px *= regrow;
-                plant.confined_side = false;
-                plant.dirty = true;
-                plant.claimed_by = 0;
-                let id = plant.id;
-                sim.plant_sim.raster_queue.push_back(id);
-                sim.claim_plant(plant_id, 0);
-            } else {
-                sim.plant_sim.remove_plant_at(index);
-            }
+            sim.take_plant(index, cut_back, regrow);
             sim.people[pi].clear_task();
             if sim.people[pi].carry.n >= cap * 0.9 {
                 start_deliver(sim, state, pi);

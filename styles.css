@@ -1105,6 +1105,10 @@ body.moving-people.holding #world-canvas {
   cursor: grabbing;
 }
 
+body.harvesting #world-canvas {
+  cursor: crosshair;
+}
+
 .readout.hint {
   min-width: 0;
   opacity: 0.75;

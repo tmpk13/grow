@@ -14,6 +14,7 @@ use crate::ui::{
 pub struct TechPanel {
     current: Element,
     mods: Element,
+    lore: Element,
     tree: Element,
     handle: Handle,
     since: f64,
@@ -44,6 +45,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     }
     progress.push(current.clone());
     progress.push(mods.clone());
+    let lore = el("div").get();
+    progress.push(lore.clone());
     append(root, section("Progress", progress));
 
     let tree = el("div").class("tech-tree").get();
@@ -52,7 +55,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         tree.clone(),
     ]));
 
-    let mut panel = TechPanel { current, mods, tree, handle: h.clone(), since: 0.0 };
+    let mut panel = TechPanel { current, mods, lore, tree, handle: h.clone(), since: 0.0 };
     panel.redraw(app);
     Box::new(panel)
 }
@@ -81,6 +84,7 @@ impl Panel for TechPanel {
         clear_scope(Scope::List);
         clear(&self.current);
         clear(&self.mods);
+        clear(&self.lore);
         clear(&self.tree);
         let cfg = app.state.civ.tech;
         let civ = match &app.settlement {
@@ -121,6 +125,29 @@ impl Panel for TechPanel {
                 .text(&format!("{} x{:.2}", key.label(), value))
                 .get();
             let _ = self.mods.append_child(&chip);
+        }
+
+        // What the pointer has taught the map. Not research and not owned by a
+        // town, so it sits below the technologies rather than among them, and
+        // it is only there at all once something has been cut by hand.
+        let taught = civ.lore.known();
+        if !taught.is_empty() {
+            let chips = el("div").class("chips").get();
+            for (id, interest) in taught {
+                let name = app.state.find_species(id).map(|s| s.name.as_str()).unwrap_or(id);
+                let chip = el("span")
+                    .class("chip")
+                    .text(&format!("{name} {}%", (interest * 100.0).round()))
+                    .get();
+                let _ = chips.append_child(&chip);
+            }
+            let block = el("div")
+                .class("class-block")
+                .child(&el("h4").text("Learned by hand").get())
+                .child(&chips)
+                .child(&note("Gatherers take these sooner and walk further for them."))
+                .get();
+            let _ = self.lore.append_child(&block);
         }
 
         let known: Vec<&'static TechDef> =

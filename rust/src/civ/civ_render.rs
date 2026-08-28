@@ -1773,6 +1773,104 @@ pub fn lamp_lights(sim: &Settlement) -> Vec<(f64, f64, f64)> {
         .collect()
 }
 
+/// One thing the hand could cut: where its foot is in world pixels, how big a
+/// shape it reads as, and how far through a cut it is. The camera draws these
+/// over the finished frame the way it draws labels, because they change with
+/// the pointer rather than with the world.
+pub struct HarvestMark {
+    pub x: f64,
+    pub y: f64,
+    pub height: f64,
+    pub half_w: f64,
+    /// How far through the cut is, and how solid the bar over it should be.
+    /// Nothing for a plant that is only there to be pointed at.
+    pub cut: Option<(f64, f64)>,
+    /// The one the pointer is on, or one being cut: drawn firmly rather than
+    /// as part of the wash.
+    pub hot: bool,
+}
+
+/// Everything cuttable the camera can see, thinned to about `limit` of them. A
+/// map holds tens of thousands of plants and a window holds a few hundred, so
+/// the sweep is around the visible rectangle rather than over the plant list.
+///
+/// The thinning is a stride over what is in view rather than the first `limit`
+/// found, because the buckets are read in map order: taking the first few
+/// hundred would outline the far edge of the view and nothing else. What is
+/// under the pointer and what is part cut are kept whatever the stride does
+/// with them - those two are the ones being looked at.
+pub fn harvest_marks(
+    sim: &Settlement,
+    state: &State,
+    limit: usize,
+    hover: Option<i32>,
+) -> Vec<HarvestMark> {
+    let world = sim.world();
+    let (cell, depth) = (world.cell_px.max(1), world.depth_px.max(1));
+    let view = sim.view;
+    let col0 = view.x0 / cell - 1;
+    let col1 = view.x1 / cell + 1;
+    let row0 = (view.y0 - world.sky_px) / depth - 1;
+    // A plant whose foot is below the window can still have its crown inside
+    // it, and the crown is what somebody is pointing at.
+    let row1 = (view.y1 - world.sky_px) / depth + 1 + TALLEST_ROWS;
+    let center = ((col0 + col1) / 2, (row0 + row1) / 2);
+    let radius = (((col1 - col0) as f64).hypot((row1 - row0) as f64) / 2.0) + 2.0;
+    let min = crate::civ::harvest::min_mass(state);
+    let inside = |mark: &crate::civ::settlement::PlantMark| {
+        (mark.mass as f64) >= min
+            && mark.col >= col0
+            && mark.col <= col1
+            && mark.row >= row0
+            && mark.row <= row1
+    };
+
+    let mut seen = 0usize;
+    sim.plant_index.near(center.0, center.1, radius, |mark| {
+        if inside(mark) {
+            seen += 1;
+        }
+    });
+    let stride = (seen / limit.max(1)).max(1);
+
+    let mut marks = Vec::with_capacity(seen.min(limit) + sim.hand.len() + 1);
+    let mut nth = 0usize;
+    sim.plant_index.near(center.0, center.1, radius, |mark| {
+        if !inside(mark) {
+            return;
+        }
+        let cut = sim
+            .hand
+            .iter()
+            .find(|c| c.plant_id == mark.id)
+            .map(|c| (c.fraction(), c.alpha()));
+        let hot = cut.is_some() || hover == Some(mark.id);
+        let take = nth.is_multiple_of(stride);
+        nth += 1;
+        if !take && !hot {
+            return;
+        }
+        let (height, half_w) = crate::civ::harvest::mark_box(
+            sim,
+            mark.height_px as f64,
+            mark.radius_px as f64,
+        );
+        marks.push(HarvestMark {
+            x: world.anchor_x(mark.col) as f64,
+            y: world.anchor_y(mark.row) as f64,
+            height,
+            half_w,
+            cut,
+            hot,
+        });
+    });
+    marks
+}
+
+/// How far above its own cell the tallest thing on a map can reach, in rows.
+/// Only used to decide how far outside the window to look for feet.
+const TALLEST_ROWS: i32 = 40;
+
 pub fn colony_labels(sim: &Settlement) -> Vec<(f64, f64, String, u32)> {
     let world = sim.world();
     sim.colonies
