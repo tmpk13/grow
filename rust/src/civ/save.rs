@@ -15,6 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::civ::balloons::Balloon;
 use crate::civ::boats::Boat;
 use crate::civ::colony::Colony;
 use crate::civ::harvest::Lore;
@@ -28,7 +29,7 @@ use crate::state::State;
 /// Bumped whenever the shape below changes in a way an older file cannot be
 /// read into. There is no upgrade path: a settlement is a thing being watched,
 /// not a document, and starting a fresh one costs a moment.
-pub const SNAPSHOT_VERSION: u32 = 3;
+pub const SNAPSHOT_VERSION: u32 = 4;
 
 /// The world a saved settlement grew on, as one string. Everything the map is
 /// built from is in here, so two settlements with the same key stand on the
@@ -69,6 +70,11 @@ pub struct Snapshot {
     pub lore: Lore,
     pub boats: Vec<Boat>,
     pub next_boat_id: i32,
+    /// What is up in the air, for the towns running that experiment.
+    #[serde(default)]
+    pub balloons: Vec<Balloon>,
+    #[serde(default)]
+    pub next_balloon_id: i32,
     /// Where the ground has been walked into paths.
     pub traffic: Vec<f32>,
     /// Which cells a plant is standing in the way in. Worked out from the
@@ -122,6 +128,8 @@ struct SnapshotRef<'a> {
     lore: &'a Lore,
     boats: &'a [Boat],
     next_boat_id: i32,
+    balloons: &'a [Balloon],
+    next_balloon_id: i32,
     traffic: &'a [f32],
     plant_block: &'a [u8],
     deposits: Vec<f64>,
@@ -164,6 +172,8 @@ pub fn capture(sim: &Settlement, state: &State) -> String {
         lore: &sim.lore,
         boats: &sim.boats,
         next_boat_id: sim.next_boat_id,
+        balloons: &sim.balloons,
+        next_balloon_id: sim.next_balloon_id,
         traffic: &sim.traffic,
         plant_block: &sim.plant_block,
         deposits: sim.terrain.deposits.iter().map(|d| d.amount).collect(),
@@ -254,6 +264,8 @@ pub fn restore(sim: &mut Settlement, state: &State, snap: Snapshot) -> Result<()
     sim.lore = snap.lore;
     sim.boats = snap.boats;
     sim.next_boat_id = snap.next_boat_id;
+    sim.balloons = snap.balloons;
+    sim.next_balloon_id = snap.next_balloon_id.max(1);
     if snap.traffic.len() == sim.traffic.len() {
         sim.traffic = snap.traffic;
     }

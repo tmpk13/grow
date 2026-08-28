@@ -17,6 +17,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::civ::balloons::Balloon;
 use crate::civ::boats::Boat;
 use crate::civ::buildings::{Grain, Structure};
 use crate::civ::config::ViewConfig;
@@ -149,6 +150,12 @@ pub enum SpriteKey {
         facing: i32,
         hull_w: i32,
         hull_h: i32,
+        banner: u32,
+    },
+    Balloon {
+        seed: u8,
+        w: i32,
+        h: i32,
         banner: u32,
     },
 }
@@ -1180,6 +1187,92 @@ pub fn boat_sprite(
     sprite
 }
 
+/// A canopy with a basket under it, in the colony's colors.
+///
+/// Drawn from the same two shapes at every size: an egg of banner and white
+/// gores with a shaded seam down the middle, and a dark box slung under it on
+/// two lines. Nothing about the flight is in the key - a balloon is the same
+/// picture wherever it has got to.
+pub fn balloon_sprite(
+    cache: &mut SpriteCache,
+    world: &World,
+    balloon: &Balloon,
+    banner: u32,
+) -> Rc<Sprite> {
+    let w = ((world.cell_px as f64 * 1.6).round() as i32).max(5);
+    let canopy_h = ((world.cell_px as f64 * 2.0).round() as i32).max(6);
+    let rope = ((world.cell_px as f64 * 0.35).round() as i32).max(1);
+    let basket_h = ((world.cell_px as f64 * 0.45).round() as i32).max(2);
+    let h = canopy_h + rope + basket_h;
+    let key = SpriteKey::Balloon { seed: (balloon.seed & 255) as u8, w, h, banner };
+    if let Some(hit) = cache.map.get(&key) {
+        return hit.clone();
+    }
+    let mut px = vec![0u32; (w * h) as usize];
+    let pale = pack_rgba(240, 236, 226, 255);
+    let dark = pack_rgba(52, 40, 30, 255);
+    let put = |px: &mut Vec<u32>, x: i32, y: i32, c: u32| {
+        if x >= 0 && x < w && y >= 0 && y < h {
+            px[(y * w + x) as usize] = c;
+        }
+    };
+    let half = w as f64 / 2.0;
+    // Widest a third of the way down: a round crown above that and a taper to
+    // the neck below it, which is what tells a balloon from a ball.
+    const CROWN: f64 = 0.34;
+    const NECK: f64 = 0.24;
+    for y in 0..canopy_h {
+        let t = y as f64 / (canopy_h - 1).max(1) as f64;
+        let span = if t < CROWN {
+            let u = (CROWN - t) / CROWN;
+            half * (1.0 - u * u).sqrt()
+        } else {
+            let u = (t - CROWN) / (1.0 - CROWN);
+            half * (NECK + (1.0 - NECK) * (1.0 - u).powf(0.7))
+        };
+        if span < 0.5 {
+            continue;
+        }
+        for x in 0..w {
+            let dx = x as f64 + 0.5 - half;
+            if dx.abs() > span {
+                continue;
+            }
+            // Gores: alternating panels of the town's color and off white, with
+            // the light side of the canopy toward the top left.
+            let gore = ((dx / span.max(0.5) + 1.0) * 2.5).floor() as i32;
+            let base = if gore % 2 == 0 { banner } else { pale };
+            let lit = clamp01(0.78 - t * 0.5 - (dx / span.max(0.5)) * 0.22);
+            put(&mut px, x, y, mix_packed(base, dark, 1.0 - lit));
+        }
+    }
+    let mid = w / 2;
+    let basket_w = ((w as f64 * 0.36).round() as i32).max(2);
+    let lines = mix_packed(dark, pale, 0.3);
+    for y in canopy_h..canopy_h + rope {
+        put(&mut px, mid - basket_w / 2, y, lines);
+        put(&mut px, mid + basket_w / 2, y, lines);
+    }
+    let wicker = pack_rgba(126, 88, 52, 255);
+    for y in canopy_h + rope..h {
+        for x in mid - basket_w / 2..=mid + basket_w / 2 {
+            // A rim, then the weave, so the basket is a basket and not a hole
+            // in the sky.
+            let c = if y == canopy_h + rope {
+                mix_packed(wicker, pale, 0.35)
+            } else if (x + y) % 2 == 0 {
+                wicker
+            } else {
+                mix_packed(wicker, dark, 0.45)
+            };
+            put(&mut px, x, y, c);
+        }
+    }
+    let sprite = Rc::new(Sprite { w, h, px, ox: mid, oy: h });
+    cache.map.insert(key, sprite.clone());
+    sprite
+}
+
 // ---- compositing ---------------------------------------------------------
 
 /// How much of a settler is under the water, as a fraction of their height.
@@ -1774,6 +1867,32 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
             }
         }
     }
+    // Last, and outside the sort: what is in the air is over everything on the
+    // ground, whatever row it happens to be drifting across.
+    if detail.sprites() {
+        let ceiling = state.civ.experiments.balloons.ceiling;
+        for i in 0..sim.balloons.len() {
+            let (x, y, height, colony) = {
+                let b = &sim.balloons[i];
+                (b.x, b.y, b.height(ceiling), b.colony)
+            };
+            let world = &sim.plant_sim.world;
+            let sx = (x * world.cell_px as f64).round() as i32;
+            let sy = (world.sky_px as f64 + y * world.depth_px as f64
+                - height * world.cell_px as f64)
+                .round() as i32;
+            if !view.overlaps(sx - cell * 2, sy - cell * 4, sx + cell * 2, sy + depth) {
+                continue;
+            }
+            let banner = sim
+                .colony_index(colony)
+                .map(|ci| sim.colonies[ci].banner)
+                .unwrap_or(pack_rgba(210, 210, 214, 255));
+            let sprite = balloon_sprite(&mut sprites, &sim.plant_sim.world, &sim.balloons[i], banner);
+            blit(&mut buf, &sim.plant_sim.world, &sprite, sx, sy, false);
+        }
+    }
+
     sim.sprites = sprites;
     sim.buffer = buf;
     sim.items = items;

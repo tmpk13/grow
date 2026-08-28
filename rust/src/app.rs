@@ -134,6 +134,11 @@ pub struct UiState {
     /// What is typed into the picture panel's own search box, and its two
     /// switches. How somebody is using that panel, not anything about the
     /// project.
+    /// Columns and rows the Land panel is offering to add to the map. Kept
+    /// here rather than in the project: it is a number somebody is about to
+    /// press a button with, not a property of the world.
+    pub grow_cols: i32,
+    pub grow_rows: i32,
     pub made_search: String,
     pub made_all: bool,
     pub made_meaning: bool,
@@ -164,6 +169,11 @@ pub struct App {
     /// note paint first.
     pub pending_bootstrap: bool,
     pub pending_civ_reset: bool,
+    /// A map waiting to be made larger, as the size it is to become. Deferred
+    /// by a frame like the bootstrap is, and for the same reason: warming a
+    /// wilderness onto the new ground blocks the thread, and the note saying
+    /// so has to paint first.
+    pub pending_expand: Option<(i32, i32)>,
     pub save_deadline: Option<f64>,
     /// When the running settlement is next written down, and whether anything
     /// has happened in it since the last time. It changes every tick and is
@@ -624,6 +634,7 @@ const CIV_TABS: &[TabDef] = &[
     TabDef { id: "build", label: "Build", build: ui::build_panel::build },
     TabDef { id: "economy", label: "Economy", build: ui::economy_panel::build },
     TabDef { id: "tech", label: "Tech", build: ui::tech_panel::build },
+    TabDef { id: "experimental", label: "Experimental", build: ui::experimental_panel::build },
 ];
 
 /// The tab of `mode` with this id, as the static string the tab machinery
@@ -773,6 +784,8 @@ pub fn start() -> Result<(), JsValue> {
         cut_at: None,
         hover_at: None,
         marquee: None,
+        grow_cols: 32,
+        grow_rows: 16,
         made_search: String::new(),
         made_all: false,
         made_meaning: false,
@@ -804,6 +817,7 @@ pub fn start() -> Result<(), JsValue> {
         redraw_panel: false,
         pending_bootstrap: false,
         pending_civ_reset: false,
+        pending_expand: None,
         save_deadline: None,
         civ_save_at: ui::now() + CIV_SAVE_INTERVAL_MS,
         civ_stepped: false,
@@ -2409,6 +2423,30 @@ fn frame(h: &Handle, ts: f64) {
                 // Founding a settlement is the project changing; picking one
                 // up off a save is not, and a save note would only rub out
                 // the line saying which day it came back on.
+                sh.app.request_save();
+            }
+        }
+    }
+
+    if let Some((cols, rows)) = sh.app.pending_expand.take() {
+        if let Some(mut civ) = sh.app.settlement.take() {
+            // The wilderness carries a count rather than a density, so the
+            // scale it was told at reset is put back from the setting the
+            // panel has just raised.
+            civ.plant_sim.wild_scale = sh.app.state.civ.terrain.wildness.max(0.1);
+            let grew = civ.expand(&sh.app.state, cols, rows);
+            sh.app.settlement = Some(civ);
+            if grew {
+                fill_view(&mut sh.app);
+                sync_zoom(&sh.app);
+                sh.app.set_note(&format!("the map is {cols} by {rows} now"));
+                // The whole panel, not a redraw: the number boxes for the map
+                // size were built with the old numbers in them.
+                sh.app.rebuild_panel = true;
+                // The file names the world it grew on, and that world has just
+                // changed shape; the one on disk is for a map that no longer
+                // exists until this is written.
+                save_settlement(&mut sh.app);
                 sh.app.request_save();
             }
         }

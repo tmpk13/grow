@@ -248,7 +248,7 @@ steer back inward instead of pushing into a neighbor, so a crowded plant grows
 tall and narrow. Height is not a grid cost, only the footprint is. The
 **Occupancy** toggle in the test window colors the claimed cells per layer.
 
-## Settlement: the five panels
+## Settlement: the six panels
 
 Entering the mode for the first time grows a wilderness (a few hundred
 simulated seconds of the plant sim), cuts the rivers, scatters deposits, picks a
@@ -278,9 +278,21 @@ are set per ten thousand cells, so a larger map gets more rivers rather than the
 same few stretched across it.
 
 The view section holds day and night, footpaths, chimney smoke, boats, current,
-building labels, the water and path colors, and the two drawing controls: whether
-to draw only what is on screen, and the zoom below which detail starts being
-shed.
+building labels, the water and path colors, how long the map waits before taking
+the whole window on its own, and the two drawing controls: whether to draw only
+what is on screen, and the zoom below which detail starts being shed.
+
+**Grow it instead** makes the map larger without starting the settlement over.
+The new land goes on the right and along the bottom, so every column and row
+that is already there keeps its number and nothing standing on one moves: the
+town, its people, the plants and the loads on the ground carry on exactly where
+they were. The new ground arrives with a wilderness on it, warmed for as long as
+a fresh map is and with the old land held still while that runs, so making the
+map bigger is not a week passing. Wild growth goes up with the area at the same
+time, because the land carries a count of plants rather than a density and
+without that the new ground would come out bare. Rivers and deposits are placed
+in the new land only, and a course traced into the old map stops at the boundary
+rather than cutting a channel through somebody's town.
 
 ### People
 
@@ -447,12 +459,35 @@ raising named modifiers (gathering speed, carry capacity, farm yield, and so
 on). Points come from scholars in a school plus a small trickle from the
 population. Pick any available tech to make it the target.
 
+### Experimental
+
+One switch, off by default, and everything under it. With it off nothing in
+here is asked anything: no balloon is built, nothing is spent on one, and the
+settlement is the settlement it has always been. It can be turned on while a
+town runs and turned off again.
+
+**Hot air balloons.** A town with a school and cloth to spare sews a canopy,
+burns charcoal under it and sends it up over itself. What can be seen from up
+there is worth more to the scholars than another day at the bench, so research
+runs faster for as long as one is in the air. It climbs, drifts on whatever wind
+it caught, and comes down; the town waits out the interval before building
+another. No school, no balloon. How much a canopy is worth, how many a town
+keeps up, how long a flight lasts, how high it gets, how fast the wind carries
+it and what it costs are all here, and the list below them says what is in the
+air right now and where.
+
 ## How a settlement works
 
 * **Everything is carried.** A woodcutter walks to a tree, fells it, and can
   carry one load home; the rest of the timber lies where it fell until someone
   comes back for it, and rots if nobody does. A building site accumulates the
   materials people bring it and only then can be raised.
+* **A load is worth a walk, up to a point.** Nobody crosses the map for
+  something lying on the ground: past the distance in the People panel they
+  leave it, and one that was cut by hand is worth half again as long a walk
+  because somebody asked for that one. The nearest load beyond anybody's reach
+  is still kept as a last resort, below every other job there is, so a town
+  with nothing nearer to do fetches it rather than standing about.
 * **Foraging is renewable, felling is not.** Ground cover is cut back to a
   third and grows again at whatever rate its species has in the lab, so the
   food supply is tied to the plants you authored. Trees and shrubs are felled

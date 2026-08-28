@@ -6,6 +6,7 @@ use grow::civ::civ_render::Detail;
 use grow::civ::settlement::{Rect, Settlement};
 use grow::civ::sprites::{motion_of, natural_cmp, Clip, Motion, PeopleSprites, MAX_FRAME_PX};
 use grow::civ::terrain::Cell;
+use grow::civ::balloons::research_lift as balloon_lift;
 use grow::sim::Sim;
 use grow::species::{SizeClass, SIZE_CLASSES};
 use grow::state::State;
@@ -841,6 +842,137 @@ fn a_cut_tree_goes_over_before_it_goes_away() {
         sim.plant_sim.plant_index(id).is_none(),
         "a tree that finished falling is still on the map",
     );
+}
+
+/// The experiments switch is the contract: with it off, nothing under it is
+/// asked anything and the town is the town it would have been.
+#[test]
+fn a_balloon_lifts_research_and_only_when_the_experiment_is_on() {
+    fn town(on: bool) -> (Settlement, State) {
+        let mut state = State::new();
+        state.civ.world.cols = 40;
+        state.civ.world.rows = 20;
+        state.civ.terrain.warmup = 30.0;
+        state.civ.experiments.on = on;
+        state.civ.experiments.balloons.interval = 5.0;
+        let mut sim = Settlement::new(&state);
+        sim.bootstrap(&state);
+        // A school and the stores to fly from it, rather than the twenty days
+        // it would take a town to get there on its own.
+        let center = sim.colonies[0].center;
+        let site = (center.0 + 3, center.1);
+        sim.place_building(&state, 0, "school", site.0, site.1, true);
+        grow::civ::resources::add_stock(&mut sim.colonies[0].stock, grow::civ::resources::Res::Cloth, 40.0);
+        grow::civ::resources::add_stock(
+            &mut sim.colonies[0].stock,
+            grow::civ::resources::Res::Charcoal,
+            40.0,
+        );
+        (sim, state)
+    }
+
+    let dt = 1.0 / 20.0;
+    let (mut off, state_off) = town(false);
+    for _ in 0..600 {
+        off.step(&state_off, dt);
+    }
+    assert!(off.balloons.is_empty(), "an experiment nobody switched on ran anyway");
+
+    let (mut on, state_on) = town(true);
+    for _ in 0..600 {
+        on.step(&state_on, dt);
+    }
+    assert!(!on.balloons.is_empty(), "the town never sent one up");
+    let colony = on.colonies[0].id;
+    assert!(
+        balloon_lift(&on, &state_on, colony) > 1.0,
+        "a canopy over the town is worth nothing to its scholars",
+    );
+
+    // What is up comes down, and the switch going off clears the sky at once.
+    let mut state_off_again = state_on.clone();
+    state_off_again.civ.experiments.on = false;
+    on.step(&state_off_again, dt);
+    assert!(on.balloons.is_empty(), "turning the experiment off left canopies in the air");
+}
+
+/// A map made larger under a running settlement keeps the settlement.
+#[test]
+fn growing_the_map_leaves_everything_standing_where_it_was() {
+    let mut state = State::new();
+    state.civ.world.cols = 40;
+    state.civ.world.rows = 20;
+    state.civ.terrain.warmup = 60.0;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..(state.civ.people.day_length / dt) as usize * 3 {
+        sim.step(&state, dt);
+    }
+
+    let before: Vec<(i32, i32, i32)> =
+        sim.buildings.iter().map(|b| (b.id, b.col, b.row)).collect();
+    let people: Vec<(u32, f64, f64)> =
+        sim.people.iter().map(|p| (p.id, p.x, p.y)).collect();
+    let plants: Vec<(i32, i32, i32)> = sim
+        .plant_sim
+        .plants
+        .iter()
+        .map(|p| (p.id, p.col, p.row))
+        .collect();
+    let kind: Vec<u8> = (0..20)
+        .flat_map(|r| (0..40).map(move |c| (c, r)))
+        .map(|(c, r)| sim.terrain.kind[(r * 40 + c) as usize])
+        .collect();
+    let deposits = sim.terrain.deposits.len();
+
+    state.civ.world.cols = 64;
+    state.civ.world.rows = 30;
+    assert!(sim.expand(&state, 64, 30), "the map did not grow");
+    assert_eq!((sim.world().cols, sim.world().rows), (64, 30));
+
+    for (id, col, row) in before {
+        let bi = sim.building_index(id).expect("a building went missing");
+        assert_eq!((sim.buildings[bi].col, sim.buildings[bi].row), (col, row));
+    }
+    for (id, x, y) in people {
+        let p = sim.people.get(id).expect("a settler went missing");
+        assert_eq!((p.x, p.y), (x, y), "a settler moved when the map grew");
+    }
+    for (id, col, row) in plants {
+        let i = sim.plant_sim.plant_index(id).expect("a plant went missing");
+        assert_eq!((sim.plant_sim.plants[i].col, sim.plant_sim.plants[i].row), (col, row));
+    }
+    // The ground that was there is the ground that is there.
+    for r in 0..20 {
+        for c in 0..40 {
+            assert_eq!(
+                sim.terrain.kind[(r * 64 + c) as usize],
+                kind[(r * 40 + c) as usize],
+                "the ground at {c},{r} changed under the town",
+            );
+        }
+    }
+    assert!(sim.terrain.deposits.len() >= deposits, "the old deposits were thrown away");
+
+    // The new ground is land, not a hole: something grew on it and people can
+    // walk onto it.
+    let out_there = sim
+        .plant_sim
+        .plants
+        .iter()
+        .any(|p| p.col >= 40 || p.row >= 20);
+    assert!(out_there, "nothing grew on the new land");
+    let walkable = (20..30)
+        .flat_map(|r| (40..64).map(move |c| (c, r)))
+        .any(|(c, r)| sim.walkable(c, r));
+    assert!(walkable, "none of the new land can be walked on");
+
+    // And it still runs.
+    for _ in 0..(state.civ.people.day_length / dt) as usize * 2 {
+        sim.step(&state, dt);
+    }
+    assert!(sim.people.count() > 0, "the town died when the map grew");
 }
 
 #[test]

@@ -1,5 +1,6 @@
 //! The settlement half of the project.
 
+pub mod balloons;
 pub mod boats;
 pub mod buildings;
 pub mod civ_render;

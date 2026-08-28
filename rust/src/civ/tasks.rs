@@ -829,9 +829,25 @@ pub fn start_forage(sim: &mut Settlement, state: &State, pi: usize) -> bool {
     start_harvest(sim, state, pi, None, WILD_JOB)
 }
 
-/// How far somebody will go for a load that was cut by hand. Further than for
+/// How much further somebody will go for a load that was cut by hand than for
 /// one that merely fell somewhere: this one was pointed at.
-const GLEAN_REACH: f64 = 60.0;
+const ASKED_REACH: f64 = 1.5;
+
+/// What the nearest load beyond anybody's reach is worth as a job. Below every
+/// other option there is, so it is only ever taken when there is nothing
+/// nearer to be doing.
+const FAR_PILE_SCORE: f64 = 2.0;
+
+/// How far somebody will go for a load, in cells, and half again as far for
+/// one that was asked for.
+fn fetch_reach(state: &State, by_hand: bool) -> f64 {
+    let reach = state.civ.work.fetch_reach.max(1.0);
+    if by_hand {
+        reach * ASKED_REACH
+    } else {
+        reach
+    }
+}
 
 /// Fetching what the pointer cut. This is the whole of what the hand tool does
 /// to the town's plans: it puts a load on the ground and marks it as asked for,
@@ -854,7 +870,11 @@ fn start_gleaning(sim: &mut Settlement, state: &State, pi: usize, food_short: bo
             continue;
         }
         let d = (pile.col as f64 - px).hypot(pile.row as f64 - py);
-        if d > GLEAN_REACH {
+        // A hard limit here, with no falling back on the nearest: this is the
+        // path that jumps the queue, and a load on the far side of the map is
+        // not a reason to drop what somebody was about to do. It is still
+        // offered as ordinary work below.
+        if d > fetch_reach(state, true) {
             continue;
         }
         match best {
@@ -1087,6 +1107,12 @@ pub fn start_labor(sim: &mut Settlement, state: &State, pi: usize) -> bool {
     // entirely, because the person kept picking it and kept failing to path.
     let mut options: Vec<(f64, LaborOption)> = Vec::new();
 
+    // Nobody walks across the map for a pile another town will get to. The
+    // nearest one that is too far is kept aside rather than dropped: out of
+    // reach is not the same as not worth having, and a town with nothing
+    // nearer to be doing would rather fetch it than stand about.
+    let mut anything_near = false;
+    let mut far: Option<(f64, i32)> = None;
     for pile in &sim.piles {
         if pile.claimed_by != 0 && pile.claimed_by != person_id {
             continue;
@@ -1095,14 +1121,21 @@ pub fn start_labor(sim: &mut Settlement, state: &State, pi: usize) -> bool {
             continue;
         }
         let d = (pile.col as f64 - px).hypot(pile.row as f64 - py);
-        // Nobody walks across the map for a pile another town will get to,
-        // unless it was cut by hand, in which case somebody asked for it.
-        let reach = if pile.by_hand { GLEAN_REACH } else { 40.0 };
-        if d > reach {
+        if d > fetch_reach(state, pile.by_hand) {
+            match far {
+                Some((near, _)) if near <= d => {}
+                _ => far = Some((d, pile.id)),
+            }
             continue;
         }
+        anything_near = true;
         let asked = if pile.by_hand { 12.0 } else { 0.0 };
         options.push((19.0 + asked - d * 0.2, LaborOption::Pickup { pile_id: pile.id }));
+    }
+    if !anything_near {
+        if let Some((d, id)) = far {
+            options.push((FAR_PILE_SCORE - d * 0.02, LaborOption::Pickup { pile_id: id }));
+        }
     }
 
     for (si, site) in sim.buildings.iter().enumerate() {

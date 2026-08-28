@@ -61,6 +61,7 @@ flowchart TD
     bldp["ui/build_panel.rs"]
     ecop["ui/economy_panel.rs"]
     tchp["ui/tech_panel.rs"]
+    expp["ui/experimental_panel.rs<br/>one switch, and what is under it"]
     sdrop["ui/sprite_drop.rs<br/>drop zones: settler motions and made things"]
   end
 
@@ -89,6 +90,7 @@ flowchart TD
     social["civ/social.rs<br/>who has met whom, and what they made of it"]
     csprites["civ/sprites.rs<br/>clips per settler motion and per made thing's state"]
     boats["civ/boats.rs<br/>hulls, cargoes, voyages"]
+    ball["civ/balloons.rs<br/>canopies aloft, and what they are worth"]
     path["civ/pathing.rs<br/>A* over land and water"]
     econ["civ/economy.rs<br/>prices, wages, caravans"]
     tech["civ/tech.rs<br/>unlocks and modifiers"]
@@ -151,6 +153,9 @@ flowchart TD
   bldp --> bdefs
   ecop --> econ
   tchp --> tech
+  expp --> ball
+  sett --> ball
+  ball --> cfg
   sim --> world
   sim --> plant
   sim --> species
@@ -1027,6 +1032,22 @@ ring was closed. A ring is also the work of a town rather than of a village: a
 settlement that walls itself too early spends everything it owns on the wall
 and then starves inside it, so there is a head count below which nobody starts.
 
+## Experiments
+
+One switch, off by default, and everything under it asks that switch first.
+
+The contract is that with it off the settlement is byte for byte the settlement
+it would have been: nothing is built, nothing is spent, and the multiplier an
+experiment would apply is exactly one rather than something that rounds to it.
+The panel does not draw the settings for a block that is off, so nothing under
+it reaches menu search either.
+
+The first thing in it is hot air balloons. A town with a school and cloth to
+spare sends one up over itself; while it is aloft the colony's research runs
+faster. A balloon is a position on the ground plane plus a height, so it is
+drawn in the same projection as everything else and simply painted after the
+sorted draw list, being in the sky.
+
 ## Counters
 
 A stall is one settler's business. Nobody plans one and nobody is assigned to
@@ -1190,6 +1211,37 @@ flowchart LR
   coin -->|buys B's surplus| boat2(("boat"))
   boat2 -->|home| a
 ```
+
+## A map that grows under a running town
+
+Everything the terrain generator decides per cell is a pure function of the seed
+and the cell's own position, so the ground that was already there comes out of
+the generator the same and is copied straight into the wider stride. What is not
+a pure function of position is anything placed by a walk - the rivers and the
+deposit clusters - so those are run again over the new land only, with the old
+map frozen: no spring is picked in it, a course traced into it stops at the
+boundary, no channel is cut into it and no cluster grows into it.
+
+New land goes on the right and along the bottom, which is what makes the rest of
+it cheap: every column and row that was there keeps its number, so nothing with
+a coordinate has to move.
+
+```mermaid
+flowchart TD
+  ask["grow to cols x rows"] --> world["World::configure<br/>layer occupancy cleared"]
+  world --> claim["every plant claims<br/>its cells again"]
+  ask --> terr["Terrain::expand<br/>noise everywhere,<br/>old cells copied back"]
+  terr --> rivers["rivers and deposits<br/>in the new land only"]
+  ask --> grids["blocked, build, gates,<br/>traffic, plant block<br/>relaid at the new stride"]
+  claim --> warm["Sim::warm_region<br/>seeds the new ground,<br/>old land held still"]
+  rivers --> warm
+  grids --> warm
+  warm --> caches["ground, buffers and<br/>the plant index rebuilt"]
+```
+
+The wilderness carries a count rather than a density - `max_instances` is for
+the whole world - so the caller raises Wild growth by the same ratio the area
+went up by. Without that the new ground would arrive bare and stay that way.
 
 ## Loads on the ground
 

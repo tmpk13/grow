@@ -269,6 +269,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("anything with a stem goes over where it stood rather than vanishing out of \
                   the hand that cut it"),
             |c, v| c.fall_time = v),
+        work_num(h, "Fetch a load within", w.fetch_reach, 4.0, 200.0, 2.0,
+            Some("cells somebody will walk for a load lying on the ground, half again as far \
+                  for one cut by hand; past it they leave it, unless there is nothing nearer \
+                  to fetch at all"),
+            |c, v| c.fetch_reach = v),
         work_num(h, "Dropped load life (days)", w.pile_life, 0.2, 30.0, 0.2,
             Some("anything left on the ground, cut by hand or dropped by somebody working, rots \
                   away over this long if nobody fetches it"),

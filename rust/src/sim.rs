@@ -144,9 +144,45 @@ impl Sim {
         self.time += dt;
         self.ticks += 1;
         self.spawn_phase(state, dt, blocked);
+        self.grow_all(state, dt, blocked, None);
+    }
 
+    /// Grows a wilderness onto part of a world without letting the rest of it
+    /// move.
+    ///
+    /// This is what a map made larger under a running settlement needs: the new
+    /// land has to arrive with something growing on it, and the old land is not
+    /// supposed to jump forward a week while that happens. `held` marks the
+    /// cells to leave alone, which is the same mask that stops anything seeding
+    /// there. The clock does not advance: no time passes in the world, this is
+    /// ground that was always there being caught up with.
+    pub fn warm_region(&mut self, state: &State, seconds: f64, dt: f64, held: &[u8]) {
+        let step = dt.max(0.001);
+        let mut t = 0.0;
+        while t < seconds {
+            self.spawn_phase(state, step, Some(held));
+            self.grow_all(state, step, Some(held), Some(held));
+            t += step;
+        }
+    }
+
+    /// One step of growth for every plant, skipping any rooted in a held cell.
+    fn grow_all(
+        &mut self,
+        state: &State,
+        dt: f64,
+        blocked: Option<&[u8]>,
+        held: Option<&[u8]>,
+    ) {
         let fall = self.fall_time.max(0.05);
+        let cols = self.world.cols;
         for i in (0..self.plants.len()).rev() {
+            if let Some(held) = held {
+                let (col, row) = (self.plants[i].col, self.plants[i].row);
+                if held.get((row * cols + col) as usize).is_some_and(|&h| h != 0) {
+                    continue;
+                }
+            }
             if self.plants[i].felled > 0.0 {
                 // Coming down. Nothing grows, shades or seeds from here: the
                 // only thing left to do with it is finish the fall. The buffer

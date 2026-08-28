@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::civ::balloons::BalloonConfig;
 use crate::civ::boats::BoatConfig;
 use crate::civ::buildings::{BuildConfig, Category};
 use crate::civ::economy::EconomyConfig;
@@ -48,6 +49,12 @@ pub struct WorkConfig {
     pub pile_life: f64,
     /// Fraction of a full load a hauler is willing to fetch for a workshop.
     pub restock_share: f64,
+    /// How far somebody will walk for a load lying on the ground, in cells.
+    /// Past it they leave it where it is, unless there is nothing nearer to
+    /// fetch at all, in which case the nearest one beyond reach is better than
+    /// standing about. A load that was cut by hand is worth half again as long
+    /// a walk, because somebody asked for that one.
+    pub fetch_reach: f64,
     /// Water a farm uses per second of work. Fields dry out as they are
     /// worked, and a dry field is a poor one.
     pub farm_water_use: f64,
@@ -85,6 +92,7 @@ impl Default for WorkConfig {
             clear_yield: 0.5,
             pile_life: 7.0,
             restock_share: 1.0,
+            fetch_reach: 24.0,
             farm_water_use: 0.002,
             farm_soak_reach: 3,
             farm_soak_rate: 0.06,
@@ -292,6 +300,19 @@ impl Default for ViewConfig {
     }
 }
 
+/// Things that are not finished, or not sure of themselves yet.
+///
+/// Off by default and off as a block. Everything under here asks the switch at
+/// the top first, so leaving something half thought out in it cannot change a
+/// settlement somebody was watching, and turning the block off puts the world
+/// back the way it ran.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Experiments {
+    pub on: bool,
+    pub balloons: BalloonConfig,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct CivConfig {
@@ -308,6 +329,7 @@ pub struct CivConfig {
     pub start: StartConfig,
     pub sim: SimSettings,
     pub view: ViewConfig,
+    pub experiments: Experiments,
     /// Images dropped on the people panel to draw settlers with, one clip per
     /// motion. Empty means everyone is drawn from the generator instead.
     pub sprites: PeopleSprites,
@@ -335,6 +357,7 @@ impl Default for CivConfig {
             start: StartConfig::default(),
             sim: SimSettings::default(),
             view: ViewConfig::default(),
+            experiments: Experiments::default(),
             sprites: PeopleSprites::default(),
             made: MadeSprites::default(),
             people_archive: 400,

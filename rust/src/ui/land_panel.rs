@@ -36,6 +36,34 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         app_num(h, "Seed", civ.seed as f64, NumOpts { min: 1.0, max: 999_999_999.0, step: 1.0 },
             Some("terrain, deposits, settlers and everything they do"),
             |app, v| { app.state.civ.seed = v as u32; app.request_save(); }),
+        el("h4").text("Grow it instead").get(),
+        note("Adds land to the right and along the bottom, so every column and row that is \
+              already there keeps its number and nothing standing on one moves. The new ground \
+              arrives with a wilderness on it, warmed for as long as a fresh map is; Wild growth \
+              goes up with the area at the same time, because the land carries a count of plants \
+              rather than a density, and without that the new ground would come out bare. The \
+              town, its people and everything they know carry on."),
+        grow_num(h, "Add columns", app.ui.grow_cols as f64, |ui, v| ui.grow_cols = v as i32),
+        grow_num(h, "Add rows", app.ui.grow_rows as f64, |ui, v| ui.grow_rows = v as i32),
+        btn_row(vec![app_button(h, "Grow the map", |app| {
+            let (add_c, add_r) = (app.ui.grow_cols.max(0), app.ui.grow_rows.max(0));
+            if add_c == 0 && add_r == 0 {
+                app.set_note("nothing to add");
+                return;
+            }
+            let was = (app.state.civ.world.cols, app.state.civ.world.rows);
+            let (cols, rows) = ((was.0 + add_c).min(512), (was.1 + add_r).min(256));
+            let ratio = (cols as f64 * rows as f64) / (was.0 as f64 * was.1 as f64);
+            app.state.civ.world.cols = cols;
+            app.state.civ.world.rows = rows;
+            app.state.civ.terrain.wildness = (app.state.civ.terrain.wildness * ratio).min(6.0);
+            // The running world is about to be exactly this, so nothing is
+            // left waiting on Apply.
+            app.mark_built(Restart::Civ);
+            app.set_note("growing the wilderness...");
+            app.pending_expand = Some((cols, rows));
+        })]),
+        el("h4").text("Or start over").get(),
         btn_row(vec![
             app_button(h, "New land", |app| {
                 app.state.civ.seed = (js_sys::Math::random() * 1e9) as u32;
@@ -193,6 +221,24 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let mut panel = LandPanel { summary, since: 0.0 };
     panel.redraw(app);
     Box::new(panel)
+}
+
+/// How much bigger the map is about to get. Not a setting of the project and
+/// not undoable: it is a number somebody is about to press a button with.
+fn grow_num(
+    h: &Handle,
+    label: &str,
+    value: f64,
+    apply: fn(&mut crate::app::UiState, f64),
+) -> Element {
+    let h2 = h.clone();
+    crate::ui::number_field(
+        label,
+        value,
+        NumOpts { min: 0.0, max: 256.0, step: 4.0 },
+        None,
+        move |v| apply(&mut h2.borrow_mut().app.ui, v),
+    )
 }
 
 /// A setting the map is generated from. Starred and left waiting rather than

@@ -57,6 +57,11 @@ pub struct Colony {
     pub banner: u32,
     /// Counts down between attempts to send settlers out to found a new town.
     pub expedition_timer: f64,
+    /// Counts down between attempts to send a balloon up, when that experiment
+    /// is switched on. A town that has never had one runs it down all the same,
+    /// so turning the switch on does not make every town launch at once.
+    #[serde(default)]
+    pub balloon_timer: f64,
     /// True while nobody lives here. The buildings stay standing; the town
     /// stops being planned for, sailed to and grown into.
     pub abandoned: bool,
@@ -98,6 +103,7 @@ impl Colony {
             seed,
             banner: pack_rgba(r, g, b, 255),
             expedition_timer: 0.0,
+            balloon_timer: 0.0,
             abandoned: false,
             emptied_day: None,
             population: 0,

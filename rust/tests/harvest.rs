@@ -183,6 +183,42 @@ fn what_was_cut_by_hand_is_fetched_before_a_settler_finds_their_own_work() {
     }
 }
 
+/// Too far is left where it lies while there is anything nearer to be doing,
+/// and fetched when there is not.
+#[test]
+fn a_load_too_far_off_is_only_fetched_when_there_is_nothing_nearer() {
+    let (mut sim, mut state) = founded();
+    state.civ.work.fetch_reach = 6.0;
+    let pi = sim.people.live_indices()[0];
+    let (px, py) = (sim.people[pi].cell_col(), sim.people[pi].cell_row());
+
+    // One load on the far side of the map, wanted and unclaimed.
+    let far = (
+        if px > sim.world().cols / 2 { 2 } else { sim.world().cols - 3 },
+        py.clamp(1, sim.world().rows - 2),
+    );
+    sim.add_pile(far.0, far.1, Res::Wood, 8.0);
+    let id = sim.piles.last().expect("the load was left").id;
+    let fetching = |sim: &Settlement| {
+        matches!(sim.people[pi].task, Some(Task::Pickup { pile_id }) if pile_id == id)
+    };
+
+    // With a load underfoot as well, the far one is not the one that is chosen.
+    sim.add_pile(px, py, Res::Wood, 8.0);
+    sim.people[pi].clear_task();
+    choose_task(&mut sim, &state, pi);
+    assert!(!fetching(&sim), "a settler walked the map past a load at their feet");
+
+    // With nothing nearer, it is.
+    let near = sim.piles.iter().position(|p| p.id != id).expect("the near load is there");
+    sim.take_pile(near, 100.0);
+    sim.people[pi].clear_task();
+    sim.people[pi].hunger = 0.0;
+    sim.people[pi].energy = 1.0;
+    choose_task(&mut sim, &state, pi);
+    assert!(fetching(&sim), "a load nobody had anything nearer to do than was left lying");
+}
+
 #[test]
 fn a_species_that_is_cut_for_is_one_the_gatherers_learn_to_want() {
     let mut lore = Lore::default();

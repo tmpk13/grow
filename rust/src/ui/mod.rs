@@ -17,6 +17,7 @@ pub mod build_panel;
 pub mod color_wheel;
 pub mod decode;
 pub mod economy_panel;
+pub mod experimental_panel;
 pub mod find_box;
 pub mod grid_editor;
 pub mod land_panel;

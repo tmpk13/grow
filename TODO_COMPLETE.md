@@ -3,6 +3,24 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) An Experimental tab with one switch over it, off by default. Nothing
+  under it is asked anything while it is off, so the settlement is the one it
+  has always been, and turning it off mid flight puts the world back.
+- (LLM) Hot air balloons, the first thing in that tab. A town with a school and
+  cloth to spare sews a canopy, burns charcoal under it and sends it up over
+  itself; research runs faster for as long as one is in the air. It climbs,
+  drifts on whatever wind it caught and comes down, and the panel lists what is
+  up and where.
+- (LLM) The map can be made larger under a running settlement. The new land goes
+  on the right and along the bottom, so nothing standing on the old map moves;
+  it arrives with a wilderness on it, warmed for as long as a fresh map is and
+  with the old land held still while that runs. Rivers and deposits are placed
+  in the new land only, and a course traced into the old map stops at the
+  boundary rather than cutting a channel through somebody's town.
+- (LLM) How far somebody will walk for a load on the ground is a setting, and
+  half again as far for one cut by hand. Past it they leave it - unless there is
+  nothing nearer to fetch at all, in which case the nearest one beyond reach
+  goes in below every other job there is.
 - (LLM) A cut plant goes over rather than vanishing out of the hand that cut
   it: anything with a stem tips from its foot over a settable second or so and
   is only off the map once it is down. The ground it stood on is given back at

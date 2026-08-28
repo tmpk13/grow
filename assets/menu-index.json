@@ -1763,6 +1763,36 @@
     "tab": "land",
     "tab_label": "Land",
     "group": "Map",
+    "label": "Add columns",
+    "anchor": "add-columns",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "Map",
+    "label": "Add rows",
+    "anchor": "add-rows",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "Map",
+    "label": "Grow the map",
+    "anchor": "grow-the-map",
+    "kind": "button"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "Map",
     "label": "New land",
     "anchor": "new-land",
     "kind": "button"
@@ -2904,6 +2934,17 @@
     "tab": "people",
     "tab_label": "People",
     "group": "More rates",
+    "label": "Fetch a load within",
+    "hint": "cells somebody will walk for a load lying on the ground, half again as far for one cut by hand; past it they leave it, unless there is nothing nearer to fetch at all",
+    "anchor": "fetch-a-load-within",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "More rates",
     "label": "Dropped load life (days)",
     "hint": "anything left on the ground, cut by hand or dropped by somebody working, rots away over this long if nobody fetches it",
     "anchor": "dropped-load-life-days",
@@ -3686,6 +3727,26 @@
     "label": "Research",
     "anchor": "research",
     "kind": "button"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "experimental",
+    "tab_label": "Experimental",
+    "label": "Experimental",
+    "hint": "the experimental tab of settlement",
+    "kind": "tab"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "experimental",
+    "tab_label": "Experimental",
+    "group": "Experiments",
+    "label": "Try the unfinished things",
+    "hint": "off by default, and off is the settlement as it has always run",
+    "anchor": "try-the-unfinished-things",
+    "kind": "field"
   },
   {
     "group": "Everywhere",

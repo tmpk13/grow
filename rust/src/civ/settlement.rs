@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::civ::balloons::{balloons_tick, Balloon};
 use crate::civ::boats::{boats_tick, build_boats, Boat};
 use crate::civ::buildings::{
     building_by_id, home_rank, scaled_cost, scaled_work, upgrade_of, BuildingDef, Job, Structure,
@@ -395,6 +396,10 @@ pub struct Settlement {
     pub lore: Lore,
     pub boats: Vec<Boat>,
     pub next_boat_id: i32,
+    /// Canopies in the air over the towns. An experiment, and empty unless one
+    /// is switched on.
+    pub balloons: Vec<Balloon>,
+    pub next_balloon_id: i32,
     pub plant_index: PlantIndex,
     pub time: f64,
     pub day: i32,
@@ -469,6 +474,8 @@ impl Settlement {
             lore: Lore::default(),
             boats: Vec::new(),
             next_boat_id: 1,
+            balloons: Vec::new(),
+            next_balloon_id: 1,
             plant_index: PlantIndex::default(),
             time: 0.0,
             day: 0,
@@ -546,6 +553,8 @@ impl Settlement {
         self.focus = 0;
         self.boats.clear();
         self.next_boat_id = 1;
+        self.balloons.clear();
+        self.next_balloon_id = 1;
         self.time = 0.0;
         self.day = 0;
         self.ticks = 0;
@@ -567,6 +576,109 @@ impl Settlement {
         self.terrain_version += 1;
         self.sprites.clear();
         self.view = Rect::whole(self.world());
+    }
+
+    /// Makes the map larger without starting the settlement over.
+    ///
+    /// The new land goes on the right and along the bottom, so every column and
+    /// row that was already there keeps its number and everything standing on
+    /// one - buildings, settlers, plants, loads on the ground - stays where it
+    /// was. What has to be redone is everything indexed by the width of the
+    /// map: each grid is laid out again at the new stride with the old rows
+    /// copied across, and every plant claims its cells again in the resized
+    /// world.
+    ///
+    /// The new ground arrives with a wilderness on it rather than bare, warmed
+    /// with the same number of seconds a fresh map is, and with the old land
+    /// held still while that runs: making the map bigger is not a week passing.
+    ///
+    /// Says whether anything actually changed.
+    pub fn expand(&mut self, state: &State, cols: i32, rows: i32) -> bool {
+        let (old_cols, old_rows) = (self.world().cols, self.world().rows);
+        let (cols, rows) = (cols.max(old_cols), rows.max(old_rows));
+        if cols == old_cols && rows == old_rows {
+            return false;
+        }
+        let n = (cols * rows) as usize;
+
+        // The world grid first: configuring it clears the layer occupancy, so
+        // every plant has to be given its cells back afterward.
+        self.plant_sim.world_cfg.cols = cols;
+        self.plant_sim.world_cfg.rows = rows;
+        let world_cfg = self.plant_sim.world_cfg.clone();
+        self.plant_sim.world.configure(&world_cfg);
+        for i in 0..self.plant_sim.plants.len() {
+            let (col, row) = (self.plant_sim.plants[i].col, self.plant_sim.plants[i].row);
+            let radius = self.plant_sim.plants[i].granted_radius_cells;
+            let (layer, id) = (self.plant_sim.plants[i].layer, self.plant_sim.plants[i].id);
+            let mut cells = std::mem::take(&mut self.plant_sim.plants[i].cells);
+            self.plant_sim.world.footprint(col, row, radius, &mut cells);
+            self.plant_sim.world.claim(layer, &cells, id);
+            self.plant_sim.plants[i].cells = cells;
+        }
+        let px = (self.world().px_w * self.world().px_h) as usize;
+        self.plant_sim.buffer = vec![0; px];
+        self.plant_sim.buffer_dirty = true;
+
+        let world = self.plant_sim.world.clone();
+        self.terrain.expand(&world, &state.civ.terrain);
+
+        // Every grid the settlement keeps per cell, at the new stride.
+        let mut blocked = vec![0u8; n];
+        let mut build_grid = vec![0i32; n];
+        let mut gates = vec![0u8; n];
+        let mut traffic = vec![0.0f32; n];
+        let mut plant_block = vec![0u8; n];
+        for r in 0..rows {
+            for c in 0..cols {
+                let to = (r * cols + c) as usize;
+                if c < old_cols && r < old_rows {
+                    let from = (r * old_cols + c) as usize;
+                    blocked[to] = self.blocked[from];
+                    build_grid[to] = self.build_grid[from];
+                    gates[to] = self.gates[from];
+                    traffic[to] = self.traffic[from];
+                    plant_block[to] = self.plant_block[from];
+                } else if self.terrain.kind[to] == Cell::Water as u8 {
+                    blocked[to] = 1;
+                }
+            }
+        }
+        self.blocked = blocked;
+        self.build_grid = build_grid;
+        self.gates = gates;
+        self.traffic = traffic;
+        self.plant_block = plant_block;
+        self.paths.resize(cols, rows);
+        self.water_paths.resize(cols, rows);
+        self.plant_index.resize(cols, rows);
+
+        // Grow something on the new ground. The old cells are held: nothing
+        // seeds there and nothing already there ages while this runs.
+        let warm = state.civ.terrain.warmup.max(0.0);
+        if warm > 0.0 {
+            let mut held = self.blocked.clone();
+            for r in 0..old_rows {
+                for c in 0..old_cols {
+                    held[(r * cols + c) as usize] = 1;
+                }
+            }
+            let dt = 1.0 / state.civ.sim.tick_hz.max(1.0);
+            self.plant_sim.warm_region(state, warm, dt, &held);
+            self.plant_sim.process_raster_queue(state, usize::MAX);
+        }
+
+        self.buffer = vec![0; px];
+        self.bg.clear();
+        self.bg_key.clear();
+        self.ground.clear();
+        self.ground_dirty = true;
+        self.buffer_dirty = true;
+        self.terrain_version += 1;
+        self.view = Rect::whole(self.world());
+        self.rebuild_plant_index();
+        self.refresh_colonies();
+        true
     }
 
     /// Grows the wilderness before the settlers arrive, then drops the first
@@ -2492,6 +2604,7 @@ impl Settlement {
             self.research_tick(state, ci, dt);
         }
         boats_tick(self, state, dt);
+        balloons_tick(self, state, dt);
 
         let day = day_number(self.time, &cfg.people);
         if day != self.day {
@@ -3536,7 +3649,10 @@ impl Settlement {
         let colony = self.colonies[ci].id;
         let pop = self.colony_population(colony) as f64;
         let mods_research = self.colonies[ci].mods.research;
-        self.colonies[ci].tech.points += pop * cfg.insight_per_person * mods_research * dt;
+        // Anything the town has up in the air over it, which is one for a town
+        // with no experiment switched on.
+        let aloft = crate::civ::balloons::research_lift(self, state, colony);
+        self.colonies[ci].tech.points += pop * cfg.insight_per_person * mods_research * aloft * dt;
         let mut target: Option<&'static TechDef> = self.colonies[ci]
             .tech
             .target

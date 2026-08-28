@@ -248,6 +248,12 @@ pub struct Terrain {
     pub cols: i32,
     pub rows: i32,
     pub seed: u32,
+    /// The corner of the map the generator must leave alone, in cells: a map
+    /// that has been made larger under a running settlement is already built
+    /// on, and a river cut through it or a deposit dropped into it would be the
+    /// ground moving under a town. Zero while a map is being made from nothing,
+    /// which is every case but that one.
+    frozen: (i32, i32),
     pub elev: Vec<f32>,
     pub moist: Vec<f32>,
     pub fert: Vec<f32>,
@@ -283,6 +289,7 @@ impl Terrain {
             cols: world.cols,
             rows: world.rows,
             seed,
+            frozen: (0, 0),
             elev: Vec::new(),
             moist: Vec::new(),
             fert: Vec::new(),
@@ -299,8 +306,7 @@ impl Terrain {
     }
 
     fn generate(&mut self, cfg: &TerrainConfig) {
-        let (cols, rows) = (self.cols, self.rows);
-        let n = (cols * rows) as usize;
+        let n = (self.cols * self.rows) as usize;
         self.elev = vec![0.0; n];
         self.moist = vec![0.0; n];
         self.fert = vec![0.0; n];
@@ -311,6 +317,82 @@ impl Terrain {
         self.deposits.clear();
         self.rivers.clear();
 
+        self.fill_noise(cfg);
+        self.carve_rivers(cfg);
+        self.scatter_deposits(cfg);
+        self.water_cells = self.kind.iter().filter(|&&k| k == Cell::Water as u8).count();
+    }
+
+    /// A larger map with the old one still standing in the corner of it.
+    ///
+    /// Everything the noise decides is a function of the cell's own position,
+    /// so the ground that was already there comes out of the generator the
+    /// same and is simply copied across into the wider stride. Rivers and
+    /// deposits are not: they are placed by a walk, so the new land gets its
+    /// own and the old land keeps what it had. A course traced into the old
+    /// map stops at the boundary rather than cutting a channel through
+    /// somebody's town.
+    pub fn expand(&mut self, world: &World, cfg: &TerrainConfig) {
+        let (old_cols, old_rows) = (self.cols, self.rows);
+        let (cols, rows) = (world.cols.max(old_cols), world.rows.max(old_rows));
+        if cols == old_cols && rows == old_rows {
+            return;
+        }
+        let (elev, moist, fert) = (
+            std::mem::take(&mut self.elev),
+            std::mem::take(&mut self.moist),
+            std::mem::take(&mut self.fert),
+        );
+        let (kind, dindex, rindex, flow) = (
+            std::mem::take(&mut self.kind),
+            std::mem::take(&mut self.deposit_index),
+            std::mem::take(&mut self.river_index),
+            std::mem::take(&mut self.flow),
+        );
+        self.cols = cols;
+        self.rows = rows;
+        let n = (cols * rows) as usize;
+        self.elev = vec![0.0; n];
+        self.moist = vec![0.0; n];
+        self.fert = vec![0.0; n];
+        self.kind = vec![0; n];
+        self.deposit_index = vec![0; n];
+        self.river_index = vec![0; n];
+        self.flow = vec![-1; n];
+
+        self.fill_noise(cfg);
+        for r in 0..old_rows {
+            for c in 0..old_cols {
+                let from = (r * old_cols + c) as usize;
+                let to = (r * cols + c) as usize;
+                self.elev[to] = elev[from];
+                self.moist[to] = moist[from];
+                self.fert[to] = fert[from];
+                self.kind[to] = kind[from];
+                self.deposit_index[to] = dindex[from];
+                self.river_index[to] = rindex[from];
+                self.flow[to] = flow[from];
+            }
+        }
+
+        self.frozen = (old_cols, old_rows);
+        self.carve_rivers(cfg);
+        self.scatter_deposits(cfg);
+        self.frozen = (0, 0);
+        self.water_cells = self.kind.iter().filter(|&&k| k == Cell::Water as u8).count();
+    }
+
+    /// Ground that has already been walked on. Nothing the generator places by
+    /// hand may touch it.
+    fn frozen_at(&self, c: i32, r: i32) -> bool {
+        c < self.frozen.0 && r < self.frozen.1
+    }
+
+    /// Elevation, moisture and what that makes the cell, for every cell of the
+    /// map. A pure function of the seed and the position, which is what lets a
+    /// map be made larger without the ground under a town changing.
+    fn fill_noise(&mut self, cfg: &TerrainConfig) {
+        let (cols, rows) = (self.cols, self.rows);
         let scale = cfg.scale.max(2.0);
         let mscale = cfg.moist_scale.max(2.0);
         let oct = clampi(cfg.octaves, 1, 6);
@@ -353,10 +435,6 @@ impl Terrain {
                 };
             }
         }
-
-        self.carve_rivers(cfg);
-        self.scatter_deposits(cfg);
-        self.water_cells = self.kind.iter().filter(|&&k| k == Cell::Water as u8).count();
     }
 
     // ---- rivers ----------------------------------------------------------
@@ -404,6 +482,9 @@ impl Terrain {
             if self.kind[i] == Cell::Water as u8 || self.river_index[i] != 0 {
                 continue;
             }
+            if self.frozen_at(c, r) {
+                continue;
+            }
             let e = self.elev[i] as f64;
             if e < high {
                 continue;
@@ -448,6 +529,13 @@ impl Terrain {
         let phase = rng.range(0.0, 100.0);
         let max = rc.max_length.max(rc.min_length);
         for step in 0..max {
+            // A course that reaches the old map ends there. It is not a river
+            // that stops: it is a river running into ground that already has
+            // its own water, and cutting on through it would put a channel
+            // where somebody built a house.
+            if self.frozen_at(c, r) {
+                break;
+            }
             let i = self.idx(c, r);
             if seen[i] != 0 {
                 break;
@@ -524,6 +612,9 @@ impl Terrain {
                     if !self.in_bounds(x, y) {
                         continue;
                     }
+                    if self.frozen_at(x, y) {
+                        continue;
+                    }
                     let d = ((x - c) as f64).hypot((y - r) as f64);
                     let i = self.idx(x, y);
                     if d <= half.max(0.5) {
@@ -589,6 +680,9 @@ impl Terrain {
             if self.kind[i] == Cell::Water as u8 || self.deposit_index[i] != 0 {
                 continue;
             }
+            if self.frozen_at(c, r) {
+                continue;
+            }
             let e = self.elev[i] as f64;
             match kind {
                 DepositKind::Stone => {
@@ -622,6 +716,7 @@ impl Terrain {
                 && r < self.rows
                 && self.kind[i] != Cell::Water as u8
                 && self.deposit_index[i] == 0
+                && !self.frozen_at(c, r)
             {
                 let amount = rng.int(dc.amount_min, dc.amount_max) as f64;
                 self.deposits.push(Deposit {

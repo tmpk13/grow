@@ -431,11 +431,27 @@ await page.waitForTimeout(200);
 await page.click('.mode:text-is("Settlement")');
 await page.waitForTimeout(9000);
 await page.screenshot({ path: `${outDir}/09-settlement.png` });
-for (const tab of ['People', 'Build', 'Economy', 'Tech']) {
+for (const tab of ['People', 'Build', 'Economy', 'Tech', 'Experimental']) {
   await page.click(`.tab:text-is("${tab}")`);
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${outDir}/10-${tab.toLowerCase()}.png` });
 }
+// Experiments are off, and nothing under the switch is on the page until it is
+// turned on.
+await page.click('.tab:text-is("Experimental")');
+await page.waitForTimeout(600);
+if ((await page.locator('#panel-body [data-find="send-them-up"]').count()) !== 0) {
+  problems.push('an experiment was on the page with the experiments switch off');
+}
+await page.click('#panel-body [data-find="try-the-unfinished-things"] .btn');
+await page.waitForTimeout(700);
+if ((await page.locator('#panel-body [data-find="send-them-up"]').count()) === 0) {
+  problems.push('turning the experiments switch on brought nothing with it');
+}
+await page.screenshot({ path: `${outDir}/10h-experimental.png` });
+await page.click('#panel-body [data-find="try-the-unfinished-things"] .btn');
+await page.waitForTimeout(400);
+
 // The register: open a settler's record, resort the list, include the dead.
 // This is the one panel that rebuilds interactive rows on a timer, so it is
 // also the one that would leak a listener per row if the scopes were wrong.
@@ -529,6 +545,35 @@ if ((await page.locator('.made-slot').count()) < 100) {
 }
 await page.click('.made-search .btn.toggle:has-text("Every slot")');
 await page.waitForTimeout(400);
+
+// Growing the map: the town carries on, on a larger map, with no rebuild.
+await page.click('.tab:text-is("Land")');
+await page.waitForTimeout(500);
+const colsBox = '#panel-body [data-find="columns-x"] input[type=number]';
+const wasCols = Number(await page.inputValue(colsBox));
+const townBefore = await page.evaluate(() =>
+  document.getElementById('statusbar').textContent.split('   ')[0]
+);
+const addCols = '#panel-body [data-find="add-columns"] input[type=number]';
+await page.fill(addCols, '24');
+await page.dispatchEvent(addCols, 'input');
+await page.click('#panel-body .btn:text-is("Grow the map")');
+// The wilderness warmup on the new ground blocks the thread for a moment.
+await page.waitForTimeout(12000);
+const nowCols = Number(await page.inputValue(colsBox));
+if (nowCols !== wasCols + 24) {
+  problems.push(`growing the map left the width at ${nowCols}, not ${wasCols + 24}`);
+}
+if (!(await page.evaluate(() => document.getElementById('restart-bar').hasAttribute('hidden')))) {
+  problems.push('growing the map left a rebuild waiting');
+}
+const townAfter = await page.evaluate(() =>
+  document.getElementById('statusbar').textContent.split('   ')[0]
+);
+if (townAfter !== townBefore) {
+  problems.push(`the town was ${townBefore} and is ${townAfter} after the map grew`);
+}
+await page.screenshot({ path: `${outDir}/11b-grown.png` });
 
 await page.click('.mode[data-mode="sprites"]');
 await page.waitForTimeout(800);
