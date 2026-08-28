@@ -14,13 +14,20 @@
 use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
 
+use serde::{Deserialize, Serialize};
+
 use crate::civ::people::Person;
 
+#[derive(Serialize, Deserialize)]
 pub struct PeopleDb {
     all: Vec<Person>,
+    /// Both of these are worked out from `all`, so a register read back off a
+    /// save rebuilds them rather than carrying them.
+    #[serde(skip)]
     by_id: HashMap<u32, usize>,
     /// Indices of the living, ascending, so iteration order is a function of
     /// birth order and nothing else.
+    #[serde(skip)]
     live: Vec<usize>,
     next_id: u32,
     buried: u32,
@@ -176,7 +183,9 @@ impl PeopleDb {
         self.reindex();
     }
 
-    fn reindex(&mut self) {
+    /// Public because a register read back off a save arrives without either
+    /// of the two lookups, and this is what fills them in.
+    pub fn reindex(&mut self) {
         self.by_id.clear();
         self.live.clear();
         for (i, p) in self.all.iter().enumerate() {

@@ -54,3 +54,25 @@ fn an_older_project_is_upgraded_rather_than_rejected() {
     assert_eq!(state.species[0].size_class, SizeClass::Shrub, "missing fields fall back");
     assert_eq!(state.materials.samplers.len(), 14, "missing materials are rebuilt");
 }
+
+/// The page and the crate are one program with one version, and the number the
+/// top bar shows comes from the crate. A mismatch would have the two halves of
+/// the same build claiming different things.
+#[test]
+fn the_package_and_the_crate_carry_the_same_version() {
+    let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/../package.json");
+    let raw = std::fs::read_to_string(manifest).expect("package.json");
+    let json: serde_json::Value = serde_json::from_str(&raw).expect("package.json parses");
+    assert_eq!(json["version"].as_str(), Some(grow::VERSION));
+}
+
+/// An exported project names the build that wrote it, whatever the file it was
+/// loaded from said.
+#[test]
+fn an_exported_project_is_stamped_with_the_build() {
+    let json = State::new().to_json();
+    assert!(json.contains(&format!("\"app\":\"{}\"", grow::VERSION)), "{json:.120}");
+    let older = r#"{"version":3,"app":"0.0.1","seed":5}"#;
+    let state = State::from_json(older).expect("older project loads");
+    assert_eq!(state.app, grow::VERSION, "the stamp is rewritten, not carried over");
+}

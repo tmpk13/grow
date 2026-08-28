@@ -93,7 +93,7 @@ impl Panel for TechPanel {
         };
         let tech = &colony.tech;
         let mods = colony.mods;
-        let target = tech.target.and_then(crate::civ::tech::tech_by_id);
+        let target = tech.target.as_deref().and_then(crate::civ::tech::tech_by_id);
         let rows = [
             ("Town".to_string(), colony.name.clone()),
             ("Known".to_string(), format!("{} of {}", tech.known.len(), TECHS.len())),
@@ -150,7 +150,7 @@ impl Panel for TechPanel {
                     .iter()
                     .map(|&(k, v)| format!("{} +{}%", k.label(), (v * 100.0).round()))
                     .collect();
-                let is_target = tech.target == Some(def.id);
+                let is_target = tech.target.as_deref() == Some(def.id);
                 let action: Option<Element> = if class == "known" {
                     None
                 } else {
@@ -164,8 +164,13 @@ impl Panel for TechPanel {
                             if let Some(civ) = &mut sh.app.settlement {
                                 let focus = civ.focus.min(civ.colonies.len().saturating_sub(1));
                                 if let Some(colony) = civ.colonies.get_mut(focus) {
-                                    colony.tech.target =
-                                        if colony.tech.target == Some(id) { None } else { Some(id) };
+                                    colony.tech.target = if colony.tech.target.as_deref()
+                                        == Some(id)
+                                    {
+                                        None
+                                    } else {
+                                        Some(id.to_string())
+                                    };
                                 }
                             }
                             sh.app.redraw_panel = true;

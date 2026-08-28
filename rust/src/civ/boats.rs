@@ -21,7 +21,8 @@ use crate::util::clamp;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum BoatState {
     /// Tied up at its home dock, waiting for a cargo worth the trip.
     Moored,
@@ -77,6 +78,7 @@ impl Default for BoatConfig {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Boat {
     pub id: i32,
     pub name: String,

@@ -1,3 +1,22 @@
 What is left. What is done is in TODO_COMPLETE.md.
 
-Nothing.
+- Hot air balloons (Research accel).
+- Crumbling building (unoccupied houses animation). Eventually go away.
+
+- "Harvest" button. Similar to move people. 
+    - Harvests resources leaving them on the ground for people to pickup. Higher priority for people than harvesting.
+    - Sub feature to this is they learn to harvest the items you harvest sooner (harvest tech). 
+    - Harvesting takes a short time, can drag over harvestable things, duration bar appears (duration until harvested).
+        - If you did not spend enough time to fully harvest, after a short delay the bar goes away.
+    - Slow pulse outline for harvestables.
+
+- Need to be able to expand map mid settlement.
+
+- Text size needs a numerical input. Maybe make a confirm on text size as it moves while trying to adjust. 
+
+## Sprite editor
+- Grid toggle should be a toggle button. 
+    - Make all check boxes toggle buttons. (Add a check to checkmark when on for the toggle). 
+
+# Experimental
+- Make experimental features tab with toggle (default off). 

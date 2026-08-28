@@ -12,7 +12,9 @@
 //! what is worth doing is asked of that colony rather than of the map. Two
 //! towns on one map therefore make different decisions on the same tick.
 
-use crate::civ::buildings::Job;
+use serde::{Deserialize, Serialize};
+
+use crate::civ::buildings::{Job, BUILDINGS};
 use crate::civ::economy::{buy_food, pay_wage, stock_targets};
 use crate::civ::people::{carry_limit, is_work_time, Profession};
 use crate::civ::resources::{take_stock, Res};
@@ -21,13 +23,15 @@ use crate::species::SizeClass;
 use crate::state::State;
 use crate::util::{clamp01, clampi};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Phase {
     Approach,
     Working,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum HaulTarget {
     Site,
     Input,
@@ -37,7 +41,7 @@ pub enum HaulTarget {
     Stall,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Task {
     Idle {
         timer: f64,
@@ -56,6 +60,7 @@ pub enum Task {
         /// Where the plant was last seen in the plant list, so the lookup is a
         /// bounds check rather than a scan of every plant on the map.
         hint: usize,
+        #[serde(with = "yields")]
         yields: &'static [(Res, f64)],
         regrow: f64,
         phase: Phase,
@@ -63,6 +68,7 @@ pub enum Task {
     },
     Mine {
         deposit_id: i32,
+        #[serde(with = "yields")]
         yields: &'static [(Res, f64)],
         phase: Phase,
         timer: f64,
@@ -194,6 +200,50 @@ const WILD_JOB: HarvestJob = HarvestJob {
     regrow: 0.35,
 };
 
+/// The yield table a task pays out from, through a save and back.
+///
+/// A task holds its table by reference because the table always came from a
+/// building definition or from the wild forage list. One read back off a file
+/// is matched against those, so the reference points at the table the rest of
+/// the program is using; a list that matches nothing is kept as it was
+/// written rather than dropping the task.
+mod yields {
+    use super::{table_like, Res};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(
+        table: &&'static [(Res, f64)],
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        s.collect_seq(table.iter())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<&'static [(Res, f64)], D::Error> {
+        Ok(table_like(&Vec::<(Res, f64)>::deserialize(d)?))
+    }
+}
+
+fn table_like(want: &[(Res, f64)]) -> &'static [(Res, f64)] {
+    let same = |table: &[(Res, f64)]| {
+        table.len() == want.len()
+            && table.iter().zip(want).all(|(a, b)| a.0 == b.0 && a.1 == b.1)
+    };
+    if same(WILD_YIELDS) {
+        return WILD_YIELDS;
+    }
+    for def in BUILDINGS {
+        if let Some(job) = def.job {
+            let table = job.produces();
+            if same(table) {
+                return table;
+            }
+        }
+    }
+    Box::leak(want.to_vec().into_boxed_slice())
+}
+
 /// Being out after dark with no lamp in sight wears on somebody. Daylight, a
 /// roof and a lit street all settle it again; what is left is what decides
 /// whether they would rather spend their coin on a lamp post than keep it.
@@ -226,12 +276,12 @@ pub fn update_person(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
 
         if p.age > p.lifespan {
             p.alive = false;
-            p.cause = Some("old age");
+            p.cause = Some("old age".to_string());
             return;
         }
         if p.health <= 0.0 {
             p.alive = false;
-            p.cause = Some("hunger");
+            p.cause = Some("hunger".to_string());
             return;
         }
     }
@@ -259,7 +309,7 @@ pub fn update_person(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
         * (1.3 - hardy * 0.6);
     if sick > 0.0 && sim.rng.chance(sick * (1.6 - health)) {
         sim.people[pi].alive = false;
-        sim.people[pi].cause = Some("sickness");
+        sim.people[pi].cause = Some("sickness".to_string());
         return;
     }
 

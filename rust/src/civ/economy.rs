@@ -57,7 +57,7 @@ impl Default for EconomyConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct Sample {
     pub day: i32,
     pub pop: f64,
@@ -69,12 +69,13 @@ pub struct Sample {
     pub happiness: f64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Event {
     pub text: String,
     pub day: i32,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Economy {
     pub coin: f64,
     pub prices: Stock,

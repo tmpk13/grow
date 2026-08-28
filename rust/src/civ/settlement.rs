@@ -16,6 +16,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
+
 use crate::civ::boats::{boats_tick, build_boats, Boat};
 use crate::civ::buildings::{
     building_by_id, home_rank, scaled_cost, scaled_work, upgrade_of, BuildingDef, Job, Structure,
@@ -68,8 +70,10 @@ impl Rect {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Building {
     pub id: i32,
+    #[serde(with = "def_ref")]
     pub def: &'static BuildingDef,
     /// The town this belongs to. Everything about stock, wages and research is
     /// answered by that colony rather than by the map.
@@ -113,6 +117,28 @@ pub struct Building {
     pub water: f64,
 }
 
+/// What a building is, through a save and back: the definition is one of the
+/// program's own, so only its name travels.
+mod def_ref {
+    use crate::civ::buildings::{building_by_id, BuildingDef};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(
+        def: &&'static BuildingDef,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        s.serialize_str(def.id)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<&'static BuildingDef, D::Error> {
+        let id = String::deserialize(d)?;
+        building_by_id(&id)
+            .ok_or_else(|| serde::de::Error::custom(format!("no building called {id}")))
+    }
+}
+
 impl Building {
     pub fn out_load(&self) -> f64 {
         self.out.iter().sum()
@@ -131,6 +157,7 @@ impl Building {
 
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Pile {
     pub id: i32,
     pub col: i32,
@@ -141,10 +168,11 @@ pub struct Pile {
     pub seed: u32,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Obituary {
     pub name: String,
     pub age: i32,
-    pub cause: &'static str,
+    pub cause: String,
     pub day: i32,
     pub colony: i32,
 }
@@ -173,7 +201,7 @@ pub struct PlantIndex {
     pub rows: i32,
     pub buckets: Vec<Vec<PlantMark>>,
     slot_of: HashMap<i32, (usize, usize)>,
-    timer: f64,
+    pub(crate) timer: f64,
 }
 
 impl PlantIndex {
@@ -832,7 +860,7 @@ impl Settlement {
         self.building_slot.get(&id).copied()
     }
 
-    fn reindex_buildings(&mut self) {
+    pub fn reindex_buildings(&mut self) {
         self.building_slot.clear();
         for (i, b) in self.buildings.iter().enumerate() {
             self.building_slot.insert(b.id, i);
@@ -2517,7 +2545,7 @@ impl Settlement {
             (
                 p.name.clone(),
                 p.age.floor() as i32,
-                p.cause.unwrap_or("old age"),
+                p.cause.clone().unwrap_or_else(|| "old age".to_string()),
                 p.id,
                 p.home,
                 p.spouse,
@@ -2529,7 +2557,13 @@ impl Settlement {
             c.deaths += 1;
         }
         let colony = self.people[index].colony;
-        self.dead.push(Obituary { name: name.clone(), age, cause, day: self.day, colony });
+        self.dead.push(Obituary {
+            name: name.clone(),
+            age,
+            cause: cause.clone(),
+            day: self.day,
+            colony,
+        });
         if self.dead.len() > 60 {
             self.dead.remove(0);
         }
@@ -3332,6 +3366,7 @@ impl Settlement {
         let mut target: Option<&'static TechDef> = self.colonies[ci]
             .tech
             .target
+            .as_deref()
             .filter(|id| !self.colonies[ci].tech.is_known(id))
             .and_then(tech_by_id);
         if let Some(def) = target {
@@ -3354,9 +3389,9 @@ impl Settlement {
         let c = &mut self.colonies[ci];
         c.tech.points -= cost;
         c.tech.spent += cost;
-        c.tech.known.push(target.id);
-        c.tech.log.push((target.id, day));
-        if c.tech.target == Some(target.id) {
+        c.tech.known.push(target.id.to_string());
+        c.tech.log.push((target.id.to_string(), day));
+        if c.tech.target.as_deref() == Some(target.id) {
             c.tech.target = None;
         }
         c.refresh_tech();

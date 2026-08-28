@@ -16,6 +16,8 @@
 
 use std::rc::Rc;
 
+use serde::{Deserialize, Serialize};
+
 use crate::rng::Rng;
 use crate::sampler::Bands;
 use crate::shading::{quantize, shade_value, Shading};
@@ -34,7 +36,8 @@ const SHRIVEL_STEPS: f64 = 12.0;
 /// What everything fades to on the way out: dry straw, not the green it was.
 const DEAD_COLOR: u32 = pack_rgba(120, 98, 66, 255);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 #[repr(u8)]
 pub enum Mat {
     Empty = 0,
@@ -93,7 +96,8 @@ fn angle_diff(target: f64, current: f64) -> f64 {
     d
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(from = "SegmentWire", into = "SegmentWire")]
 pub struct Segment {
     pub x0: f64,
     pub y0: f64,
@@ -104,7 +108,26 @@ pub struct Segment {
     pub bias: i8,
 }
 
-#[derive(Clone, Copy, Debug)]
+/// Woody segments are the bulk of a saved world by a wide margin, so the three
+/// growing shapes travel as bare arrays of numbers rather than as objects with
+/// a name against every field. The saving is most of the file.
+#[derive(Serialize, Deserialize)]
+struct SegmentWire(f64, f64, f64, f64, f64, u8, i8);
+
+impl From<Segment> for SegmentWire {
+    fn from(s: Segment) -> SegmentWire {
+        SegmentWire(s.x0, s.y0, s.x1, s.y1, s.w, s.mat as u8, s.bias)
+    }
+}
+
+impl From<SegmentWire> for Segment {
+    fn from(w: SegmentWire) -> Segment {
+        Segment { x0: w.0, y0: w.1, x1: w.2, y1: w.3, w: w.4, mat: Mat::from_u8(w.5), bias: w.6 }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(from = "LeafWire", into = "LeafWire")]
 pub struct Leaf {
     pub x: f64,
     pub y: f64,
@@ -114,7 +137,23 @@ pub struct Leaf {
     pub bias: i8,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize)]
+struct LeafWire(f64, f64, f64, f64, u32, i8);
+
+impl From<Leaf> for LeafWire {
+    fn from(l: Leaf) -> LeafWire {
+        LeafWire(l.x, l.y, l.rx, l.ry, l.seed, l.bias)
+    }
+}
+
+impl From<LeafWire> for Leaf {
+    fn from(w: LeafWire) -> Leaf {
+        Leaf { x: w.0, y: w.1, rx: w.2, ry: w.3, seed: w.4, bias: w.5 }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(from = "TipWire", into = "TipWire")]
 pub struct Tip {
     pub x: f64,
     pub y: f64,
@@ -129,7 +168,46 @@ pub struct Tip {
     pub alive: bool,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize)]
+struct TipWire(f64, f64, f64, f64, i32, f64, f64, f64, f64, Option<Support>, bool);
+
+impl From<Tip> for TipWire {
+    fn from(t: Tip) -> TipWire {
+        TipWire(
+            t.x,
+            t.y,
+            t.angle,
+            t.width,
+            t.depth,
+            t.len,
+            t.since_branch,
+            t.phase,
+            t.dir,
+            t.support,
+            t.alive,
+        )
+    }
+}
+
+impl From<TipWire> for Tip {
+    fn from(w: TipWire) -> Tip {
+        Tip {
+            x: w.0,
+            y: w.1,
+            angle: w.2,
+            width: w.3,
+            depth: w.4,
+            len: w.5,
+            since_branch: w.6,
+            phase: w.7,
+            dir: w.8,
+            support: w.9,
+            alive: w.10,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Bounds {
     pub x0: i32,
     pub y0: i32,
@@ -162,6 +240,9 @@ pub struct RasterEnv<'a> {
     pub ramps: &'a Ramps,
 }
 
+/// A saved plant carries its shape and the stream that grew it; the pixels it
+/// was last drawn into are left out and painted again on the way back in.
+#[derive(Serialize, Deserialize)]
 pub struct Plant {
     pub id: i32,
     pub species_id: String,
@@ -199,8 +280,11 @@ pub struct Plant {
     pub confined_side: bool,
     pub radius_px: f64,
     pub height_px: f64,
+    #[serde(skip)]
     pub mask: Vec<u8>,
+    #[serde(skip)]
     pub bias: Vec<i8>,
+    #[serde(skip)]
     pub sprite: Vec<u32>,
     pub bounds: Bounds,
     pub dirty: bool,
@@ -698,6 +782,17 @@ impl Plant {
         for i in edges {
             self.mask[i] = Mat::LeafEdge as u8;
         }
+    }
+
+    /// Gives a plant read back off a save the pixel buffers it was written
+    /// without, ready for the next pass of the raster queue to fill them. The
+    /// sizes come from `w` and `h`, which are fixed when the plant is created.
+    pub fn rehydrate(&mut self) {
+        let n = (self.w.max(0) * self.h.max(0)) as usize;
+        self.mask = vec![Mat::Empty as u8; n];
+        self.bias = vec![0; n];
+        self.sprite = vec![EMPTY_COLOR; n];
+        self.dirty = true;
     }
 
     pub fn raster(&mut self, env: &RasterEnv, scratch: &mut Scratch, species: &Species) {

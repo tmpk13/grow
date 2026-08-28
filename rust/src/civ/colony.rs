@@ -12,6 +12,8 @@
 
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+
 use crate::civ::economy::{Economy, EconomyConfig};
 use crate::civ::resources::{Res, Stock, RES_COUNT};
 use crate::civ::tech::{Mods, TechState};
@@ -30,6 +32,7 @@ const BANNERS: [(i32, i32, i32); 8] = [
     (206, 206, 214),
 ];
 
+#[derive(Serialize, Deserialize)]
 pub struct Colony {
     pub id: i32,
     pub name: String,
@@ -40,6 +43,9 @@ pub struct Colony {
     pub econ: Economy,
     pub tech: TechState,
     pub mods: Mods,
+    /// Worked out from `tech` whenever that changes, so a saved colony does
+    /// not carry it and reads it back off its own technologies.
+    #[serde(skip)]
     pub unlocked: HashSet<&'static str>,
     pub plan_timer: f64,
     pub births: u32,

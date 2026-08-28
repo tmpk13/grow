@@ -3,6 +3,20 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A running settlement survives a reload. It is written to a store of its
+  own every twenty seconds and again when the page is closed or hidden; coming
+  back picks the same town up on the same day rather than founding a new one.
+  Only what could not be worked out again is saved: terrain, walkability, layer
+  occupancy and every cached picture are rebuilt from the seed and from what is
+  saved. A file names the world it grew on and is refused rather than half
+  applied if the map has changed since. Down to the pixel and through the next
+  hundred days, the restored settlement is the one that was saved.
+- (LLM) The build number, beside the name in the top bar and stamped into every
+  exported project, with a test that the crate and the package agree on it.
+- (LLM) The Meaning switch is a toggle button grouped with the search box it
+  belongs to, rather than a checkbox adrift in the row of project buttons.
+- (LLM) The View menu's arrow is a triangle cut out of a square rather than a
+  glyph, so it sits on the middle of the line and stays there when it turns.
 - (LLM) The eight clippy warnings that had been standing in `civ_render`,
   `tasks` and `plant`: two identical branches of an if, four `x - 1 >= y`
   comparisons, a collapsible match arm and a hand written checked division.

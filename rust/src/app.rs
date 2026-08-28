@@ -154,6 +154,12 @@ pub struct App {
     pub pending_bootstrap: bool,
     pub pending_civ_reset: bool,
     pub save_deadline: Option<f64>,
+    /// When the running settlement is next written down, and whether anything
+    /// has happened in it since the last time. It changes every tick and is
+    /// far too large to write on the project's debounce, so it keeps a clock
+    /// of its own.
+    pub civ_save_at: f64,
+    pub civ_stepped: bool,
     pub fps: f64,
     /// When the status line was last rewritten. Reading it costs a walk over
     /// every settler and building, which is not worth doing once a frame for a
@@ -391,6 +397,7 @@ impl App {
     /// frame so the note has a chance to paint.
     pub fn civ_restart(&mut self) {
         self.set_note("growing the wilderness...");
+        drop_settlement();
         self.pending_civ_reset = true;
         self.pending_bootstrap = true;
         self.mark_built(Restart::Civ);
@@ -646,6 +653,80 @@ pub fn load_local() -> Option<State> {
     }
 }
 
+/// The running settlement, kept under a key of its own. It is not part of the
+/// project: a file exported to disk has no business carrying a hundred
+/// settlers in it, and the settlement is an order of magnitude larger than
+/// everything else put together.
+const CIV_STORAGE_KEY: &str = "grow.settlement.v1";
+
+/// How long between writing a running settlement down. A full map is around a
+/// megabyte of text, which is nothing every half minute and a great deal every
+/// frame.
+const CIV_SAVE_INTERVAL_MS: f64 = 20_000.0;
+
+/// A browser gives an origin a few megabytes for all of local storage, and the
+/// project and its sprite sheets are in there too. A settlement past this is
+/// left unsaved and said so, rather than thrown at a store that will refuse it
+/// and take the project down with it.
+const CIV_SAVE_LIMIT: usize = 3_000_000;
+
+/// Writes the running settlement down, if there is one worth keeping.
+pub fn save_settlement(app: &mut App) {
+    let ready = app.settlement.as_ref().is_some_and(|c| c.ready);
+    if !ready {
+        return;
+    }
+    app.civ_stepped = false;
+    let raw = match &app.settlement {
+        Some(civ) => crate::civ::save::capture(civ, &app.state),
+        None => return,
+    };
+    if raw.len() > CIV_SAVE_LIMIT {
+        drop_settlement();
+        app.set_note("settlement too large to save");
+        return;
+    }
+    let store = match storage() {
+        Some(s) => s,
+        None => return,
+    };
+    if store.set_item(CIV_STORAGE_KEY, &raw).is_err() {
+        // Almost always the quota: leave nothing half written behind.
+        drop_settlement();
+        app.set_note("settlement too large to save");
+    }
+}
+
+/// Puts a saved settlement back, if the stored one is about this world.
+/// Returns whether it landed; a file that does not fit is thrown away, since
+/// a fresh settlement is about to be founded over the top of it.
+fn restore_settlement(civ: &mut Settlement, state: &State) -> bool {
+    let raw = match storage().and_then(|s| s.get_item(CIV_STORAGE_KEY).ok().flatten()) {
+        Some(raw) => raw,
+        None => return false,
+    };
+    let outcome = crate::civ::save::Snapshot::from_json(&raw)
+        .and_then(|snap| crate::civ::save::restore(civ, state, snap));
+    match outcome {
+        Ok(()) => true,
+        Err(err) => {
+            web_sys::console::warn_1(&JsValue::from_str(&format!(
+                "the saved settlement was not used: {err}"
+            )));
+            drop_settlement();
+            false
+        }
+    }
+}
+
+/// Forgets the saved settlement. Called wherever a world is deliberately
+/// started over, so the old one does not come back on the next reload.
+pub fn drop_settlement() {
+    if let Some(store) = storage() {
+        let _ = store.remove_item(CIV_STORAGE_KEY);
+    }
+}
+
 // ---- boot ----------------------------------------------------------------
 
 #[wasm_bindgen(start)]
@@ -708,6 +789,8 @@ pub fn start() -> Result<(), JsValue> {
         pending_bootstrap: false,
         pending_civ_reset: false,
         save_deadline: None,
+        civ_save_at: ui::now() + CIV_SAVE_INTERVAL_MS,
+        civ_stepped: false,
         fps: 60.0,
         status_at: 0.0,
         accumulator: 0.0,
@@ -720,6 +803,11 @@ pub fn start() -> Result<(), JsValue> {
 
     let handle: Handle = Rc::new(RefCell::new(Shell { app, panel: None }));
 
+    if let Some(node) = by_id("version") {
+        node.set_text_content(Some(crate::VERSION));
+        let _ = node.set_attribute("title", &format!("grow {}", crate::VERSION));
+    }
+
     bind_view_actions(&handle);
     ui::view_menu::bind_fold();
     ui::restart_bar::mount(&handle);
@@ -727,6 +815,7 @@ pub fn start() -> Result<(), JsValue> {
     bind_canvas(&handle, &canvas);
     bind_keys(&handle);
     bind_project_actions(&handle);
+    bind_page_hide(&handle);
     bind_resize(&handle, &canvas);
 
     {
@@ -1650,6 +1739,28 @@ fn bind_keys(h: &Handle) {
     });
 }
 
+/// The last chance to write the settlement down. A reload can land between two
+/// of the timed writes, and coming back a minute behind would read as the
+/// world having stepped backwards. Hiding the tab counts: on a phone it is the
+/// only warning the page gets before it is closed.
+fn bind_page_hide(h: &Handle) {
+    for (target, event) in [
+        (window().unchecked_ref::<web_sys::EventTarget>().clone(), "pagehide"),
+        (document().unchecked_ref::<web_sys::EventTarget>().clone(), "visibilitychange"),
+    ] {
+        let h2 = h.clone();
+        on(&target, event, Scope::Global, move |_| {
+            // A frame may be mid-borrow; a settlement one tick out of date is
+            // a far better outcome than a panic on the way out.
+            if let Ok(mut sh) = h2.try_borrow_mut() {
+                if sh.app.civ_stepped {
+                    save_settlement(&mut sh.app);
+                }
+            }
+        });
+    }
+}
+
 fn bind_resize(h: &Handle, canvas: &HtmlCanvasElement) {
     let h2 = h.clone();
     let closure = Closure::wrap(Box::new(move |_: JsValue| {
@@ -1851,6 +1962,7 @@ fn bind_project_actions(h: &Handle) {
             sh.app.sim.world_cfg = sh.app.state.world.clone();
             sh.app.sim.reset(sh.app.state.seed);
             sh.app.settlement = None;
+            drop_settlement();
             sh.app.viewport.fit(&sh.app.sim.world);
             reset_selection(&mut sh.app);
             show_mode(sh, &h2, Mode::Lab);
@@ -1925,6 +2037,7 @@ fn bind_project_actions(h: &Handle) {
                         sh.app.sim.world_cfg = sh.app.state.world.clone();
                         sh.app.sim.reset(sh.app.state.seed);
                         sh.app.settlement = None;
+                        drop_settlement();
                         sh.app.viewport.fit(&sh.app.sim.world);
                         reset_selection(&mut sh.app);
                         show_mode(sh, &h3, Mode::Lab);
@@ -1989,6 +2102,7 @@ fn step_active(app: &mut App, dt: f64) {
         Mode::Settlement => {
             if let Some(civ) = &mut app.settlement {
                 civ.step(&app.state, dt);
+                app.civ_stepped = true;
             }
             check_extinction(app);
         }
@@ -2052,13 +2166,29 @@ fn frame(h: &Handle, ts: f64) {
             }
         }
         if let Some(civ) = &mut sh.app.settlement {
-            civ.bootstrap(&sh.app.state);
+            // A settlement left running is picked up where it was; only a
+            // world with nothing saved for it is founded from scratch.
+            let picked_up = !civ.ready && restore_settlement(civ, &sh.app.state);
+            if !picked_up {
+                civ.bootstrap(&sh.app.state);
+            }
             let world = civ.world().clone();
             let name = civ.name.clone();
+            let day = civ.day;
             sh.app.viewport.fit(&world);
-            sh.app.set_note(&format!("{name} founded"));
+            sh.app.set_note(&if picked_up {
+                format!("{name}, day {day}")
+            } else {
+                format!("{name} founded")
+            });
             sh.app.redraw_panel = true;
-            sh.app.request_save();
+            sh.app.civ_save_at = ui::now() + CIV_SAVE_INTERVAL_MS;
+            if !picked_up {
+                // Founding a settlement is the project changing; picking one
+                // up off a save is not, and a save note would only rub out
+                // the line saying which day it came back on.
+                sh.app.request_save();
+            }
         }
     }
 
@@ -2116,6 +2246,10 @@ fn frame(h: &Handle, ts: f64) {
             sh.app.save_deadline = None;
             sh.app.save_now();
         }
+    }
+    if sh.app.civ_stepped && ui::now() >= sh.app.civ_save_at {
+        sh.app.civ_save_at = ui::now() + CIV_SAVE_INTERVAL_MS;
+        save_settlement(&mut sh.app);
     }
 }
 

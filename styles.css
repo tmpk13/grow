@@ -58,6 +58,16 @@ body {
   color: var(--accent);
 }
 
+/* The build, beside the name. Small enough to ignore and always there to
+   quote when something looks wrong. */
+.version {
+  margin-left: 0.4rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  vertical-align: super;
+}
+
 .subtitle {
   margin: 0;
   color: var(--text-dim);
@@ -1225,13 +1235,27 @@ body.moving-people.holding #world-canvas {
 
 .find {
   position: relative;
-  flex: 1 1 12rem;
-  max-width: 24rem;
+  flex: 1 1 16rem;
+  max-width: 28rem;
   align-self: center;
 }
 
+/* The box and the switch that widens it read as one control, so they sit in
+   one row and the results hang under both of them. */
+.find-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+.find-meaning {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+}
+
 .find-box {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 0.3rem 0.5rem;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius);
@@ -1342,7 +1366,10 @@ body.moving-people.holding #world-canvas {
 }
 
 .view-menu > summary {
-  padding: 0.35rem 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.7rem;
   cursor: pointer;
   font-size: 0.72rem;
   letter-spacing: 0.1em;
@@ -1351,14 +1378,30 @@ body.moving-people.holding #world-canvas {
   list-style: none;
 }
 
+.view-menu > summary:hover,
+.view-menu[open] > summary {
+  color: var(--text);
+}
+
+.view-menu > summary:focus-visible {
+  outline: var(--hairline) solid var(--accent);
+  outline-offset: calc(var(--hairline) * -2);
+}
+
 .view-menu > summary::-webkit-details-marker {
   display: none;
 }
 
+/* A triangle cut out of a square rather than a glyph: a character has its own
+   idea of a baseline and of how much room to leave beside itself, and neither
+   survives being rotated. This one turns about its own middle. */
 .view-menu > summary::before {
-  content: "\25b8";
-  display: inline-block;
-  width: 1em;
+  content: "";
+  flex: 0 0 auto;
+  width: 0.5em;
+  height: 0.5em;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
   transition: transform 0.12s ease;
 }
 

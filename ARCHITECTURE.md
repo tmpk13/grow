@@ -96,6 +96,7 @@ flowchart TD
     res["civ/resources.rs"]
     cfg["civ/config.rs<br/>every parameter"]
     names["civ/names.rs"]
+    csave["civ/save.rs<br/>a running settlement, written down"]
   end
 
   render["render.rs<br/>camera, overlays, previews"]
@@ -173,6 +174,8 @@ flowchart TD
   sett --> bdefs
   sett --> res
   sett --> civrender
+  main --> csave
+  csave --> sett
   colony --> econ
   colony --> tech
   pdb --> people
@@ -462,6 +465,57 @@ flowchart LR
 a death is counted: a task sets that flag the moment it decides somebody has
 died and the burial happens afterwards, so the flag alone would count the same
 death on every tick for the rest of the run.
+
+## Saving a settlement
+
+The project and the running settlement are saved separately, under two keys.
+The project is a document: parameters, materials, species, sprite sheets, and
+it is what Export writes to a file. The settlement is the state of a thing
+being watched, an order of magnitude larger than everything else put together,
+and nobody wants a hundred settlers inside a file they mailed to somebody.
+
+What is written down is only what could not be worked out again. Everything
+that is a function of the seed, the configuration and the things that *are*
+written down is left out and rebuilt on the way back in, which is most of the
+bytes and all of the pictures.
+
+```mermaid
+flowchart LR
+  subgraph kept [Written down]
+    hist["people, buildings, colonies,<br/>boats, piles, obituaries"]
+    shape["plant shapes:<br/>segments, leaves, tips"]
+    streams["every RNG stream<br/>and every timer"]
+    worn["traffic, deposits dug out"]
+  end
+  subgraph made [Worked out again]
+    terr["terrain: noise, rivers, deposits<br/>Terrain::new(seed, config)"]
+    grids["blocked, build grid, gates<br/>from terrain plus footprints"]
+    occ["layer occupancy<br/>from the cells each plant claims"]
+    px["plant sprites, ground, background,<br/>settler sprites, the picture"]
+    idx["the id lookups and the plant index"]
+  end
+  kept --> restore["civ/save.rs restore"]
+  restore --> made
+```
+
+A file names the world it grew on: the map config, the terrain config and the
+seed, as one string. If that does not match what the project would build now,
+the file is refused rather than half applied, because a settlement dropped onto
+different ground has people standing in rivers.
+
+The exactness is worth stating: a settlement written down and read back is not
+merely close to the one that was saved, it *is* it, down to the pixel and
+through the next hundred days. `tests/settlement_save.rs` runs the original and
+the restored copy forward side by side and compares both the books and the
+composited frame.
+
+Two things in the type system had to give way for this. A `&'static str` field
+is one serde tries to borrow out of the input, which pins every type it is
+nested in to input that lives forever; the few fields that held one (a cause of
+death, a technology id) now own their text instead. And the growing shapes -
+segments, leaves, tips - travel as bare arrays of numbers rather than as
+objects with a name against every field, because there are tens of thousands of
+them and the names would be most of the file.
 
 ## Frame pipeline
 

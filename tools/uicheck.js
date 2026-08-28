@@ -786,7 +786,7 @@ await page.screenshot({ path: `${outDir}/16-search-landed.png` });
 // The meaning switch, if a table was built for this index. Without one the
 // switch is not offered, and search is the fuzzy one only.
 const hasMeaning = await page.evaluate(
-  () => !document.getElementById('find-meaning-row').hasAttribute('hidden'),
+  () => !document.getElementById('find-meaning').hasAttribute('hidden'),
 );
 if (hasMeaning) {
   await page.fill('#find-box', '');
@@ -828,6 +828,47 @@ const scaled = await page.evaluate(() => {
   return after / before;
 });
 if (scaled < 1.4) problems.push(`text scale moved the root size by ${scaled.toFixed(2)}, not 1.5`);
+
+// The settlement survives a reload. The page is told it is going away, which
+// is what writes the world down between the timed saves, and then reloaded:
+// coming back has to pick the same town up on the same day rather than found
+// a new one. This goes last because a reload throws away everything above it.
+await page.click('.mode[data-mode="settlement"]');
+await page.waitForTimeout(1200);
+const dayOf = async () => {
+  const line = await page.evaluate(() => document.getElementById('statusbar').textContent);
+  const hit = /day (\d+)/.exec(line);
+  return hit ? Number(hit[1]) : -1;
+};
+const townOf = async () =>
+  (await page.evaluate(() => document.getElementById('statusbar').textContent)).split(' ')[0];
+const beforeDay = await dayOf();
+const beforeTown = await townOf();
+await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+await page.waitForTimeout(300);
+const saved = await page.evaluate(() => localStorage.getItem('grow.settlement.v1')?.length ?? 0);
+if (!saved) {
+  problems.push('leaving the page did not write the settlement down');
+}
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForTimeout(600);
+await page.click('.mode[data-mode="settlement"]');
+await page.waitForTimeout(2500);
+const afterDay = await dayOf();
+const afterTown = await townOf();
+const note = await page.evaluate(() => document.getElementById('save-note').textContent);
+if (afterTown !== beforeTown || afterDay < beforeDay) {
+  problems.push(
+    `the settlement did not survive a reload: ${beforeTown} day ${beforeDay} came back as ` +
+      `${afterTown} day ${afterDay}`,
+  );
+} else {
+  console.log(`reload: ${afterTown} picked up on day ${afterDay} (${(saved / 1e6).toFixed(2)} MB)`);
+}
+if (!/day/.test(note)) {
+  problems.push(`the note after a reload read "${note}", not the day it picked up on`);
+}
+await page.screenshot({ path: `${outDir}/18-reload.png` });
 
 await browser.close();
 server.kill();

@@ -45,7 +45,7 @@ impl Tie {
 }
 
 /// One person's standing record of another.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Bond {
     pub who: u32,
     /// From -1, a feud, through 0, a face in the street, to 1, devotion.

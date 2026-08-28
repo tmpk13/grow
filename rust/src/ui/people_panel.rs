@@ -418,7 +418,7 @@ impl PeoplePanel {
                     format!("day {} in {}", p.born, civ.colony_name(p.born_in))
                 },
             ),
-            ("Doing".into(), if p.alive { doing(civ, pi) } else { format!("died of {}", p.cause.unwrap_or("old age")) }),
+            ("Doing".into(), if p.alive { doing(civ, pi) } else { format!("died of {}", p.cause.as_deref().unwrap_or("old age")) }),
             ("Home".into(), home),
             ("Owns".into(), owns),
             ("Works".into(), work),
@@ -661,7 +661,7 @@ impl Panel for PeoplePanel {
             let task = if p.alive {
                 format!("{}{carry}", doing(civ, pi))
             } else {
-                format!("died day {} of {}", p.died, p.cause.unwrap_or("old age"))
+                format!("died day {} of {}", p.died, p.cause.as_deref().unwrap_or("old age"))
             };
             let h2 = self.handle.clone();
             let id = p.id;

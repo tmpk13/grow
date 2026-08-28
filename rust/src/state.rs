@@ -25,6 +25,10 @@ fn default_version() -> u32 {
     STATE_VERSION
 }
 
+fn app_version() -> String {
+    crate::VERSION.to_string()
+}
+
 fn default_seed() -> u32 {
     20260815
 }
@@ -33,6 +37,11 @@ fn default_seed() -> u32 {
 #[serde(default, rename_all = "camelCase")]
 pub struct State {
     pub version: u32,
+    /// The build that wrote this file. Stamped on the way out and ignored on
+    /// the way in, so an exported project always names the version that made
+    /// it rather than the one that last opened it.
+    #[serde(default = "app_version", skip_deserializing)]
+    pub app: String,
     pub seed: u32,
     pub materials: Materials,
     /// Sprite sheets drawn in the tool, which settler motions can be pointed
@@ -50,6 +59,7 @@ impl Default for State {
     fn default() -> Self {
         State {
             version: default_version(),
+            app: app_version(),
             seed: default_seed(),
             materials: Materials::new(),
             art: ArtLibrary::default(),

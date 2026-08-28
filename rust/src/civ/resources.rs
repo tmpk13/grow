@@ -4,9 +4,10 @@
 //! generated from this table, so adding a resource here is enough to make it
 //! appear everywhere it is relevant.
 
-use serde::{Deserialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 #[repr(usize)]
 pub enum Res {
     Wood = 0,

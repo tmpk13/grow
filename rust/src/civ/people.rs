@@ -21,7 +21,8 @@ use crate::civ::tech::Mods;
 use crate::rng::Rng;
 use crate::util::{clamp, clamp01};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 #[derive(Default)]
 pub enum Profession {
     #[default]
@@ -82,7 +83,7 @@ impl Profession {
 /// Personality, drawn once at birth and fixed for life. Every value is in
 /// [0,1] and is read by exactly one part of the sim, which keeps them from
 /// turning into a single hidden quality score.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct Traits {
     /// Work rate and how quickly a skill is picked up.
     pub diligence: f64,
@@ -143,7 +144,7 @@ impl Traits {
 
 /// One line of a person's history. Kept short and capped, because every
 /// settler who ever lived keeps theirs.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LifeEvent {
     pub day: i32,
     pub text: String,
@@ -241,13 +242,13 @@ impl Default for PeopleConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct Carry {
     pub res: Option<Res>,
     pub n: f64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Person {
     pub id: u32,
     pub seed: u32,
@@ -265,7 +266,7 @@ pub struct Person {
     pub adult_age: f64,
     pub lifespan: f64,
     pub alive: bool,
-    pub cause: Option<&'static str>,
+    pub cause: Option<String>,
     pub hunger: f64,
     pub energy: f64,
     pub health: f64,
@@ -308,7 +309,7 @@ pub struct Person {
     pub spouse: u32,
     pub children: Vec<u32>,
     pub literacy: f64,
-    pub title: Option<&'static str>,
+    pub title: Option<String>,
     pub events: Vec<LifeEvent>,
     /// The stall this settler keeps, or 0. A stall is bought and worked by one
     /// person for their own account, which is why it is not the same thing as

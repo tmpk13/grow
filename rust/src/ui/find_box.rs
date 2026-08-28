@@ -64,7 +64,7 @@ pub fn mount(h: &Handle) {
     };
 
     if !has_meaning() {
-        if let Some(node) = by_id("find-meaning-row") {
+        if let Some(node) = by_id("find-meaning") {
             let _ = node.set_attribute("hidden", "hidden");
         }
     }
@@ -72,8 +72,15 @@ pub fn mount(h: &Handle) {
     on(input.unchecked_ref(), "input", Scope::Global, |_| refresh());
     on(input.unchecked_ref(), "focus", Scope::Global, |_| refresh());
 
+    // A button that stays pressed rather than a checkbox: it sits against the
+    // search box as part of the same control, and reads at a glance.
     if let Some(node) = by_id("find-meaning") {
-        on(node.unchecked_ref(), "change", Scope::Global, |_| refresh());
+        let button = node.clone();
+        on(node.unchecked_ref(), "click", Scope::Global, move |_| {
+            let next = !pressed(&button);
+            let _ = button.set_attribute("aria-pressed", if next { "true" } else { "false" });
+            refresh();
+        });
     }
 
     {
@@ -185,6 +192,12 @@ fn mark() {
     }
 }
 
+/// Whether a toggle button is on. The pressed state lives in the attribute, so
+/// it survives the page being rebuilt around it.
+fn pressed(node: &Element) -> bool {
+    node.get_attribute("aria-pressed").as_deref() == Some("true")
+}
+
 fn refresh() {
     let (input, list) = match (by_id("find-box"), by_id("find-results")) {
         (Some(i), Some(l)) => (i, l),
@@ -194,10 +207,7 @@ fn refresh() {
         .dyn_into::<HtmlInputElement>()
         .map(|i| i.value())
         .unwrap_or_default();
-    let by_meaning = by_id("find-meaning")
-        .and_then(|n| n.dyn_into::<HtmlInputElement>().ok())
-        .map(|i| i.checked())
-        .unwrap_or(false);
+    let by_meaning = by_id("find-meaning").is_some_and(|n| pressed(&n));
 
     let (mode, tab) = here();
     let rows = with_index(|index| {

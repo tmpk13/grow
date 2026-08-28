@@ -53,7 +53,7 @@ impl Mod {
 
 /// Multipliers applied all over the sim. Effects are additive fractions, so
 /// three techs worth +0.1 gathering give x1.3 rather than x1.331.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Mods {
     pub gather: f64,
     pub build: f64,
@@ -342,18 +342,21 @@ impl Default for TechConfig {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+/// What one colony has learned. The ids are owned rather than borrowed from
+/// the table they name, because a settlement read back off a save has to hold
+/// them before anything has looked them up.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TechState {
-    pub known: Vec<&'static str>,
+    pub known: Vec<String>,
     pub points: f64,
     pub spent: f64,
-    pub target: Option<&'static str>,
-    pub log: Vec<(&'static str, i32)>,
+    pub target: Option<String>,
+    pub log: Vec<(String, i32)>,
 }
 
 impl TechState {
     pub fn is_known(&self, id: &str) -> bool {
-        self.known.contains(&id)
+        self.known.iter().any(|k| k == id)
     }
 
     pub fn reachable(&self, def: &TechDef) -> bool {

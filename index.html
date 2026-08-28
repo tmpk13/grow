@@ -12,29 +12,31 @@
   </head>
   <body>
     <header class="topbar">
-      <h1>grow</h1>
+      <h1>grow<span class="version" id="version"></span></h1>
       <div class="find" id="find">
-        <input
-          id="find-box"
-          type="search"
-          class="find-box"
-          placeholder="Search the menus  /"
-          autocomplete="off"
-          spellcheck="false"
-          aria-label="Search the menus"
-        />
+        <div class="find-row">
+          <input
+            id="find-box"
+            type="search"
+            class="find-box"
+            placeholder="Search the menus  /"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Search the menus"
+          />
+          <button
+            id="find-meaning"
+            class="btn toggle find-meaning"
+            type="button"
+            aria-pressed="false"
+            title="Also match settings that mean what you typed, not only ones spelled like it"
+          >
+            Meaning
+          </button>
+        </div>
         <ul class="find-results" id="find-results" hidden></ul>
       </div>
       <div class="topbar-actions">
-        <label
-          class="inline"
-          id="find-meaning-row"
-          for="find-meaning"
-          title="Also match settings that mean what you typed, not only ones spelled like it"
-        >
-          <input id="find-meaning" type="checkbox" />
-          <span>Meaning</span>
-        </label>
         <span id="save-note" class="save-note"></span>
         <label class="inline" for="ui-scale" title="Size of every label and control">
           <span>Text</span>

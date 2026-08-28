@@ -5,6 +5,11 @@
 //! with no browser dependency: the simulation runs headless in the smoke test
 //! binaries, and the same code drives the page in a browser.
 
+/// The build, taken from the package version. Shown beside the name in the top
+/// bar and stamped into every exported project, so a file can be traced back
+/// to what wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod art;
 pub mod civ;
 pub mod find;

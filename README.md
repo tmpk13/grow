@@ -554,8 +554,20 @@ State auto saves to localStorage; **Export** writes a JSON project and
 **Import** loads one back. **New** resets to the defaults.
 
 A project holds every parameter, including all of the settlement's, but not a
-running settlement: reloading the page keeps the land and the rules and founds
-it again.
+running settlement. That is kept apart, under its own key in localStorage,
+because it is not a document: it is a hundred settlers, their houses, their
+histories and the wilderness they are cutting down, and a project file sent to
+somebody else has no business carrying them. It is written down every twenty
+seconds while it runs, and again when the page is closed or the tab is hidden,
+so a reload picks the same town up on the same day rather than founding a new
+one.
+
+A saved settlement is only good for the world it grew on. Change the map size,
+the terrain settings or the seed and it is thrown away rather than dropped onto
+ground that no longer matches it - which is also what **New land**, **Rebuild
+this land**, **New** and **Reset all** all do to it deliberately. A very large
+map can outgrow what a browser will hold, and a settlement past three megabytes
+of text is left unsaved and says so beside the title.
 
 **Reset all** goes further than New: it empties every store the page has in this
 browser - the saved project, the window settings, the session store, any cached

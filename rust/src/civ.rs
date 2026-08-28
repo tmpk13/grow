@@ -12,6 +12,7 @@ pub mod pathing;
 pub mod people_db;
 pub mod planner;
 pub mod resources;
+pub mod save;
 pub mod settlement;
 pub mod social;
 pub mod sprites;

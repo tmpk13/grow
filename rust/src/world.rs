@@ -48,7 +48,7 @@ impl Default for WorldConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Support {
     pub col: i32,
     pub row: i32,

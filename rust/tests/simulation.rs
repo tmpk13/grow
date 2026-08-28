@@ -303,7 +303,8 @@ fn a_ring_never_shuts_the_town_in() {
     let mut sim = Settlement::new(&state);
     sim.bootstrap(&state);
     for ci in 0..sim.colonies.len() {
-        sim.colonies[ci].tech.known = vec!["stonework", "carpentry", "fortification"];
+        sim.colonies[ci].tech.known =
+            ["stonework", "carpentry", "fortification"].map(String::from).to_vec();
         sim.colonies[ci].refresh_tech();
     }
 

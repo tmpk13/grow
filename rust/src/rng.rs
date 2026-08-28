@@ -1,7 +1,12 @@
 //! Seeded RNG (mulberry32). Every stochastic part of the sim draws from an
 //! explicit stream so a run can be reproduced from a single seed.
+//!
+//! The stream is one number, and a saved world carries it, so a settlement
+//! picked up after a reload draws what it would have drawn.
 
-#[derive(Clone, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Rng {
     state: u32,
 }

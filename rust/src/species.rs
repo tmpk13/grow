@@ -354,7 +354,7 @@ impl Species {
 }
 
 /// Species limits never exceed their size class ceiling.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct EffectiveLimits {
     pub max_radius_cells: i32,
     pub max_height_px: f64,
