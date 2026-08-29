@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::rng::Rng;
 use crate::sampler::Bands;
-use crate::shading::{quantize, shade_value, Shading};
+use crate::shading::{curve_value, quantize, Shading};
 use crate::species::{EffectiveLimits, SizeClass, Species};
 use crate::util::{
     clamp, clamp01, distance_transform, hash2, label_components, pack_rgba, to_rad, unpack_rgba,
@@ -80,6 +80,10 @@ const SHADE_GROUPS: &[ShadeGroup] = &[
     ShadeGroup { mats: &[Mat::Leaf, Mat::LeafEdge], wood: false },
     ShadeGroup { mats: &[Mat::Ground], wood: true },
 ];
+
+/// The shade group each material belongs to, indexed by `Mat`; the entry for
+/// `Empty` is never read.
+const GROUP_OF: [usize; MAT_COUNT] = [0, 0, 0, 1, 1, 0, 2];
 
 const SPRITE_PAD: f64 = 4.0;
 
@@ -219,6 +223,32 @@ impl Bounds {
     pub fn is_empty(&self) -> bool {
         self.x1 < self.x0
     }
+
+    /// Widens the box to take the pixel in.
+    pub fn include(&mut self, x: i32, y: i32) {
+        if self.is_empty() {
+            *self = Bounds { x0: x, y0: y, x1: x, y1: y };
+            return;
+        }
+        if x < self.x0 {
+            self.x0 = x;
+        }
+        if x > self.x1 {
+            self.x1 = x;
+        }
+        if y < self.y0 {
+            self.y0 = y;
+        }
+        if y > self.y1 {
+            self.y1 = y;
+        }
+    }
+}
+
+impl Default for Bounds {
+    fn default() -> Bounds {
+        Bounds { x0: 0, y0: 0, x1: -1, y1: -1 }
+    }
 }
 
 /// Reusable working buffers for the shading pass, shared by every plant in a
@@ -229,6 +259,10 @@ pub struct Scratch {
     dist: Vec<f32>,
     labels: Vec<i32>,
     stack: Vec<usize>,
+    /// Per component: the vertical fraction and the two vertical curve terms,
+    /// valid for the row named in `vstamp`.
+    vcache: Vec<(f64, f64, f64)>,
+    vstamp: Vec<u32>,
 }
 
 /// The sampling boxes a species resolves to, indexed by material, each read as
@@ -286,6 +320,40 @@ pub struct Plant {
     pub bias: Vec<i8>,
     #[serde(skip)]
     pub sprite: Vec<u32>,
+    /// The rectangle everything ever stamped fell inside. A plant fills a
+    /// small corner of its own fixed-size buffer for most of its life, and
+    /// outside this rectangle the buffer is known to be empty, so every pass
+    /// of the raster confines itself to it rather than sweeping the whole
+    /// buffer.
+    #[serde(skip)]
+    pub stamped: Bounds,
+    /// Segments and leaves are only ever appended while a plant grows, so
+    /// they are stamped once each into a wood plane and a leaf plane, and a
+    /// raster composites the two rather than re-stamping the whole history.
+    /// The planes are laid out like `mask` and carry the material per pixel;
+    /// the counters say how much of each list has been stamped so far.
+    #[serde(skip)]
+    wood_mask: Vec<u8>,
+    #[serde(skip)]
+    wood_bias: Vec<i8>,
+    #[serde(skip)]
+    leaf_mask: Vec<u8>,
+    #[serde(skip)]
+    leaf_bias: Vec<i8>,
+    #[serde(skip)]
+    stamped_segments: usize,
+    #[serde(skip)]
+    stamped_leaves: usize,
+    /// Where this plant's species sat in the species list when it was last
+    /// looked up. The list almost never changes, so checking the remembered
+    /// slot first turns a scan per plant per tick into a scan per edit.
+    #[serde(skip)]
+    pub species_hint: usize,
+    /// How many tips are still growing. Kept as a count because the whole
+    /// list, dead tips included, is what maturity would otherwise scan every
+    /// tick of every plant's life.
+    #[serde(skip)]
+    alive_tips: i32,
     pub bounds: Bounds,
     pub dirty: bool,
     /// Settler currently on their way to cut this plant down.
@@ -368,6 +436,15 @@ impl Plant {
             mask: vec![0; n],
             bias: vec![0; n],
             sprite: vec![EMPTY_COLOR; n],
+            stamped: Bounds::default(),
+            wood_mask: Vec::new(),
+            wood_bias: Vec::new(),
+            leaf_mask: Vec::new(),
+            leaf_bias: Vec::new(),
+            stamped_segments: 0,
+            stamped_leaves: 0,
+            species_hint: 0,
+            alive_tips: 0,
             bounds: Bounds { x0: 0, y0: 0, x1: -1, y1: -1 },
             dirty: true,
             wither: 0.0,
@@ -399,6 +476,7 @@ impl Plant {
             support: None,
             alive: true,
         });
+        self.alive_tips += 1;
     }
 
     /// Upright and part of the world. A plant that has been cut is neither.
@@ -417,7 +495,20 @@ impl Plant {
     }
 
     pub fn alive_tip_count(&self) -> i32 {
-        self.tips.iter().filter(|t| t.alive).count() as i32
+        self.alive_tips
+    }
+
+    /// The index of this plant's species in the list, trying the remembered
+    /// slot before scanning. None when the species has been deleted.
+    pub fn species_index(&mut self, species: &[Species]) -> Option<usize> {
+        match species.get(self.species_hint) {
+            Some(s) if s.id == self.species_id => Some(self.species_hint),
+            _ => {
+                let i = species.iter().position(|s| s.id == self.species_id)?;
+                self.species_hint = i;
+                Some(i)
+            }
+        }
     }
 
     pub fn mature(&self) -> bool {
@@ -617,6 +708,7 @@ impl Plant {
             support: tip.support,
             alive: true,
         });
+        self.alive_tips += 1;
         tip.angle -= angle * 0.35;
         tip.since_branch = 0.0;
         tip.width *= 0.94;
@@ -627,6 +719,7 @@ impl Plant {
             return;
         }
         tip.alive = false;
+        self.alive_tips -= 1;
         let f = species.form;
         if f.leaf_density > 0.0 && tip.depth >= f.leaf_depth {
             self.add_leaf(tip, false, species);
@@ -690,12 +783,32 @@ impl Plant {
 
     // ---- rasterizing -----------------------------------------------------
 
+    /// Widens the stamped rectangle to cover a stamp's clipped extent. The
+    /// extent may be conservative: what matters is that nothing is ever
+    /// written outside it.
+    fn mark_stamped(&mut self, x0: i32, y0: i32, x1: i32, y1: i32) {
+        if x1 < x0 || y1 < y0 {
+            return;
+        }
+        if self.stamped.is_empty() {
+            self.stamped = Bounds { x0, y0, x1, y1 };
+        } else {
+            let s = &mut self.stamped;
+            s.x0 = s.x0.min(x0);
+            s.y0 = s.y0.min(y0);
+            s.x1 = s.x1.max(x1);
+            s.y1 = s.y1.max(y1);
+        }
+    }
+
+    /// Stamps one disc of a segment into the wood plane.
     fn stamp_disc(&mut self, cx: f64, cy: f64, r: f64, mat: Mat, bias: i8) {
         let rr = r.max(0.5);
         let x0 = ((cx - rr).floor() as i32).max(0);
         let x1 = ((cx + rr).ceil() as i32).min(self.w - 1);
         let y0 = ((cy - rr).floor() as i32).max(0);
         let y1 = ((cy + rr).ceil() as i32).min(self.h - 1);
+        self.mark_stamped(x0, y0, x1, y1);
         let r2 = rr * rr;
         for y in y0..=y1 {
             for x in x0..=x1 {
@@ -705,8 +818,8 @@ impl Plant {
                     continue;
                 }
                 let i = (y * self.w + x) as usize;
-                self.mask[i] = mat as u8;
-                self.bias[i] = bias;
+                self.wood_mask[i] = mat as u8;
+                self.wood_bias[i] = bias;
             }
         }
     }
@@ -727,6 +840,7 @@ impl Plant {
         let x1 = ((leaf.x + leaf.rx + 1.0).ceil() as i32).min(self.w - 1);
         let y0 = ((leaf.y - leaf.ry - 1.0).floor() as i32).max(0);
         let y1 = ((leaf.y + leaf.ry + 1.0).ceil() as i32).min(self.h - 1);
+        self.mark_stamped(x0, y0, x1, y1);
         for y in y0..=y1 {
             for x in x0..=x1 {
                 let dx = (x as f64 + 0.5 - leaf.x) / leaf.rx.max(0.5);
@@ -737,8 +851,8 @@ impl Plant {
                     continue;
                 }
                 let i = (y * self.w + x) as usize;
-                self.mask[i] = Mat::Leaf as u8;
-                self.bias[i] = leaf.bias;
+                self.leaf_mask[i] = Mat::Leaf as u8;
+                self.leaf_bias[i] = leaf.bias;
             }
         }
     }
@@ -753,6 +867,8 @@ impl Plant {
         let x1 = ((self.ox as f64 + rx + 1.0).ceil() as i32).min(self.w - 1);
         let y0 = ((self.oy as f64 - ry - 1.0).floor() as i32).max(0);
         let y1 = ((self.oy as f64 + ry + 1.0).ceil() as i32).min(self.h - 1);
+        // The lip below the disc reaches at most `lip` rows past the ellipse.
+        self.mark_stamped(x0, y0, x1, (y1 + lip).min(self.h - 1));
         let mut bottom = vec![-1i32; self.w as usize];
         for y in y0..=y1 {
             for x in x0..=x1 {
@@ -784,11 +900,16 @@ impl Plant {
         }
     }
 
-    fn mark_leaf_edges(&mut self) {
+    /// Turns the rim of every leaf blob into leaf edge. `rect` is where the
+    /// foliage is; nothing outside it is a leaf.
+    fn mark_leaf_edges(&mut self, rect: Bounds) {
         let (w, h) = (self.w, self.h);
+        if rect.is_empty() {
+            return;
+        }
         let mut edges = Vec::new();
-        for y in 0..h {
-            for x in 0..w {
+        for y in rect.y0..=rect.y1 {
+            for x in rect.x0..=rect.x1 {
                 let i = (y * w + x) as usize;
                 if self.mask[i] != Mat::Leaf as u8 {
                     continue;
@@ -816,37 +937,121 @@ impl Plant {
         self.mask = vec![Mat::Empty as u8; n];
         self.bias = vec![0; n];
         self.sprite = vec![EMPTY_COLOR; n];
+        self.stamped = Bounds::default();
+        self.wood_mask = Vec::new();
+        self.wood_bias = Vec::new();
+        self.leaf_mask = Vec::new();
+        self.leaf_bias = Vec::new();
+        self.stamped_segments = 0;
+        self.stamped_leaves = 0;
+        self.alive_tips = self.tips.iter().filter(|t| t.alive).count() as i32;
         self.dirty = true;
     }
 
     pub fn raster(&mut self, env: &RasterEnv, scratch: &mut Scratch, species: &Species) {
-        self.mask.fill(Mat::Empty as u8);
-        self.bias.fill(0);
-        self.sprite.fill(EMPTY_COLOR);
-
+        let group_bounds;
         if self.size_class == SizeClass::Ground {
+            // A patch is one disc whose radius moves, so it is drawn whole
+            // every time. Only the rows the last raster stamped need clearing:
+            // the rest of the buffer has been empty since the plant was made
+            // or rehydrated.
+            let prev = self.stamped;
+            if !prev.is_empty() {
+                let w = self.w;
+                for y in prev.y0..=prev.y1 {
+                    let a = (y * w + prev.x0) as usize;
+                    let b = (y * w + prev.x1 + 1) as usize;
+                    self.mask[a..b].fill(Mat::Empty as u8);
+                    self.bias[a..b].fill(0);
+                    self.sprite[a..b].fill(EMPTY_COLOR);
+                }
+            }
+            self.stamped = Bounds::default();
             self.stamp_ground_patch();
+            group_bounds = [Bounds::default(), Bounds::default(), self.stamped];
         } else {
+            // Stamp only what was appended since the last raster, then build
+            // the working mask by laying the leaf plane over the wood plane,
+            // which is the same order a full re-stamp would have drawn them
+            // in. Everything a shrivel ate out of the working mask comes back
+            // here and is eaten again a little further on, exactly as a full
+            // re-stamp would have redrawn it.
+            let n = (self.w.max(0) * self.h.max(0)) as usize;
+            if self.wood_mask.len() != n
+                || self.segments.len() < self.stamped_segments
+                || self.leaves.len() < self.stamped_leaves
+            {
+                self.wood_mask = vec![0; n];
+                self.wood_bias = vec![0; n];
+                self.leaf_mask = vec![0; n];
+                self.leaf_bias = vec![0; n];
+                self.stamped_segments = 0;
+                self.stamped_leaves = 0;
+            }
             let segments = std::mem::take(&mut self.segments);
-            for seg in &segments {
+            for seg in &segments[self.stamped_segments..] {
                 self.stamp_segment(*seg);
             }
+            self.stamped_segments = segments.len();
             self.segments = segments;
             let leaves = std::mem::take(&mut self.leaves);
-            for leaf in &leaves {
+            for leaf in &leaves[self.stamped_leaves..] {
                 self.stamp_leaf(*leaf);
             }
+            self.stamped_leaves = leaves.len();
             self.leaves = leaves;
-            if species.form.leaf_edges {
-                self.mark_leaf_edges();
+
+            let sb = self.stamped;
+            let mut gb = [Bounds::default(); 3];
+            if !sb.is_empty() {
+                let w = self.w;
+                for y in sb.y0..=sb.y1 {
+                    for x in sb.x0..=sb.x1 {
+                        let i = (y * w + x) as usize;
+                        let lm = self.leaf_mask[i];
+                        let m = if lm != 0 {
+                            self.bias[i] = self.leaf_bias[i];
+                            lm
+                        } else {
+                            self.bias[i] = self.wood_bias[i];
+                            self.wood_mask[i]
+                        };
+                        self.mask[i] = m;
+                        if m != 0 {
+                            gb[GROUP_OF[m as usize]].include(x, y);
+                        }
+                    }
+                }
             }
+            if species.form.leaf_edges {
+                self.mark_leaf_edges(gb[1]);
+            }
+            group_bounds = gb;
         }
 
-        self.shade(env, scratch, species);
+        self.shade(env, scratch, species, &group_bounds);
         if self.wither > 0.0 {
             self.dry_out();
+            // Drying out eats pixels, so only a scan can say what is left.
+            self.update_bounds();
+        } else if self.size_class == SizeClass::Ground {
+            // The patch's rectangle is the stamp's reach, not what the wobble
+            // kept, so the drawn box still has to be measured.
+            self.update_bounds();
+        } else {
+            // Nothing was eaten, and the group boxes were measured off every
+            // drawn pixel while the mask was composited: their union is the
+            // drawn box.
+            let mut b = Bounds { x0: self.w, y0: self.h, x1: -1, y1: -1 };
+            for gb in &group_bounds {
+                if gb.is_empty() {
+                    continue;
+                }
+                b.include(gb.x0, gb.y0);
+                b.include(gb.x1, gb.y1);
+            }
+            self.bounds = b;
         }
-        self.update_bounds();
         self.update_tint();
         self.dirty = false;
     }
@@ -872,13 +1077,18 @@ impl Plant {
     /// keeps the edge ragged rather than a line sweeping down the sprite.
     fn dry_out(&mut self) {
         let t = clamp01(self.wither);
+        let sb = self.stamped;
+        if sb.is_empty() {
+            return;
+        }
         // Read off the mask rather than the stored bounds: every raster stamps
         // the whole plant again and this eats into it afterwards, so the
         // bounds still describe the last drawing, not this one.
         let (mut top, mut base) = (self.h, -1);
-        for y in 0..self.h {
-            let row = (y * self.w) as usize;
-            if self.mask[row..row + self.w as usize].iter().any(|m| *m != 0) {
+        for y in sb.y0..=sb.y1 {
+            let row = (y * self.w + sb.x0) as usize;
+            let n = (sb.x1 - sb.x0 + 1) as usize;
+            if self.mask[row..row + n].iter().any(|m| *m != 0) {
                 if y < top {
                     top = y;
                 }
@@ -890,10 +1100,10 @@ impl Plant {
         }
         let span = (base - top).max(1) as f64;
         let dead = unpack_rgba(DEAD_COLOR);
-        for y in 0..self.h {
+        for y in sb.y0..=sb.y1 {
             // 1 at the tips, 0 at the foot.
             let height = ((base - y) as f64 / span).clamp(0.0, 1.0);
-            for x in 0..self.w {
+            for x in sb.x0..=sb.x1 {
                 let i = (y * self.w + x) as usize;
                 if self.mask[i] == 0 {
                     continue;
@@ -917,64 +1127,104 @@ impl Plant {
         }
     }
 
-    fn shade(&mut self, env: &RasterEnv, sc: &mut Scratch, species: &Species) {
-        let (w, h) = (self.w as usize, self.h as usize);
+    fn shade(
+        &mut self,
+        env: &RasterEnv,
+        sc: &mut Scratch,
+        species: &Species,
+        group_bounds: &[Bounds; 3],
+    ) {
+        // Everything a group draws sits inside that group's rectangle, so the
+        // group mask, the distance transform and the component labels are
+        // computed over that rectangle alone, in its own coordinates. The
+        // distance transform treats the edge of its buffer as background,
+        // which is exactly what surrounds the rectangle in the full buffer.
+        let w = self.w as usize;
         let tones = species.shade.tones;
         let jitter = species.shade.jitter;
 
-        for group in SHADE_GROUPS {
-            sc.gmask.clear();
-            sc.gmask.resize(w * h, 0);
-            let mut any = false;
-            for i in 0..self.mask.len() {
-                let m = self.mask[i];
-                let in_group = m != 0 && group.mats.iter().any(|g| *g as u8 == m);
-                sc.gmask[i] = in_group as u8;
-                any |= in_group;
-            }
-            if !any {
+        for (gi, group) in SHADE_GROUPS.iter().enumerate() {
+            // Each group works inside its own rectangle, found while the mask
+            // was being built: the trunk pass does not sweep the crown and the
+            // leaf pass does not sweep the trunk. An empty rectangle is a
+            // group with nothing in it.
+            let gb = group_bounds[gi];
+            if gb.is_empty() {
                 continue;
             }
-
-            distance_transform(&sc.gmask, w, h, &mut sc.dist);
-            let mut comps = label_components(&sc.gmask, w, h, &mut sc.labels, &mut sc.stack);
-            for i in 0..sc.labels.len() {
-                let l = sc.labels[i];
-                if l < 0 {
-                    continue;
-                }
-                let comp = &mut comps[l as usize];
-                if sc.dist[i] > comp.max_depth {
-                    comp.max_depth = sc.dist[i];
+            let bw = (gb.x1 - gb.x0 + 1) as usize;
+            let bh = (gb.y1 - gb.y0 + 1) as usize;
+            let bits: u32 = group.mats.iter().fold(0, |a, m| a | 1 << (*m as u8));
+            sc.gmask.clear();
+            sc.gmask.resize(bw * bh, 0);
+            for ly in 0..bh {
+                let row = (gb.y0 as usize + ly) * w + gb.x0 as usize;
+                for lx in 0..bw {
+                    let m = self.mask[row + lx];
+                    sc.gmask[ly * bw + lx] = (bits & (1u32 << m) != 0) as u8;
                 }
             }
+            distance_transform(&sc.gmask, bw, bh, &mut sc.dist);
+            let comps =
+                label_components(&sc.gmask, bw, bh, &sc.dist, &mut sc.labels, &mut sc.stack);
 
             let core = species.core_for(group.wood).max(0.5);
             let adaptive = species.shade.adaptive_core;
-            for y in 0..h {
-                for x in 0..w {
-                    let i = y * w + x;
-                    let l = sc.labels[i];
+            // Fixed core depth keeps thin twigs light and only lets thick
+            // bodies reach the darkest tone; adaptive rescales per shape so
+            // every shape uses the full ramp.
+            let norms: Vec<f64> = comps
+                .iter()
+                .map(|c| {
+                    if adaptive {
+                        core.min((c.max_depth as f64).max(0.5))
+                    } else {
+                        core
+                    }
+                })
+                .collect();
+            // The two vertical curve terms depend only on the component and
+            // the row, so they are worked out once per component per row
+            // rather than once per pixel. The stamp says which row an entry
+            // was cached on.
+            sc.vcache.clear();
+            sc.vcache.resize(comps.len(), (0.0, 0.0, 0.0));
+            sc.vstamp.clear();
+            sc.vstamp.resize(comps.len(), 0);
+            let shading = env.shading;
+            for ly in 0..bh {
+                for lx in 0..bw {
+                    let li = ly * bw + lx;
+                    let l = sc.labels[li];
                     if l < 0 {
                         continue;
                     }
-                    let comp = comps[l as usize];
-                    // Fixed core depth keeps thin twigs light and only lets
-                    // thick bodies reach the darkest tone; adaptive rescales
-                    // per shape so every shape uses the full ramp.
-                    let norm = if adaptive {
-                        core.min((comp.max_depth as f64).max(0.5))
-                    } else {
-                        core
-                    };
-                    let nd = clamp01(sc.dist[i] as f64 / norm);
-                    let span = comp.y1 - comp.y0;
-                    let vert = if span > 0 {
-                        (y as i32 - comp.y0) as f64 / span as f64
-                    } else {
-                        0.0
-                    };
-                    let mut t = shade_value(nd, vert, env.shading);
+                    let lu = l as usize;
+                    let (x, y) = (gb.x0 as usize + lx, gb.y0 as usize + ly);
+                    let i = y * w + x;
+                    if sc.vstamp[lu] != ly as u32 + 1 {
+                        sc.vstamp[lu] = ly as u32 + 1;
+                        let comp = comps[lu];
+                        // The component box is in rectangle coordinates, and
+                        // so is ly here: the offset cancels out of the
+                        // fraction.
+                        let span = comp.y1 - comp.y0;
+                        let vert = if span > 0 {
+                            (ly as i32 - comp.y0) as f64 / span as f64
+                        } else {
+                            0.0
+                        };
+                        let up = shading.top_light * curve_value(1.0 - vert, shading);
+                        let down = shading.bottom_dark * curve_value(vert, shading);
+                        sc.vcache[lu] = (vert, up, down);
+                    }
+                    let (vert, up, down) = sc.vcache[lu];
+                    let nd = clamp01(sc.dist[li] as f64 / norms[lu]);
+                    let mut t = shading.mid;
+                    t -= shading.center_dark * curve_value(nd, shading);
+                    t += up;
+                    t -= down;
+                    t = t.clamp(0.0, 1.0);
                     t += self.bias[i] as f64 / 100.0 + self.depth_shade;
                     if jitter > 0.0 {
                         t += (hash2(x as i32, y as i32, self.seed as i32) - 0.5) * 2.0 * jitter;
@@ -986,6 +1236,11 @@ impl Plant {
                         // part of the box it reads, so a box drawn with a light
                         // crown and a dark base comes out that way round.
                         self.sprite[i] = ramp.pick(q, vert);
+                    } else {
+                        // The sprite is not cleared between rasters, so a
+                        // material whose box is empty has to write the empty
+                        // pixel a clear would have left.
+                        self.sprite[i] = EMPTY_COLOR;
                     }
                 }
             }
@@ -994,8 +1249,9 @@ impl Plant {
 
     fn update_bounds(&mut self) {
         let mut b = Bounds { x0: self.w, y0: self.h, x1: -1, y1: -1 };
-        for y in 0..self.h {
-            for x in 0..self.w {
+        let sb = self.stamped;
+        for y in sb.y0..=sb.y1 {
+            for x in sb.x0..=sb.x1 {
                 if self.mask[(y * self.w + x) as usize] == 0 {
                     continue;
                 }

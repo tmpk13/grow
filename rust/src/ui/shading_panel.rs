@@ -255,16 +255,7 @@ fn draw_shapes(canvas: &HtmlCanvasElement, app: &App) {
     distance_transform(&mask, w, h, &mut dist);
     let mut labels = Vec::new();
     let mut stack = Vec::new();
-    let mut comps = label_components(&mask, w, h, &mut labels, &mut stack);
-    for i in 0..labels.len() {
-        let l = labels[i];
-        if l < 0 {
-            continue;
-        }
-        if dist[i] > comps[l as usize].max_depth {
-            comps[l as usize].max_depth = dist[i];
-        }
-    }
+    let comps = label_components(&mask, w, h, &dist, &mut labels, &mut stack);
 
     let sampler = if app.state.materials.find(&app.ui.shade_preview_sampler).is_some() {
         app.ui.shade_preview_sampler.clone()

@@ -12,6 +12,7 @@ pub mod names;
 pub mod people;
 pub mod pathing;
 pub mod people_db;
+pub mod phases;
 pub mod planner;
 pub mod resources;
 pub mod save;

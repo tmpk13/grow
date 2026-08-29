@@ -100,6 +100,7 @@ flowchart TD
     names["civ/names.rs"]
     csave["civ/save.rs<br/>a running settlement, written down"]
     hand["civ/harvest.rs<br/>cutting by hand, and what it teaches"]
+    phz["civ/phases.rs<br/>where a tick's time goes, when asked"]
   end
 
   render["render.rs<br/>camera, overlays, previews"]
@@ -193,6 +194,7 @@ flowchart TD
   sett --> hand
   hand --> bdefs
   main --> hand
+  sett --> phz
   planner --> bdefs
   civrender --> sampler
 ```

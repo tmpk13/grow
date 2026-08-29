@@ -195,8 +195,8 @@ impl Sim {
                 }
                 continue;
             }
-            let species = match state.species.iter().find(|s| s.id == self.plants[i].species_id) {
-                Some(s) => s,
+            let species = match self.plants[i].species_index(&state.species) {
+                Some(si) => &state.species[si],
                 None => {
                     // The species was deleted from the project; so is anything
                     // still growing from it.
@@ -217,18 +217,25 @@ impl Sim {
     }
 
     fn spawn_phase(&mut self, state: &State, dt: f64, blocked: Option<&[u8]>) {
+        // Every standing plant's position, grouped by species in one pass.
+        // Nothing spawned below can join these groups: a spawn is always of
+        // the species being worked on, and its group was read before it.
+        let mut mine: Vec<Vec<(i32, i32)>> = vec![Vec::new(); state.species.len()];
+        for i in 0..self.plants.len() {
+            if !self.plants[i].standing() {
+                continue;
+            }
+            if let Some(si) = self.plants[i].species_index(&state.species) {
+                mine[si].push((self.plants[i].col, self.plants[i].row));
+            }
+        }
         for (si, sp) in state.species.iter().enumerate() {
             if !sp.enabled {
                 continue;
             }
             let limits = effective_limits(sp, &state.class_limits);
             let scale = if self.wild_scale > 0.0 { self.wild_scale } else { 1.0 };
-            let mine: Vec<(i32, i32)> = self
-                .plants
-                .iter()
-                .filter(|p| p.species_id == sp.id && p.standing())
-                .map(|p| (p.col, p.row))
-                .collect();
+            let mine = std::mem::take(&mut mine[si]);
             if mine.len() as f64 >= limits.max_instances as f64 * scale {
                 continue;
             }
@@ -354,9 +361,8 @@ impl Sim {
                 Some(i) => i,
                 None => continue,
             };
-            let species = match state.species.iter().find(|s| s.id == self.plants[index].species_id)
-            {
-                Some(s) => s,
+            let species = match self.plants[index].species_index(&state.species) {
+                Some(si) => &state.species[si],
                 None => continue,
             };
             let ramps = self.env.ramps_for(&state.materials, species);

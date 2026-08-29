@@ -494,6 +494,10 @@ fn main() {
         .join(", ");
     println!("  work: {jobs}");
 
+    if let Some(report) = grow::civ::phases::report() {
+        println!("\n{report}");
+    }
+
     sim.detail = detail;
     sim.composite(&state);
     let (w, h) = (sim.world().px_w, sim.world().px_h);

@@ -32,6 +32,7 @@ use crate::civ::names::{inn_name, place_name};
 use crate::civ::pathing::PathGrid;
 use crate::civ::people::{day_fraction, day_number, daylight, Person, Profession, Traits};
 use crate::civ::people_db::PeopleDb;
+use crate::civ::phases::{self, Phase};
 use crate::civ::planner::{find_site, find_site_near, plan, plan_walls, ring_site};
 use crate::civ::resources::{
     add_stock, make_stock, stock_bulk, take_stock, Res, Stock, RES_COUNT, RES_IDS,
@@ -125,6 +126,12 @@ pub struct Building {
     /// house nobody lives in is on its way to being a ruin.
     #[serde(default)]
     pub decay: f64,
+    /// The watered share of a farm's fields, against the reach it was measured
+    /// with. Water does not move, so this holds until the map grows or the
+    /// reach setting changes; asking the terrain fresh every tick is a square
+    /// search per field cell.
+    #[serde(skip)]
+    pub soak: Option<(i32, f64)>,
 }
 
 /// What a building is, through a save and back: the definition is one of the
@@ -439,6 +446,13 @@ pub struct Settlement {
     pub px_step: i32,
     /// How much of the drawing is worth doing at the current zoom.
     pub detail: Detail,
+    /// Built buildings that keep people well: position, reach, how well, and
+    /// whose town. Kept current wherever a building goes up or comes down, so
+    /// the sickness check reads a handful of wells rather than sweeping every
+    /// building per person per tick.
+    health_sources: Vec<(f64, f64, f64, f64, i32)>,
+    /// Built lamps: center and lit radius squared, kept the same way.
+    light_sources: Vec<(f64, f64, f64)>,
 }
 
 impl Settlement {
@@ -504,6 +518,8 @@ impl Settlement {
             view,
             px_step: 1,
             detail: Detail::Full,
+            health_sources: Vec::new(),
+            light_sources: Vec::new(),
         };
         sett.reset(state, state.civ.seed);
         sett
@@ -622,6 +638,10 @@ impl Settlement {
 
         let world = self.plant_sim.world.clone();
         self.terrain.expand(&world, &state.civ.terrain);
+        // New land can put water within reach of fields that had none.
+        for b in &mut self.buildings {
+            b.soak = None;
+        }
 
         // Every grid the settlement keeps per cell, at the new stride.
         let mut blocked = vec![0u8; n];
@@ -844,6 +864,7 @@ impl Settlement {
                 c.emptied_day = None;
             }
         }
+        self.refresh_sources();
     }
 
     /// Towns anybody still lives in. The planner, the expeditions and the boats
@@ -1272,6 +1293,7 @@ impl Settlement {
             water: 1.0,
             empty_days: 0.0,
             decay: 0.0,
+            soak: None,
         };
         self.buildings.push(b);
         let bi = self.buildings.len() - 1;
@@ -1865,6 +1887,7 @@ impl Settlement {
             b.builders = 0;
             b.craft_progress = 0.0;
             b.occupants = 0;
+            b.soak = None;
             for &(res, n) in &old_cost {
                 b.delivered[res as usize] += (n * salvage).floor();
             }
@@ -2532,9 +2555,15 @@ impl Settlement {
         self.plant_sim.fall_time = cfg.work.fall_time.max(0.05);
         self.time += dt;
         self.ticks += 1;
-        self.refresh_colonies();
+        {
+            let _t = phases::time(Phase::Refresh);
+            self.refresh_colonies();
+        }
         let blocked = std::mem::take(&mut self.blocked);
-        self.plant_sim.step(state, dt, Some(&blocked));
+        {
+            let _t = phases::time(Phase::Plants);
+            self.plant_sim.step(state, dt, Some(&blocked));
+        }
         self.blocked = blocked;
         // A plant that was re-drawn or removed changes the shadows on the
         // ground.
@@ -2546,24 +2575,31 @@ impl Settlement {
         self.plant_index.timer -= dt;
         if self.plant_index.timer <= 0.0 {
             self.plant_index.timer = cfg.work.plant_index_interval.max(0.1);
+            let _t = phases::time(Phase::PlantIndex);
             self.rebuild_plant_index();
         }
 
-        for ci in 0..self.colonies.len() {
-            self.colonies[ci].plan_timer -= dt;
-            if self.colonies[ci].plan_timer <= 0.0 {
-                self.colonies[ci].plan_timer = cfg.work.plan_interval.max(0.1);
-                if self.is_live(ci) {
-                    plan(self, state, ci);
-                    plan_walls(self, state, ci);
+        {
+            let _t = phases::time(Phase::Plan);
+            for ci in 0..self.colonies.len() {
+                self.colonies[ci].plan_timer -= dt;
+                if self.colonies[ci].plan_timer <= 0.0 {
+                    self.colonies[ci].plan_timer = cfg.work.plan_interval.max(0.1);
+                    if self.is_live(ci) {
+                        plan(self, state, ci);
+                        plan_walls(self, state, ci);
+                    }
                 }
             }
         }
 
-        for pi in self.people.live_indices() {
-            update_person(self, state, pi, dt);
-            if !self.people[pi].alive {
-                self.bury_person(state, pi);
+        {
+            let _t = phases::time(Phase::People);
+            for pi in self.people.live_indices() {
+                update_person(self, state, pi, dt);
+                if !self.people[pi].alive {
+                    self.bury_person(state, pi);
+                }
             }
         }
 
@@ -2579,36 +2615,60 @@ impl Settlement {
         // Damp ground fills a farm back up on its own. Every farm, every
         // tick: there are a handful of them and the soak is a square search
         // over their own fields.
-        for bi in 0..self.buildings.len() {
-            if !matches!(self.buildings[bi].def.job, Some(Job::Farm { .. })) {
-                continue;
+        {
+            let _t = phases::time(Phase::Farms);
+            let reach = cfg.work.farm_soak_reach.max(0);
+            for bi in 0..self.buildings.len() {
+                if !matches!(self.buildings[bi].def.job, Some(Job::Farm { .. })) {
+                    continue;
+                }
+                if !self.buildings[bi].built {
+                    continue;
+                }
+                let soak = match self.buildings[bi].soak {
+                    Some((r, s)) if r == reach => s,
+                    _ => {
+                        let s = self.farm_soak(state, bi);
+                        self.buildings[bi].soak = Some((reach, s));
+                        s
+                    }
+                };
+                if soak <= 0.0 {
+                    continue;
+                }
+                let gain = soak * cfg.work.farm_soak_rate * dt;
+                self.buildings[bi].water = clamp01(self.buildings[bi].water + gain);
             }
-            if !self.buildings[bi].built {
-                continue;
-            }
-            let soak = self.farm_soak(state, bi);
-            if soak <= 0.0 {
-                continue;
-            }
-            let gain = soak * cfg.work.farm_soak_rate * dt;
-            self.buildings[bi].water = clamp01(self.buildings[bi].water + gain);
         }
 
         // After everyone has moved, because who is standing next to whom is
         // the whole input.
-        social_tick(self, state, dt);
-        self.production_tick();
-        self.piles_tick(state, dt);
-        for ci in 0..self.colonies.len() {
-            self.economy_tick(state, ci, dt);
-            self.research_tick(state, ci, dt);
+        {
+            let _t = phases::time(Phase::Social);
+            social_tick(self, state, dt);
         }
-        boats_tick(self, state, dt);
-        balloons_tick(self, state, dt);
+        {
+            let _t = phases::time(Phase::Production);
+            self.production_tick();
+            self.piles_tick(state, dt);
+        }
+        {
+            let _t = phases::time(Phase::Economy);
+            for ci in 0..self.colonies.len() {
+                self.economy_tick(state, ci, dt);
+                self.research_tick(state, ci, dt);
+            }
+        }
+        {
+            let _t = phases::time(Phase::Boats);
+            boats_tick(self, state, dt);
+            balloons_tick(self, state, dt);
+        }
 
         let day = day_number(self.time, &cfg.people);
         if day != self.day {
             self.day = day;
+            let _t = phases::time(Phase::Day);
             self.day_tick(state);
         }
 
@@ -2617,6 +2677,7 @@ impl Settlement {
         // into the decay, rather than every tick.
         self.traffic_timer += dt;
         if self.traffic_timer >= 1.0 {
+            let _t = phases::time(Phase::Traffic);
             let decay = (-self.traffic_timer * 0.02).exp() as f32;
             self.traffic_timer = 0.0;
             for v in &mut self.traffic {
@@ -3339,18 +3400,45 @@ impl Settlement {
         Some(spot)
     }
 
+    /// Keeps the well and lamp lists in step with the buildings. Called
+    /// wherever a building is raised, felled or swapped for another rung, so
+    /// the two lookups below never see yesterday's town.
+    pub fn refresh_sources(&mut self) {
+        self.health_sources.clear();
+        self.light_sources.clear();
+        for b in &self.buildings {
+            if !b.built {
+                continue;
+            }
+            if b.def.health != 0.0 {
+                let radius = if b.def.radius > 0.0 { b.def.radius } else { 10.0 };
+                self.health_sources.push((
+                    b.col as f64,
+                    b.row as f64,
+                    radius,
+                    b.def.health,
+                    b.colony,
+                ));
+            }
+            if b.def.light > 0.0 {
+                let cx = b.col as f64 + b.w as f64 / 2.0;
+                let cy = b.row as f64 + b.h as f64 / 2.0;
+                self.light_sources.push((cx, cy, b.def.light * b.def.light));
+            }
+        }
+    }
+
     pub fn well_coverage(&self, pi: usize) -> f64 {
         let (x, y) = (self.people[pi].x, self.people[pi].y);
         let colony = self.people[pi].colony;
         let mut best: f64 = 0.0;
-        for b in &self.buildings {
-            if !b.built || b.def.health == 0.0 || b.colony != colony {
+        for &(col, row, radius, health, bcolony) in &self.health_sources {
+            if bcolony != colony {
                 continue;
             }
-            let d = (b.col as f64 - x).hypot(b.row as f64 - y);
-            let radius = if b.def.radius > 0.0 { b.def.radius } else { 10.0 };
+            let d = (col - x).hypot(row - y);
             if d <= radius {
-                best = best.max(b.def.health);
+                best = best.max(health);
             }
         }
         best
@@ -3874,15 +3962,10 @@ impl Settlement {
     /// Whether a lamp reaches this cell. Only built lamps count: a post going
     /// up is not lighting anything yet.
     pub fn lit_at(&self, col: i32, row: i32) -> bool {
-        self.buildings.iter().any(|b| {
-            if !b.built || b.def.light <= 0.0 {
-                return false;
-            }
-            let cx = b.col as f64 + b.w as f64 / 2.0;
-            let cy = b.row as f64 + b.h as f64 / 2.0;
+        self.light_sources.iter().any(|&(cx, cy, r2)| {
             let dx = col as f64 + 0.5 - cx;
             let dy = row as f64 + 0.5 - cy;
-            dx * dx + dy * dy <= b.def.light * b.def.light
+            dx * dx + dy * dy <= r2
         })
     }
 
@@ -3908,6 +3991,7 @@ impl Settlement {
     /// Compatibility with the plant sim view: the settlement is rasterized by
     /// the same viewport, so it answers the same two questions.
     pub fn process_raster_queue(&mut self, state: &State, budget: usize) -> usize {
+        let _t = phases::time(Phase::Raster);
         self.plant_sim.process_raster_queue(state, budget)
     }
 

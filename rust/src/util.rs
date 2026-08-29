@@ -180,16 +180,17 @@ pub fn distance_transform(mask: &[u8], w: usize, h: usize, out: &mut Vec<f32>) {
     const INF: f32 = 1e9;
     const A: f32 = 3.0;
     const B: f32 = 4.0;
-    for i in 0..w * h {
-        out[i] = if mask[i] != 0 { INF } else { 0.0 };
-    }
+    // The forward pass reads only cells it has already written (the row above
+    // and the cell to the left), so the seeding is folded into it rather than
+    // being a pass of its own.
     for y in 0..h {
         for x in 0..w {
             let i = y * w + x;
-            if out[i] == 0.0 {
+            if mask[i] == 0 {
+                out[i] = 0.0;
                 continue;
             }
-            let mut best = out[i];
+            let mut best = INF;
             if y > 0 {
                 if x > 0 {
                     best = best.min(out[i - w - 1] + B);
@@ -254,12 +255,13 @@ pub struct Component {
 }
 
 /// 4-connected labelling. Fills `labels` with -1 for background and a component
-/// index otherwise, and returns a bounding box per component; the caller fills
-/// in `max_depth` from the distance transform.
+/// index otherwise, and returns a bounding box per component with `max_depth`
+/// taken from the distance transform as each pixel is visited.
 pub fn label_components(
     mask: &[u8],
     w: usize,
     h: usize,
+    dist: &[f32],
     labels: &mut Vec<i32>,
     stack: &mut Vec<usize>,
 ) -> Vec<Component> {
@@ -298,6 +300,9 @@ pub fn label_components(
                 comp.y1 = y;
             }
             comp.count += 1;
+            if dist[i] > comp.max_depth {
+                comp.max_depth = dist[i];
+            }
             if x > 0 && mask[i - 1] != 0 && labels[i - 1] == -1 {
                 labels[i - 1] = id;
                 stack.push(i - 1);

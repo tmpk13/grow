@@ -3,6 +3,11 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) An optimization pass over the settlement tick, byte-identical to the
+  pixel: a 200 day run in half the time, a phase timing harness kept for the
+  next pass (`GROW_PHASES`), and the plant raster - most of the bill, and
+  invisible to the earlier hand timings - confined to what a plant actually
+  drew.
 - (LLM) An Experimental tab with one switch over it, off by default. Nothing
   under it is asked anything while it is off, so the settlement is the one it
   has always been, and turning it off mid flight puts the world back.
