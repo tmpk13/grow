@@ -1003,6 +1003,66 @@ await page.waitForTimeout(200);
 if (await page.evaluate(() => document.body.classList.contains('adding-people'))) {
   problems.push('turning the add people switch off left the stage adding people');
 }
+
+// Looking inside: the fourth exclusive switch. A press on a building lands
+// its card on the Build panel; where the buildings are on screen is not
+// knowable from out here, so the stage is swept the way the settler pick-up
+// sweep does it.
+await page.click('#look-inside');
+await page.waitForTimeout(200);
+if (!(await page.evaluate(() => document.body.classList.contains('inspecting')))) {
+  problems.push('the look inside switch did not change what a press on the stage does');
+}
+const inspectSweep = await page.evaluate(() => {
+  const canvas = document.getElementById('world-canvas');
+  const r = canvas.getBoundingClientRect();
+  const note = () => (document.getElementById('save-note').textContent || '').trim();
+  const send = (type, x, y) =>
+    canvas.dispatchEvent(
+      new PointerEvent(type, {
+        pointerId: 1,
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        button: 0,
+        buttons: type === 'pointerup' ? 0 : 1,
+      }),
+    );
+  for (let y = r.top + 4; y < r.bottom - 4; y += 6) {
+    for (let x = r.left + 4; x < r.right - 4; x += 6) {
+      send('pointerdown', x, y);
+      const n = note();
+      send('pointerup', x, y);
+      if (n.startsWith('looking inside')) return n;
+    }
+  }
+  return null;
+});
+if (!inspectSweep) {
+  problems.push('no building could be looked inside anywhere on the stage');
+} else {
+  console.log(`looked inside: ${inspectSweep}`);
+  await page.waitForTimeout(300);
+  if ((await page.getAttribute('.tab.active', 'data-tab')) !== 'build') {
+    problems.push('looking inside a building did not open the Build panel');
+  }
+  const card = page.locator('[data-group="Looking inside"]');
+  if (!(await card.isVisible())) {
+    problems.push('the building card is not showing on the Build panel');
+  } else {
+    if ((await card.locator('.stat').count()) < 3) {
+      problems.push('the building card says almost nothing');
+    }
+    await page.screenshot({ path: `${outDir}/11h-look-inside.png` });
+    await card.locator('.btn:text-is("Done looking")').click();
+    await page.waitForTimeout(300);
+    if (await card.isVisible()) {
+      problems.push('Done looking left the card up');
+    }
+  }
+}
+await page.click('#look-inside');
+await page.waitForTimeout(150);
 await resume();
 
 // Back to the lab and in again: both sims have to survive the switch.

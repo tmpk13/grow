@@ -5,7 +5,7 @@ use web_sys::Element;
 
 use crate::app::{App, Handle, Panel};
 use crate::civ::buildings::{scaled_cost, BuildConfig, Job, Structure, BUILDINGS, CATEGORIES};
-use crate::civ::resources::format_cost;
+use crate::civ::resources::{format_cost, missing_from, Stock, RES_IDS};
 use crate::ui::{
     app_bool, app_num, append, bar, button, clear, clear_scope, colony_picker, el, note, section, stat, NumOpts,
     Scope,
@@ -16,12 +16,23 @@ pub struct BuildPanel {
     counters: Element,
     sites: Element,
     catalog: Element,
+    /// The card the Look inside switch fills, and the section around it,
+    /// which is hidden whole while nothing is being looked at.
+    inside: Element,
+    inside_wrap: Element,
     handle: Handle,
     since: f64,
 }
 
 pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let cfg = app.state.civ.build;
+
+    // What the Look inside press found, above everything: it is the one part
+    // of the panel somebody just pressed the map to see.
+    let inside = el("div").class("person-card").get();
+    let inside_wrap = section("Looking inside", vec![inside.clone()]);
+    let _ = inside_wrap.set_attribute("hidden", "hidden");
+    append(root, inside_wrap.clone());
 
     append(root, section("Planner", vec![
         app_bool(h, "Plan buildings automatically", cfg.auto_build,
@@ -165,7 +176,16 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     append(root, section("Catalog", cat_body));
     append(root, crate::ui::sprite_drop::made_section(app, h));
 
-    let mut panel = BuildPanel { towns, counters, sites, catalog, handle: h.clone(), since: 0.0 };
+    let mut panel = BuildPanel {
+        towns,
+        counters,
+        sites,
+        catalog,
+        inside,
+        inside_wrap,
+        handle: h.clone(),
+        since: 0.0,
+    };
     panel.redraw(app);
     Box::new(panel)
 }
@@ -187,6 +207,138 @@ fn build_num(
     })
 }
 
+impl BuildPanel {
+    /// What the Look inside press found: the building, its state, and everyone
+    /// and everything under its roof right now. Hidden whole while nothing is
+    /// being looked at, and cleared by its own Done button.
+    fn draw_inside(&self, app: &App) {
+        clear(&self.inside);
+        let civ = match &app.settlement {
+            Some(c) => c,
+            None => {
+                let _ = self.inside_wrap.set_attribute("hidden", "hidden");
+                return;
+            }
+        };
+        let b = match app.ui.inspected.and_then(|id| civ.buildings.iter().find(|b| b.id == id)) {
+            Some(b) => b,
+            // Gone, or dismissed: a looked-at building that was pulled down
+            // takes its card with it.
+            None => {
+                let _ = self.inside_wrap.set_attribute("hidden", "hidden");
+                return;
+            }
+        };
+        // Unfolded when it first appears; a fold after that is left alone,
+        // this redraws twice a second and would otherwise fight it.
+        if self.inside_wrap.has_attribute("hidden") {
+            let _ = self.inside_wrap.set_attribute("open", "open");
+        }
+        let _ = self.inside_wrap.remove_attribute("hidden");
+
+        let names = |ids: &[u32]| -> String {
+            let list: Vec<String> = ids
+                .iter()
+                .filter_map(|&id| civ.people.get(id))
+                .map(|p| p.name.clone())
+                .collect();
+            if list.is_empty() { "nobody".to_string() } else { list.join(", ") }
+        };
+
+        let head = if b.name.is_some() {
+            format!("{} - {}", b.label(), b.def.label)
+        } else {
+            b.label()
+        };
+        let _ = self.inside.append_child(&el("h4").text(&head).get());
+
+        let state = if !b.built {
+            let pct = (b.work_done / b.work.max(1.0) * 100.0).clamp(0.0, 100.0);
+            if b.upgrading {
+                format!("being rebuilt one rung larger, {pct:.0}% raised")
+            } else {
+                format!("under construction, {pct:.0}% raised")
+            }
+        } else if b.decay > 0.0 {
+            format!("standing, but falling in: {:.0}% gone", b.decay * 100.0)
+        } else {
+            "standing".to_string()
+        };
+        let _ = self.inside.append_child(&stat("State", &state));
+        if !b.built {
+            let missing = missing_from(&b.delivered, &b.cost);
+            if !missing.is_empty() {
+                let _ = self.inside.append_child(&stat("Still needs", &format_cost(&missing)));
+            }
+        }
+
+        let _ = self.inside.append_child(&stat("Town", &civ.colony_name(b.colony)));
+        let owner = match civ.people.get(b.owner) {
+            Some(p) => p.name.clone(),
+            None => "the town".to_string(),
+        };
+        let _ = self.inside.append_child(&stat("Owned by", &owner));
+
+        // Who is under the roof this moment, which is the one thing the map
+        // itself cannot show: indoors is where it loses sight of people.
+        let indoors: Vec<u32> = civ
+            .people
+            .iter()
+            .filter(|p| p.inside == b.id)
+            .map(|p| p.id)
+            .collect();
+        let _ = self.inside.append_child(&stat("Inside now", &names(&indoors)));
+
+        if b.def.housing > 0 {
+            let beds = format!("{} of {} beds", b.residents.len(), b.def.housing);
+            let _ = self.inside.append_child(&stat("Household", &beds));
+            let _ = self.inside.append_child(&stat("Residents", &names(&b.residents)));
+        }
+        if b.def.rooms > 0 {
+            let rooms = format!("{} of {} rooms taken", b.guests.len(), b.def.rooms);
+            let _ = self.inside.append_child(&stat("Tonight", &rooms));
+            if !b.guests.is_empty() {
+                let _ = self.inside.append_child(&stat("Guests", &names(&b.guests)));
+            }
+        }
+        if b.def.slots > 0 || !b.workers.is_empty() {
+            let crew = format!("{} of {}: {}", b.workers.len(), b.def.slots, names(&b.workers));
+            let _ = self.inside.append_child(&stat("Workers", &crew));
+        }
+        if b.def.fields > 0 {
+            let _ = self
+                .inside
+                .append_child(&stat("Fields", &format!("{:.0}% watered", b.water * 100.0)));
+        }
+        if let Some(holds) = stock_line(&b.inv) {
+            let _ = self.inside.append_child(&stat("Holds", &holds));
+        }
+        if let Some(made) = stock_line(&b.out) {
+            let _ = self.inside.append_child(&stat("On the bench", &made));
+        }
+
+        let h2 = self.handle.clone();
+        let _ = self.inside.append_child(&button("Done looking", Scope::List, move || {
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.inspected = None;
+            sh.app.redraw_panel = true;
+        }));
+    }
+}
+
+/// The non-empty lines of a stock, or nothing: an empty bench says nothing
+/// rather than listing twelve zeros.
+fn stock_line(stock: &Stock) -> Option<String> {
+    let mut parts = Vec::new();
+    for &r in RES_IDS.iter() {
+        let n = stock[r as usize];
+        if n >= 0.5 {
+            parts.push(format!("{} {}", n.round(), r.label()));
+        }
+    }
+    if parts.is_empty() { None } else { Some(parts.join(", ")) }
+}
+
 impl Panel for BuildPanel {
     fn redraw(&mut self, app: &mut App) {
         // Every listener below is created fresh on each redraw, so the
@@ -196,6 +348,7 @@ impl Panel for BuildPanel {
         clear(&self.counters);
         clear(&self.sites);
         clear(&self.catalog);
+        self.draw_inside(app);
         let civ = match &app.settlement {
             Some(c) => c,
             None => return,

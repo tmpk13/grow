@@ -3,6 +3,10 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A Look inside switch, the fourth exclusive press: a pressed building
+  lands its card on the Build panel - state, deed, household, rooms, crew,
+  bench, and who is under the roof this moment, which the map itself cannot
+  show. The card stays until dismissed, and open ground still moves the map.
 - (LLM) An Add people switch beside Move people and Harvest, exclusive with
   both: each press sets a new settler down where it lands. They arrive grown
   with a founder's purse, join the nearest town still standing, land the way a

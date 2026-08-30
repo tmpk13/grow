@@ -1288,6 +1288,11 @@ body.adding-people #world-canvas {
   cursor: copy;
 }
 
+/* Looking inside whatever building the press lands on. */
+body.inspecting #world-canvas {
+  cursor: zoom-in;
+}
+
 .readout.hint {
   min-width: 0;
   opacity: 0.75;

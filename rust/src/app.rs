@@ -123,6 +123,13 @@ pub struct UiState {
     /// The stage sets a new settler down where it is pressed. The third of the
     /// exclusive press switches: never on with either of the other two.
     pub add_people: bool,
+    /// The stage looks inside a pressed building rather than dragging the map.
+    /// The fourth exclusive press switch.
+    pub inspect: bool,
+    /// The building whose insides the Build panel is showing, by id. Outlives
+    /// the switch: what was looked at stays on the panel until it is dismissed
+    /// or the building goes.
+    pub inspected: Option<i32>,
     /// Where the pointer is while it is held down to cut, in client pixels, or
     /// nothing when it is not. The cut runs on the frame clock rather than on
     /// pointer moves: holding still on one plant is the whole gesture.
@@ -785,6 +792,8 @@ pub fn start() -> Result<(), JsValue> {
         move_people: false,
         harvest: false,
         add_people: false,
+        inspect: false,
+        inspected: None,
         cut_at: None,
         hover_at: None,
         marquee: None,
@@ -1180,14 +1189,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
                 let mut sh = h2.borrow_mut();
                 sh.app.ui.move_people = on;
                 if on {
-                    sh.app.ui.harvest = false;
-                    set_pressed("harvest-mode", false);
-                    sh.app.ui.add_people = false;
-                    set_pressed("add-people", false);
-                    sh.app.ui.cut_at = None;
-                    if let Some(civ) = &mut sh.app.settlement {
-                        civ.drop_cuts();
-                    }
+                    press_switch_takes(&mut sh.app, "move-people");
                 }
                 sync_grab_cursor(&sh.app);
                 let note = if on {
@@ -1213,10 +1215,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
             let mut sh = h2.borrow_mut();
             sh.app.ui.harvest = on;
             if on {
-                sh.app.ui.move_people = false;
-                set_pressed("move-people", false);
-                sh.app.ui.add_people = false;
-                set_pressed("add-people", false);
+                press_switch_takes(&mut sh.app, "harvest-mode");
             }
             sh.app.ui.cut_at = None;
             sh.app.ui.hover_at = None;
@@ -1247,15 +1246,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
                 let mut sh = h2.borrow_mut();
                 sh.app.ui.add_people = on;
                 if on {
-                    sh.app.ui.move_people = false;
-                    set_pressed("move-people", false);
-                    sh.app.ui.harvest = false;
-                    set_pressed("harvest-mode", false);
-                    sh.app.ui.cut_at = None;
-                    sh.app.ui.hover_at = None;
-                    if let Some(civ) = &mut sh.app.settlement {
-                        civ.drop_cuts();
-                    }
+                    press_switch_takes(&mut sh.app, "add-people");
                 }
                 sync_grab_cursor(&sh.app);
                 let note = if on {
@@ -1272,6 +1263,32 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
             "each press sets a new settler down where it lands; they join the nearest town",
         );
         controls.push(add_people);
+
+        // And the fourth: a press on a building shows what is inside it. The
+        // card lands on the Build panel, where the rest of what is known about
+        // buildings already lives.
+        let h2 = h.clone();
+        let inspect =
+            ui::toggle_button("Look inside", sh.app.ui.inspect, Scope::Toolbar, move |on| {
+                let mut sh = h2.borrow_mut();
+                sh.app.ui.inspect = on;
+                if on {
+                    press_switch_takes(&mut sh.app, "look-inside");
+                }
+                sync_grab_cursor(&sh.app);
+                let note = if on {
+                    "press a building to see inside it - ctrl or middle drag moves the map"
+                } else {
+                    "the stage moves the map again"
+                };
+                sh.app.set_note(note);
+            });
+        let _ = inspect.set_attribute("id", "look-inside");
+        let _ = inspect.set_attribute(
+            "title",
+            "press a building to see who and what is inside it, on the Build panel",
+        );
+        controls.push(inspect);
     }
 
     let _ = toolbar.append_child(&el("div").class("toolbar-row").children(controls).get());
@@ -1492,6 +1509,12 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                     return;
                 }
             }
+            if inspects(&sh.app, pe) {
+                // A press on open ground falls through to dragging the map.
+                if inspect_press(&mut sh, &h2, pe.client_x() as f64, pe.client_y() as f64) {
+                    return;
+                }
+            }
             if !paints(&sh.app, pe) {
                 return;
             }
@@ -1689,6 +1712,49 @@ fn adds(app: &App, pe: &web_sys::PointerEvent) -> bool {
         && pe.buttons() & 4 == 0
 }
 
+/// Whether this press looks inside a building rather than dragging the map.
+fn inspects(app: &App, pe: &web_sys::PointerEvent) -> bool {
+    app.mode == Mode::Settlement
+        && app.ui.inspect
+        && app.settlement.is_some()
+        && !pe.ctrl_key()
+        && pe.button() != 1
+        && pe.buttons() & 4 == 0
+}
+
+/// Shows the pressed building's insides on the Build panel. A press on open
+/// ground finds nothing and hands the press back to the camera.
+fn inspect_press(sh: &mut Shell, h: &Handle, client_x: f64, client_y: f64) -> bool {
+    let world = match sh.app.settlement.as_ref() {
+        Some(s) => s.world().clone(),
+        None => return false,
+    };
+    let (gx, gy) = match sh.app.viewport.ground_at(client_x, client_y, &world) {
+        Some(p) => p,
+        None => return false,
+    };
+    let (label, id) = {
+        let sim = match sh.app.settlement.as_ref() {
+            Some(s) => s,
+            None => return false,
+        };
+        match sim.building_at(gx.floor() as i32, gy.floor() as i32) {
+            Some(bi) => (sim.buildings[bi].label(), sim.buildings[bi].id),
+            None => return false,
+        }
+    };
+    sh.app.ui.inspected = Some(id);
+    sh.app.set_note(&format!("looking inside the {label}"));
+    // The card lives on the Build panel; go there if somewhere else, or just
+    // have the showing card redrawn if already on it.
+    if sh.app.ui.tab != "build" {
+        show_tab(sh, h, "build");
+    } else {
+        sh.app.redraw_panel = true;
+    }
+    true
+}
+
 /// Sets a new settler down under the pointer, and says who arrived. A press
 /// that misses the map spawns nobody and says so by returning false, which
 /// hands the press back to the camera.
@@ -1779,13 +1845,42 @@ fn sync_grab_cursor(app: &App) {
     let _ = if cutting { list.add_1("harvesting") } else { list.remove_1("harvesting") };
     let adding = settlement && app.ui.add_people;
     let _ = if adding { list.add_1("adding-people") } else { list.remove_1("adding-people") };
+    let looking = settlement && app.ui.inspect;
+    let _ = if looking { list.add_1("inspecting") } else { list.remove_1("inspecting") };
     if !on {
         set_holding(false);
     }
 }
 
-/// Presses or unpresses a switch that something else turned off. The two stage
-/// switches are exclusive, so each has to be able to show that the other one
+/// The stage press switches are exclusive: whichever one is turned on turns
+/// the rest off through this, and takes any half done gesture of theirs -
+/// a cut in progress, a hover - with it.
+fn press_switch_takes(app: &mut App, keep: &str) {
+    if keep != "move-people" {
+        app.ui.move_people = false;
+        set_pressed("move-people", false);
+    }
+    if keep != "harvest-mode" {
+        app.ui.harvest = false;
+        set_pressed("harvest-mode", false);
+        app.ui.cut_at = None;
+        app.ui.hover_at = None;
+        if let Some(civ) = &mut app.settlement {
+            civ.drop_cuts();
+        }
+    }
+    if keep != "add-people" {
+        app.ui.add_people = false;
+        set_pressed("add-people", false);
+    }
+    if keep != "look-inside" {
+        app.ui.inspect = false;
+        set_pressed("look-inside", false);
+    }
+}
+
+/// Presses or unpresses a switch that something else turned off. The stage
+/// switches are exclusive, so each has to be able to show that another one
 /// took the press.
 fn set_pressed(id: &str, on: bool) {
     if let Some(node) = by_id(id) {

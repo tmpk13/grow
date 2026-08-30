@@ -6,8 +6,6 @@ What is left. What is done is in TODO_COMPLETE.md.
 - Being in water should not cut people in half. Have unique sprite for `swimming` and `still` in water.
     - People being held (`Move people`) should have a unique animation.
 
-- Add command like `Harvest`, to enter buildings.
-
 - People need to be able to remove built things.
 
 - Experimental feature toggle for a user controlled person.
