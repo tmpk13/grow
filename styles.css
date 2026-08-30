@@ -211,6 +211,31 @@ body:not(.stage-only) .stage-escape {
   color: var(--text);
 }
 
+/* The thin strip over the panel body: the fold-all button, right where the
+   sections it pulls on begin. Gone whole when the button has nothing to do. */
+.panel-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.25rem 0.4rem;
+  border-bottom: var(--hairline) solid var(--line);
+  flex: 0 0 auto;
+}
+
+.panel-tools:has(> [hidden]) {
+  display: none;
+}
+
+.panel-tools .fold-all {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  background: transparent;
+}
+
+.panel-tools .fold-all:hover {
+  color: var(--text);
+}
+
 .panel-body {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -226,12 +251,40 @@ body:not(.stage-only) .stage-escape {
   background: var(--bg-raised);
 }
 
+/* The head is a summary: pressing it folds the section. */
 .group-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.4rem 0.6rem;
   border-bottom: var(--hairline) solid var(--line);
+  cursor: pointer;
+  list-style: none;
+}
+
+.group-head::-webkit-details-marker {
+  display: none;
+}
+
+/* The same cut triangle the view menu turns, pointing along at the far end
+   of the head. */
+.group-head::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.5em;
+  height: 0.5em;
+  background: var(--text-dim);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transition: transform 0.12s ease;
+}
+
+details.group[open] > .group-head::after {
+  transform: rotate(90deg);
+}
+
+details.group:not([open]) > .group-head {
+  border-bottom: 0;
 }
 
 .group-head h3 {
@@ -583,6 +636,24 @@ input[type="color"] {
 .chips {
   display: flex;
   flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+/* What a row of chips is, said once above it. Takes the whole first line of
+   the row it sits in. */
+.chip-head {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.chip-block {
+  display: flex;
+  flex-direction: column;
   gap: 0.25rem;
 }
 
@@ -1371,25 +1442,31 @@ body.harvesting #world-canvas {
 }
 
 /* ---- the view menu ------------------------------------------------------
-   What the stage draws over the map. In the side panel rather than the top
-   bar: it outgrew a row of checkboxes, and none of it is a project setting. */
+   What the stage draws over the map. A dropdown in the top bar rather than a
+   block of the side panel: it is about the stage, not the project, and it
+   stays reachable when the side menu is folded away. */
 
 .view-menu {
-  border-bottom: var(--hairline) solid var(--line);
-  background: var(--bg-panel);
+  position: relative;
+  align-self: center;
   flex: 0 0 auto;
+}
+
+.view-menu[hidden] {
+  display: none;
 }
 
 .view-menu > summary {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.45rem 0.7rem;
+  padding: 0.3rem 0.6rem;
   cursor: pointer;
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 0.8rem;
   color: var(--text-dim);
+  background: #1d2735;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
   list-style: none;
 }
 
@@ -1425,10 +1502,20 @@ body.harvesting #world-canvas {
 }
 
 .view-body {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 40;
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
-  padding: 0 0.7rem 0.6rem;
+  width: max-content;
+  max-width: min(24rem, 90vw);
+  padding: 0.6rem 0.7rem;
+  background: var(--bg-panel);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 0.6rem 1.6rem rgba(0, 0, 0, 0.45);
 }
 
 .view-row {
@@ -1494,16 +1581,7 @@ body.harvesting #world-canvas {
 }
 
 /* The key list in the sprite editor. Folded away by default: a reference, not
-   a control. */
-.group.keys > summary {
-  cursor: pointer;
-  list-style: none;
-}
-
-.group.keys > summary::-webkit-details-marker {
-  display: none;
-}
-
+   a control. The head itself folds like any other group's. */
 .group.keys .stat {
   gap: 0.5rem;
 }

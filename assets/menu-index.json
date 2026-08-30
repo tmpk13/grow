@@ -1069,22 +1069,6 @@
   {
     "mode": "sprites",
     "mode_label": "Sprite editor",
-    "group": "View",
-    "label": "Grid",
-    "anchor": "grid",
-    "kind": "view"
-  },
-  {
-    "mode": "sprites",
-    "mode_label": "Sprite editor",
-    "group": "View",
-    "label": "Occupancy",
-    "anchor": "occupancy",
-    "kind": "view"
-  },
-  {
-    "mode": "sprites",
-    "mode_label": "Sprite editor",
     "tab": "draw",
     "tab_label": "Draw",
     "label": "Draw",
@@ -3767,6 +3751,13 @@
     "label": "Hide menu",
     "hint": "fold the side menu away and hand its width to the world",
     "anchor": "#btn-panel",
+    "kind": "chrome"
+  },
+  {
+    "group": "Everywhere",
+    "label": "Fold all",
+    "hint": "fold every section of the menu shut, or open them all again",
+    "anchor": "#btn-fold-groups",
     "kind": "chrome"
   },
   {

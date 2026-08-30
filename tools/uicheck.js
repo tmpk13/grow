@@ -57,6 +57,25 @@ if (!/day \d+/.test(await page.evaluate(() => document.getElementById('statusbar
 await page.click('.mode:text-is("Plant lab")');
 await page.waitForTimeout(800);
 
+// The view menu is a dropdown in the top bar: anything inside it has to be
+// dropped open before it can be pressed, and a press anywhere else folds it
+// shut again.
+const openView = async () => {
+  if ((await page.getAttribute('#view-menu', 'open')) === null) {
+    await page.click('#view-menu > summary');
+    await page.waitForTimeout(150);
+  }
+};
+// For a person any press elsewhere folds the dropdown away, but the test
+// driver refuses to press what the open body is floating over, so every block
+// that opens it folds it shut behind itself.
+const closeView = async () => {
+  if ((await page.getAttribute('#view-menu', 'open')) !== null) {
+    await page.click('#view-menu > summary');
+    await page.waitForTimeout(150);
+  }
+};
+
 // The speed slider is logarithmic from a quarter to two hundred, so a
 // multiplier has to be converted to a position on it.
 const SPEED_MIN = 0.25;
@@ -105,11 +124,44 @@ await page.selectOption('.group select', 'single');
 await page.waitForTimeout(800);
 await page.screenshot({ path: `${outDir}/05-shared-grid.png` });
 
+// The sections of a panel fold. The button over the panel pulls them all one
+// way and then offers the way back, a head folds its own section, and a fold
+// survives the panel being rebuilt.
+const openGroups = () => page.locator('#panel-body details.group[open]').count();
+if ((await openGroups()) === 0) problems.push('every section starts folded');
+await page.click('#btn-fold-groups');
+await page.waitForTimeout(300);
+if ((await openGroups()) !== 0) problems.push('Fold all left sections open');
+if ((await page.locator('#btn-fold-groups').textContent()).trim() !== 'Unfold all') {
+  problems.push('the fold-all button does not offer the way back');
+}
+await page.click('#btn-fold-groups');
+await page.waitForTimeout(300);
+if ((await openGroups()) !== (await page.locator('#panel-body details.group').count())) {
+  problems.push('Unfold all left sections folded');
+}
+const firstHead = page.locator('#panel-body details.group summary').first();
+await firstHead.click();
+await page.waitForTimeout(200);
+await page.click('.tab:text-is("Species")');
+await page.waitForTimeout(300);
+await page.click('.tab:text-is("Materials")');
+await page.waitForTimeout(300);
+const firstGroup = page.locator('#panel-body details.group').first();
+if ((await firstGroup.getAttribute('open')) !== null) {
+  problems.push('a folded section sprang open when its panel was rebuilt');
+}
+await firstGroup.locator('summary').click();
+await page.waitForTimeout(200);
+
 // Overlays on, then resize the world from the World panel (restarts the sim).
+// The switches live in the top bar dropdown.
+await openView();
 await page.click('#view-body [data-find="grid"]');
 await page.click('#view-body [data-find="occupancy"]');
 await page.waitForTimeout(500);
 await page.screenshot({ path: `${outDir}/07-overlays.png` });
+await closeView();
 
 // A setting the area is built from waits for Apply rather than rebuilding the
 // world under the slider. It is starred, the bar says so, and leaving the panel
@@ -184,6 +236,10 @@ await page.click('.mode:text-is("Sprite editor")');
 await page.waitForTimeout(700);
 if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet') {
   problems.push('the sprite editor did not bring its own tabs');
+}
+// The editor draws none of the view menu's overlays, so the dropdown is gone.
+if (await page.locator('#view-menu').isVisible()) {
+  problems.push('the view dropdown is showing in the sprite editor');
 }
 const stage = await page.locator('#world-canvas').boundingBox();
 await page.mouse.move(stage.x + stage.width * 0.45, stage.y + stage.height * 0.35);
@@ -665,14 +721,17 @@ for (const mode of ['hatched', 'faded', 'solid']) {
   await page.screenshot({ path: `${outDir}/10d-foliage-${mode}.png` });
 }
 
-// The view menu: what the stage draws over the map is in the side panel now,
-// and the label switches are one per category with walls on their own.
+// The view menu: what the stage draws over the map is a dropdown in the top
+// bar, and the label switches are one per category with walls on their own.
 const pressed = (find) =>
   page.evaluate((f) => {
     const node = document.querySelector(`#view-body [data-find="${f}"]`);
     return node ? node.getAttribute('aria-pressed') : null;
   }, find);
-const press = (find) => page.click(`#view-body [data-find="${find}"]`);
+const press = async (find) => {
+  await openView();
+  await page.click(`#view-body [data-find="${find}"]`);
+};
 
 if (await page.evaluate(() => /Occupancy|Labels/.test(document.getElementById('stage-toolbar').textContent))) {
   problems.push('the view switches are still in the stage toolbar');
@@ -699,6 +758,7 @@ if ((await pressed('homes')) !== 'true') problems.push('turning walls off took t
 await page.screenshot({ path: `${outDir}/11e-labels-some.png` });
 await press('labels');
 await page.waitForTimeout(150);
+await closeView();
 
 // Moving people: with the switch on, a press on a settler picks them up and
 // the pointer carries them until it is let go. Where the settlers are on

@@ -15,7 +15,8 @@ use crate::civ::social::SocialConfig;
 use crate::civ::settlement::{standing, Settlement};
 use crate::ui::sprite_drop::sprites_section;
 use crate::ui::{
-    app_bool, app_num, append, bar, clear, clear_scope, colony_picker, el, note, section, stat, NumOpts, Scope,
+    app_bool, app_num, append, bar, chip_head, clear, clear_scope, colony_picker, el, note, section,
+    stat, NumOpts, Scope,
 };
 
 /// How the register is ordered, which is also what it is for: the same list
@@ -514,6 +515,7 @@ impl PeoplePanel {
         let _ = self.detail.append_child(&bars);
 
         let traits = el("div").class("chips").get();
+        let _ = traits.append_child(&chip_head("Temperament, out of 100"));
         for (label, value) in p.traits.rows() {
             let chip = el("span")
                 .class("chip")
@@ -599,6 +601,7 @@ impl Panel for PeoplePanel {
         };
         let colony = civ.focus_colony().map(|c| c.id).unwrap_or(0);
         let stats = civ.stats(&app.state);
+        let _ = self.counts.append_child(&chip_head("Who works at what"));
         for prof in PROFESSIONS {
             let n = civ
                 .people
@@ -618,6 +621,7 @@ impl Panel for PeoplePanel {
                 .get(),
         );
 
+        let _ = self.controls.append_child(&chip_head("Order the register by"));
         for (sort, label) in SORTS {
             let h2 = self.handle.clone();
             let class = if self.sort == sort { "chip active" } else { "chip" };

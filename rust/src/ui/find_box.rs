@@ -306,6 +306,13 @@ fn reveal(anchor: &str) {
         Some(n) => n,
         None => return,
     };
+    // A hit inside a folded section, or in the view dropdown while it is
+    // shut, is opened on the way there or the scroll would land on a lid.
+    let mut fold = node.closest("details").ok().flatten();
+    while let Some(d) = fold {
+        let _ = d.set_attribute("open", "open");
+        fold = d.parent_element().and_then(|p| p.closest("details").ok().flatten());
+    }
     if let Some(old) = document().query_selector(".found").ok().flatten() {
         let _ = old.class_list().remove_1("found");
     }

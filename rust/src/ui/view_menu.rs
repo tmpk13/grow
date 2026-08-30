@@ -1,7 +1,8 @@
 //! The view menu: what the stage draws over the map, as opposed to what the
-//! map is. It lives in the side panel rather than in the top bar because it
-//! grew past what a row of checkboxes can hold, and because none of it is a
-//! setting of the project.
+//! map is. It is a dropdown in the top bar rather than a block of the side
+//! panel, because it is about the stage and the side panel folds away with
+//! everything else; none of it is a setting of the project. The sprite editor
+//! draws none of its overlays, so the whole menu is hidden there.
 //!
 //! It is rebuilt whole whenever one of its own switches changes what the others
 //! should read, which is why it has a listener scope to itself.
@@ -23,6 +24,19 @@ pub fn build(app: &mut App, h: &Handle) {
     };
     clear(&root);
     clear_scope(Scope::View);
+
+    // The sprite editor draws no grid, no occupancy and no labels, so the
+    // menu is not merely empty there: it is gone, folded shut for the way
+    // back. The body stays empty too, which keeps its rows out of menu search
+    // for the mode.
+    if let Some(menu) = by_id("view-menu") {
+        if app.mode == Mode::Sprites {
+            let _ = menu.set_attribute("hidden", "hidden");
+            let _ = menu.remove_attribute("open");
+            return;
+        }
+        let _ = menu.remove_attribute("hidden");
+    }
 
     let mut rows: Vec<Element> = vec![
         switch(h, "Grid", app.viewport.show_grid, |app, v| app.viewport.show_grid = v),
@@ -97,32 +111,24 @@ fn switch(
         .get()
 }
 
-/// Puts the fold state back the way it was left. The menu is rebuilt on every
-/// mode change and would otherwise spring open each time.
-pub fn restore_fold(open: bool) {
-    if let Some(node) = by_id("view-menu") {
-        let _ = if open {
-            node.set_attribute("open", "open")
-        } else {
-            node.remove_attribute("open")
+/// A dropdown over the stage folds shut when the press is anywhere else, the
+/// way every other dropdown on the platform does. Pressing a switch inside it
+/// rebuilds the body, but the press itself lands inside the menu, so the menu
+/// stays open while it is being worked.
+pub fn bind_close() {
+    let doc = crate::ui::document();
+    on(doc.unchecked_ref(), "pointerdown", Scope::Global, |e| {
+        let menu = match by_id("view-menu") {
+            Some(n) => n,
+            None => return,
         };
-    }
-}
-
-/// Remembers the fold with the rest of the window preferences.
-pub fn bind_fold() {
-    let node = match by_id("view-menu") {
-        Some(n) => n,
-        None => return,
-    };
-    on(node.unchecked_ref(), "toggle", Scope::Global, |e| {
-        let open = e
-            .target()
-            .and_then(|t| t.dyn_into::<Element>().ok())
-            .map(|n| n.has_attribute("open"))
-            .unwrap_or(true);
-        let mut prefs = crate::ui::prefs::Prefs::load();
-        prefs.view_open = open;
-        prefs.save();
+        if !menu.has_attribute("open") {
+            return;
+        }
+        let target = e.target().and_then(|t| t.dyn_into::<web_sys::Node>().ok());
+        if menu.contains(target.as_ref()) {
+            return;
+        }
+        let _ = menu.remove_attribute("open");
     });
 }

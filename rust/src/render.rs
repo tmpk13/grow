@@ -493,6 +493,11 @@ impl Viewport {
     /// cut out of it: a lamp gives light off, so adding one is both the simpler
     /// operation and the truer one. Nothing is drawn by day, and each pool
     /// strengthens with the dark that it is pushing back.
+    ///
+    /// The pools are screened together rather than summed. A street of lamps
+    /// overlaps a lot, and pure addition stacks the overlaps past the color of
+    /// any one flame and out to white; screening converges on that color
+    /// instead, so a well lit square is warm rather than blown out.
     fn draw_lamps(&self, sim: &Settlement, dark: f64) {
         let ctx = &self.ctx;
         let mut lit = false;
@@ -516,7 +521,7 @@ impl Viewport {
             let _ = grad.add_color_stop(0.45, &format!("rgba(255, 190, 110, {:.3})", core * 0.35));
             let _ = grad.add_color_stop(1.0, "rgba(255, 180, 100, 0)");
             if !lit {
-                ctx.set_global_composite_operation("lighter").ok();
+                ctx.set_global_composite_operation("screen").ok();
                 lit = true;
             }
             ctx.set_fill_style_canvas_gradient(&grad);

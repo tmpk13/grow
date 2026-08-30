@@ -839,7 +839,8 @@ pub fn start() -> Result<(), JsValue> {
     }
 
     bind_view_actions(&handle);
-    ui::view_menu::bind_fold();
+    ui::view_menu::bind_close();
+    ui::bind_fold_all();
     ui::restart_bar::mount(&handle);
     ui::find_box::mount(&handle);
     bind_canvas(&handle, &canvas);
@@ -1012,6 +1013,7 @@ pub fn show_tab(sh: &mut Shell, h: &Handle, id: &'static str) {
     sh.app.rebuild_panel = false;
     // The panel was just rebuilt, so the stars in it have to be put back.
     ui::restart_bar::sync(&sh.app);
+    ui::sync_fold_all();
 }
 
 // ---- stage toolbar -------------------------------------------------------
@@ -1890,7 +1892,6 @@ fn bind_resize(h: &Handle, canvas: &HtmlCanvasElement) {
 fn bind_view_actions(h: &Handle) {
     let prefs = ui::prefs::Prefs::load();
     prefs.apply();
-    ui::view_menu::restore_fold(prefs.view_open);
     bind_fullscreen(h);
 
     if let Some(node) = by_id("btn-panel") {

@@ -3,6 +3,19 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) Lamp pools are screened together rather than summed, so a street of
+  lamps converges on the color of one flame instead of stacking past it to
+  white.
+- (LLM) The View menu is a dropdown in the top bar rather than a block of the
+  side panel, folds shut on a press anywhere else, and is gone entirely in the
+  sprite editor, which draws none of its overlays.
+- (LLM) Every section of every panel folds by its own head, a Fold all button
+  over the panel pulls them all one way and then offers the way back, and the
+  folds are window preferences, so they survive both the constant panel
+  rebuilds and a reload. Menu search unfolds whatever it lands in.
+- (LLM) A row of chips says what it is: a small head over the towns, the
+  trades, the register order, a settler's temperament, the sheets and the
+  research effects.
 - (LLM) An optimization pass over the settlement tick, byte-identical to the
   pixel: a 200 day run in half the time, a phase timing harness kept for the
   next pass (`GROW_PHASES`), and the plant raster - most of the bill, and

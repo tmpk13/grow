@@ -16,7 +16,7 @@ use crate::civ::sprites::{FromSheet, MOTIONS};
 use crate::ui::color_wheel::Brush;
 use crate::ui::paint::Surface;
 use crate::ui::{
-    app_button, app_danger_button, app_num, app_text, append, btn_row, button, clear,
+    app_button, app_danger_button, app_num, app_text, append, btn_row, button, chip_head, clear,
     danger_button, el, note, on, section, window, NumOpts, Scope, Tap,
 };
 use crate::util::{packed_to_hex, EMPTY_COLOR};
@@ -229,6 +229,7 @@ pub fn build_sheet(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> 
 
 fn sheet_section(app: &App, h: &Handle) -> Element {
     let chips = el("div").class("chips").get();
+    let _ = chips.append_child(&chip_head("Which sheet is on the easel"));
     for sheet in &app.state.art.sheets {
         let h2 = h.clone();
         let id = sheet.id.clone();

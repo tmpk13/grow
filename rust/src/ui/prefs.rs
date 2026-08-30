@@ -21,7 +21,7 @@ const KEY: &str = "grow.ui.v1";
 pub const SCALE_MIN: f64 = 0.75;
 pub const SCALE_MAX: f64 = 1.75;
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Prefs {
     /// The side menu is folded away, leaving the map the whole window.
@@ -31,13 +31,15 @@ pub struct Prefs {
     /// Keep a copy of every sheet in the sprite store as the project saves, so
     /// art outlives the project it was drawn in.
     pub keep_sprites: bool,
-    /// The view menu in the side panel is unfolded.
-    pub view_open: bool,
+    /// The menu sections folded shut, by their titles. A section is rebuilt
+    /// whole whenever its panel is, so the fold has to be read back from
+    /// somewhere the rebuild can reach or every change would spring it open.
+    pub folded: Vec<String>,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { collapsed: false, scale: 1.0, keep_sprites: true, view_open: true }
+        Prefs { collapsed: false, scale: 1.0, keep_sprites: true, folded: Vec::new() }
     }
 }
 
@@ -53,6 +55,17 @@ impl Prefs {
             .unwrap_or_default();
         prefs.scale = prefs.scale.clamp(SCALE_MIN, SCALE_MAX);
         prefs
+    }
+
+    pub fn is_folded(&self, title: &str) -> bool {
+        self.folded.iter().any(|t| t == title)
+    }
+
+    pub fn set_folded(&mut self, title: &str, folded: bool) {
+        self.folded.retain(|t| t != title);
+        if folded {
+            self.folded.push(title.to_string());
+        }
     }
 
     pub fn save(&self) {

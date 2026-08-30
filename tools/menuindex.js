@@ -49,6 +49,7 @@ const chrome = [
   ['#btn-undo', 'Undo', 'step back through changes'],
   ['#btn-redo', 'Redo', 'step forward again'],
   ['#btn-panel', 'Hide menu', 'fold the side menu away and hand its width to the world'],
+  ['#btn-fold-groups', 'Fold all', 'fold every section of the menu shut, or open them all again'],
   ['#btn-full', 'Fullscreen', 'show just the world, no menus'],
   ['#btn-new', 'New', 'start an empty project'],
   ['#btn-export', 'Export', 'save the project to a file'],

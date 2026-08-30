@@ -36,6 +36,10 @@
         </div>
         <ul class="find-results" id="find-results" hidden></ul>
       </div>
+      <details class="view-menu" id="view-menu">
+        <summary>View</summary>
+        <div class="view-body" id="view-body"></div>
+      </details>
       <div class="topbar-actions">
         <span id="save-note" class="save-note"></span>
         <label class="inline" for="ui-scale" title="Size of every label and control">
@@ -79,10 +83,16 @@
           <button class="btn accent" type="button" data-do="apply">Apply</button>
           <button class="btn" type="button" data-do="discard">Discard</button>
         </div>
-        <details class="view-menu" id="view-menu" open>
-          <summary>View</summary>
-          <div class="view-body" id="view-body"></div>
-        </details>
+        <div class="panel-tools">
+          <button
+            id="btn-fold-groups"
+            class="btn fold-all"
+            type="button"
+            title="Fold every section of this menu shut, or open them all again"
+          >
+            Fold all
+          </button>
+        </div>
         <div class="panel-body" id="panel-body"></div>
       </aside>
 

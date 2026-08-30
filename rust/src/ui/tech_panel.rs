@@ -7,8 +7,8 @@ use crate::app::{App, Handle, Panel};
 use crate::civ::buildings::building_by_id;
 use crate::civ::tech::{tech_cost, TechConfig, TechDef, MOD_KEYS, TECHS};
 use crate::ui::{
-    app_bool, app_num, append, bar, button, clear, clear_scope, colony_picker, el, note, section, stat, NumOpts,
-    Scope,
+    app_bool, app_num, append, bar, button, chip_head, clear, clear_scope, colony_picker, el, note,
+    section, stat, NumOpts, Scope,
 };
 
 pub struct TechPanel {
@@ -115,10 +115,15 @@ impl Panel for TechPanel {
         for (k, v) in rows {
             let _ = self.current.append_child(&stat(&k, &v));
         }
+        let mut any_mod = false;
         for key in MOD_KEYS {
             let value = mods.get(key);
             if (value - 1.0).abs() < 0.001 {
                 continue;
+            }
+            if !any_mod {
+                let _ = self.mods.append_child(&chip_head("What the research changed"));
+                any_mod = true;
             }
             let chip = el("span")
                 .class("chip")

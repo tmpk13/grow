@@ -23,7 +23,7 @@ and everything under `ui/` are compiled **only** for wasm, so a host-target
 clippy or check says nothing about them. A change to those files that has not
 been built for wasm has not been checked at all.
 
-## The three traps
+## The four traps
 
 **1. The browser checks cannot find a browser on their own.**
 
@@ -62,6 +62,18 @@ stale files.
 and the settlement tests simulate days at a time, which is far too slow
 unoptimized. `bun run test` already passes `--profile reltest`; a bare
 `cargo test` in `rust/` is the wrong command.
+
+**4. Playwright deadlocks on overlays that close on an outside press.**
+
+The view dropdown in the top bar (and anything else floating over the page)
+closes on a document-level `pointerdown` outside itself. A person never gets
+stuck on it; the driver does: its actionability check sees the floating body
+intercepting the click point and retries forever, without ever dispatching the
+press that would have closed it. The failure reads as an endless
+`element is not visible` / `subtree intercepts pointer events` retry loop on
+some unrelated button. In `tools/uicheck.js`, any block that opens the
+dropdown must close it again itself (`openView` / `closeView`); never rely on
+the next click closing it implicitly.
 
 ## What each check is for
 

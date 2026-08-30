@@ -666,18 +666,95 @@ pub fn note(text: &str) -> Element {
     el("p").class("note").text(text).get()
 }
 
+/// One titled block of a panel, folded by its own header. The fold is kept
+/// with the window preferences rather than on the node, because a panel is
+/// rebuilt whole on most changes and a fold that lived on the node would
+/// spring open every time.
 pub fn section(title: &str, children: Vec<Element>) -> Element {
-    el("section")
+    let node = el("details")
         .class("group")
         .attr("data-group", title)
         .child(
-            &el("header")
+            &el("summary")
                 .class("group-head")
                 .child(&el("h3").text(title).get())
                 .get(),
         )
         .child(&el("div").class("group-body").children(children).get())
-        .get()
+        .get();
+    if !prefs::Prefs::load().is_folded(title) {
+        let _ = node.set_attribute("open", "open");
+    }
+    let key = title.to_string();
+    let watched = node.clone();
+    on(node.unchecked_ref(), "toggle", Scope::Panel, move |_| {
+        let mut prefs = prefs::Prefs::load();
+        prefs.set_folded(&key, !watched.has_attribute("open"));
+        prefs.save();
+        sync_fold_all();
+    });
+    node
+}
+
+/// Every fold of the showing panel, pulled one way. Folding is the useful
+/// direction - a panel is long and the map is what most of the window is for -
+/// and unfolding is the way back, so one button does whichever is left.
+pub fn bind_fold_all() {
+    let btn = match by_id("btn-fold-groups") {
+        Some(n) => n,
+        None => return,
+    };
+    on(btn.unchecked_ref(), "click", Scope::Global, move |_| {
+        let groups = panel_groups();
+        let any_open = groups.iter().any(|g| g.has_attribute("open"));
+        let mut prefs = prefs::Prefs::load();
+        for g in groups {
+            let _ = if any_open {
+                g.remove_attribute("open")
+            } else {
+                g.set_attribute("open", "open")
+            };
+            if let Some(title) = g.get_attribute("data-group") {
+                prefs.set_folded(&title, any_open);
+            }
+        }
+        prefs.save();
+        sync_fold_all();
+    });
+}
+
+/// Keeps the button naming the direction it would pull, and hides it over a
+/// panel with nothing to fold.
+pub fn sync_fold_all() {
+    let btn = match by_id("btn-fold-groups") {
+        Some(n) => n,
+        None => return,
+    };
+    let groups = panel_groups();
+    if groups.is_empty() {
+        let _ = btn.set_attribute("hidden", "hidden");
+        return;
+    }
+    let _ = btn.remove_attribute("hidden");
+    let any_open = groups.iter().any(|g| g.has_attribute("open"));
+    btn.set_text_content(Some(if any_open { "Fold all" } else { "Unfold all" }));
+}
+
+fn panel_groups() -> Vec<Element> {
+    let mut out = Vec::new();
+    if let Ok(list) = document().query_selector_all("#panel-body details.group") {
+        for i in 0..list.length() {
+            if let Some(node) = list.item(i).and_then(|n| n.dyn_into::<Element>().ok()) {
+                out.push(node);
+            }
+        }
+    }
+    out
+}
+
+/// The line over a row of chips that says what the chips are.
+pub fn chip_head(text: &str) -> Element {
+    el("h4").class("chip-head").text(text).get()
 }
 
 pub fn stat(key: &str, value: &str) -> Element {
@@ -916,7 +993,13 @@ pub fn colony_picker(app: &App, h: &Handle) -> Option<Element> {
             .get();
         let _ = row.append_child(&chip);
     }
-    Some(row)
+    Some(
+        el("div")
+            .class("chip-block")
+            .child(&chip_head("Which town the panels show"))
+            .child(&row)
+            .get(),
+    )
 }
 
 /// The sampling boxes as select options.
