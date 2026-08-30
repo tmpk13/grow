@@ -28,6 +28,7 @@ features = [
   "Blob",
   "BlobPropertyBag",
   "CanvasGradient",
+  "CanvasPattern",
   "CanvasRenderingContext2d",
   "console",
   "CssStyleDeclaration",

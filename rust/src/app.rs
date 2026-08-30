@@ -2741,6 +2741,10 @@ fn run_cut(app: &mut App, dt: f64) {
 }
 
 fn draw(app: &mut App, budget: usize) {
+    // Only the settlement's sky reaches past the map's edge; every other
+    // stage keeps its plain background. The settlement branch below sets it
+    // fresh each frame when the switch asks for it.
+    app.viewport.clear_space_clouds();
     match app.mode {
         Mode::Sprites => draw_sheet(app),
         Mode::Lab => {
@@ -2787,6 +2791,9 @@ fn draw(app: &mut App, budget: usize) {
                 // People move every frame, so the visible band is recomposited
                 // every frame rather than only when something is marked dirty.
                 civ.composite(&app.state);
+            }
+            if app.state.civ.view.cloud_space {
+                app.viewport.set_space_clouds(&civ.clouds, &app.state.civ.world);
             }
             let region = civ.view;
             let buffer = std::mem::take(&mut civ.buffer);

@@ -89,6 +89,7 @@ flowchart TD
     pdb["civ/people_db.rs<br/>the register of settlers"]
     social["civ/social.rs<br/>who has met whom, and what they made of it"]
     csprites["civ/sprites.rs<br/>clips per settler motion and per made thing's state"]
+    cclouds["civ/clouds.rs<br/>one seamless tile of weather"]
     boats["civ/boats.rs<br/>hulls, cargoes, voyages"]
     ball["civ/balloons.rs<br/>canopies aloft, and what they are worth"]
     path["civ/pathing.rs<br/>A* over land and water"]
@@ -178,6 +179,8 @@ flowchart TD
   social --> people
   csprites --> people
   civrender --> csprites
+  civrender --> cclouds
+  render --> cclouds
   sett --> boats
   sett --> path
   sett --> bdefs

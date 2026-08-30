@@ -191,6 +191,19 @@ pub struct ViewConfig {
     pub sway_amp: f64,
     /// Full leans per simulated second, at speed one.
     pub sway_speed: f64,
+    /// Clouds passing over the sky band. Procedural, drifting on simulation
+    /// time, drawn under everything that stands up into the sky.
+    pub clouds: bool,
+    /// How much of the sky they take, nothing to overcast.
+    pub cloud_cover: f64,
+    /// World pixels of drift per simulated second.
+    pub cloud_speed: f64,
+    /// How strongly the edges churn as they pass. Zero freezes the shapes and
+    /// leaves only the drift.
+    pub cloud_wobble: f64,
+    /// The empty space around the map becomes the same sky: the gradient
+    /// carries on past the edge and the clouds repeat across all of it.
+    pub cloud_space: bool,
     pub water_top: String,
     pub water_deep: String,
     pub path_color: String,
@@ -301,6 +314,11 @@ impl Default for ViewConfig {
             sway: true,
             sway_amp: 1.6,
             sway_speed: 0.4,
+            clouds: true,
+            cloud_cover: 0.35,
+            cloud_speed: 1.2,
+            cloud_wobble: 0.5,
+            cloud_space: false,
             water_top: "#2b4f63".into(),
             water_deep: "#16303f".into(),
             path_color: "#6b5a44".into(),

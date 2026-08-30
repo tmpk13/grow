@@ -3,6 +3,13 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) Clouds passing over the settlement, settable: cover, drift, and how
+  strongly the edges churn as they pass - the shapes boil slowly rather than
+  sliding as one picture. One seamless tile of wrapped value noise, on
+  simulation time like the wind, stamped over the sky band under everything
+  that stands up into it and fading into the horizon; a further switch makes
+  the empty space around the map the same sky, gradient, clouds, night tint
+  and all.
 - (LLM) A Look inside switch, the fourth exclusive press: a pressed building
   lands its card on the Build panel - state, deed, household, rooms, crew,
   bench, and who is under the roof this moment, which the map itself cannot

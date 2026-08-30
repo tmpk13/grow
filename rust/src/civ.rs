@@ -4,6 +4,7 @@ pub mod balloons;
 pub mod boats;
 pub mod buildings;
 pub mod civ_render;
+pub mod clouds;
 pub mod colony;
 pub mod config;
 pub mod economy;

@@ -437,6 +437,8 @@ pub struct Settlement {
     pub ready: bool,
     pub terrain_version: u32,
     pub sprites: SpriteCache,
+    /// The cloud tile and its drift, rebuilt from the clock rather than saved.
+    pub clouds: crate::civ::clouds::CloudLayer,
     /// The draw list, kept across frames for its capacity alone.
     pub(crate) items: Vec<(i32, i32, i32, Item)>,
     /// What the camera can see, in world pixels. Only this is composited.
@@ -514,6 +516,7 @@ impl Settlement {
             ready: false,
             terrain_version: 0,
             sprites: SpriteCache::default(),
+            clouds: Default::default(),
             items: Vec::new(),
             view,
             px_step: 1,

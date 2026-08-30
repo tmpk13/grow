@@ -2112,6 +2112,61 @@
     "tab": "land",
     "tab_label": "Land",
     "group": "View",
+    "label": "Clouds",
+    "hint": "procedural, passing over the sky on settlement time; a paused world holds its weather still",
+    "anchor": "clouds",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
+    "label": "Cloud cover",
+    "hint": "how much of the sky they take, wisps to overcast",
+    "anchor": "cloud-cover",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
+    "label": "Cloud drift (px per s)",
+    "hint": "how fast they pass, in world pixels per simulated second",
+    "anchor": "cloud-drift-px-per-s",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
+    "label": "Cloud edge wobble",
+    "hint": "how strongly the edges churn as they pass; zero freezes the shapes and leaves only the drift",
+    "anchor": "cloud-edge-wobble",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
+    "label": "Clouds past the map's edge",
+    "hint": "the empty space around the map becomes the same sky: the gradient carries on and the clouds repeat across it",
+    "anchor": "clouds-past-the-map-s-edge",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
     "label": "Building labels",
     "anchor": "building-labels",
     "kind": "field"

@@ -1063,6 +1063,18 @@ if (!inspectSweep) {
 }
 await page.click('#look-inside');
 await page.waitForTimeout(150);
+
+// The sky past the map's edge: flip the space clouds on, let a few frames
+// draw the letterbox as sky, and flip them back. The console listener is what
+// fails this if the pattern path throws.
+await page.click('.tab[data-tab="land"]');
+await page.waitForTimeout(400);
+const spaceClouds = '#panel-body [data-find^="clouds-past"] .btn';
+await page.click(spaceClouds);
+await page.waitForTimeout(600);
+await page.screenshot({ path: `${outDir}/11i-space-clouds.png` });
+await page.click(spaceClouds);
+await page.waitForTimeout(200);
 await resume();
 
 // Back to the lab and in again: both sims have to survive the switch.

@@ -1655,6 +1655,7 @@ fn draw_occupancy(buf: &mut [u32], world: &World, b: &Building, sx: i32, sy: i32
 /// one to draw.
 pub fn composite_settlement(sim: &mut Settlement, state: &State) {
     ensure_ground(sim, state);
+    crate::civ::clouds::refresh(&mut sim.clouds, state, sim.time);
     let world_rect = Rect::whole(sim.world());
     let view = if state.civ.view.cull { sim.view } else { world_rect };
     let view = Rect {
@@ -1687,6 +1688,33 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
         let b = row + view.x1 as usize;
         buf[a..b].copy_from_slice(&sim.ground[a..b]);
         y += step;
+    }
+
+    // The clouds go on over the freshly copied sky rows, before the sorted
+    // draw: a tree crown or a balloon stands in front of them. Toward the
+    // horizon they blend into the sky instead of thinning pixel by pixel,
+    // which is what makes the band read as depth rather than as static.
+    let sky = sim.world().sky_px;
+    if !sim.clouds.px.is_empty() && view.y0 < sky {
+        let clouds = &sim.clouds;
+        let fade_rows = (sky as f64 * 0.35).max(1.0);
+        let mut y = first;
+        while y < view.y1.min(sky) {
+            let row = y as usize * px_w;
+            let fade = (((sky - y) as f64 / fade_rows).min(1.0) * 0.95).powi(2);
+            let sy = y.rem_euclid(clouds.h);
+            let srow = (sy * clouds.w) as usize;
+            for x in view.x0..view.x1 {
+                let sx = (x + clouds.drift).rem_euclid(clouds.w);
+                let c = clouds.px[srow + sx as usize];
+                if c == 0 {
+                    continue;
+                }
+                let i = row + x as usize;
+                buf[i] = mix_packed(buf[i], c, fade);
+            }
+            y += step;
+        }
     }
 
     // Kept between frames: on a full map this is one entry per plant, and

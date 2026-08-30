@@ -58,6 +58,23 @@ pub struct Viewport {
     /// One visible region, repacked for upload. Kept here so a frame does not
     /// allocate.
     scratch: Vec<u32>,
+    /// The cloud tile as a canvas the context can repeat, and the key of the
+    /// tile it holds so an unchanged frame skips the upload.
+    clouds_tile: HtmlCanvasElement,
+    clouds_tile_ctx: CanvasRenderingContext2d,
+    clouds_key: u64,
+    /// Set for the frames whose empty space is sky; the world is drawn over
+    /// its own rectangle afterwards.
+    space_clouds: Option<SpaceClouds>,
+}
+
+/// What the letterbox needs to be sky: where the horizon gradient sits and
+/// how far the clouds have drifted.
+struct SpaceClouds {
+    drift: i32,
+    sky_px: i32,
+    top: String,
+    bottom: String,
 }
 
 fn context_of(canvas: &HtmlCanvasElement) -> CanvasRenderingContext2d {
@@ -100,11 +117,17 @@ impl Viewport {
         let ctx = context_of(&canvas);
         let off = new_canvas();
         let off_ctx = context_of(&off);
+        let clouds_tile = new_canvas();
+        let clouds_tile_ctx = context_of(&clouds_tile);
         Viewport {
             canvas,
             ctx,
             off,
             off_ctx,
+            clouds_tile,
+            clouds_tile_ctx,
+            clouds_key: 0,
+            space_clouds: None,
             zoom: 2.0,
             pan_x: 0.0,
             pan_y: 0.0,
@@ -221,6 +244,81 @@ impl Viewport {
         let x1 = (((rw - self.pan_x) / self.zoom) + pad).ceil().min(world.px_w as f64) as i32;
         let y1 = (((rh - self.pan_y) / self.zoom) + pad).ceil().min(world.px_h as f64) as i32;
         Rect { x0: x0.min(world.px_w), y0: y0.min(world.px_h), x1: x1.max(0), y1: y1.max(0) }
+    }
+
+    /// Hands the camera this frame's cloud tile, so the empty space around
+    /// the map is the same sky the map hangs in. The tile is uploaded only
+    /// when its key moved; the drift is applied at draw time, so a frame in
+    /// which only the drift changed uploads nothing.
+    pub fn set_space_clouds(&mut self, layer: &crate::civ::clouds::CloudLayer, cfg: &crate::world::WorldConfig) {
+        if layer.px.is_empty() {
+            self.space_clouds = None;
+            return;
+        }
+        if self.clouds_key != layer.key {
+            if self.clouds_tile.width() != layer.w as u32
+                || self.clouds_tile.height() != layer.h as u32
+            {
+                self.clouds_tile.set_width(layer.w as u32);
+                self.clouds_tile.set_height(layer.h as u32);
+            }
+            put_buffer(&self.clouds_tile_ctx, &layer.px, layer.w, layer.h);
+            self.clouds_key = layer.key;
+        }
+        self.space_clouds = Some(SpaceClouds {
+            drift: layer.drift,
+            sky_px: cfg.sky_px,
+            top: cfg.sky_top.clone(),
+            bottom: cfg.sky_bottom.clone(),
+        });
+    }
+
+    pub fn clear_space_clouds(&mut self) {
+        self.space_clouds = None;
+    }
+
+    /// The letterbox as sky: the world's own gradient carried past its edges,
+    /// with the cloud tile repeated across all of it in world scale. Drawn
+    /// under the world, which paints over its own rectangle.
+    fn draw_space_clouds(&self, rw: f64, rh: f64) {
+        let sc = match &self.space_clouds {
+            Some(sc) => sc,
+            None => return,
+        };
+        let ctx = &self.ctx;
+        let g = ctx.create_linear_gradient(
+            0.0,
+            self.pan_y,
+            0.0,
+            self.pan_y + sc.sky_px.max(1) as f64 * self.zoom,
+        );
+        let _ = g.add_color_stop(0.0, &sc.top);
+        let _ = g.add_color_stop(1.0, &sc.bottom);
+        ctx.set_fill_style_canvas_gradient(&g);
+        ctx.fill_rect(0.0, 0.0, rw, rh);
+        let pattern = match ctx.create_pattern_with_html_canvas_element(&self.clouds_tile, "repeat")
+        {
+            Ok(Some(p)) => p,
+            _ => return,
+        };
+        // A pattern repeats in the context's current space, so the context is
+        // put into world scale and the visible rectangle is filled in world
+        // coordinates; the tile then lands exactly where the sky band's own
+        // stamping put it.
+        ctx.save();
+        ctx.translate(self.pan_x, self.pan_y).ok();
+        ctx.scale(self.zoom, self.zoom).ok();
+        ctx.translate(-sc.drift as f64, 0.0).ok();
+        ctx.set_fill_style_canvas_pattern(&pattern);
+        if self.zoom > 0.0 {
+            ctx.fill_rect(
+                (-self.pan_x) / self.zoom + sc.drift as f64,
+                (-self.pan_y) / self.zoom,
+                rw / self.zoom,
+                rh / self.zoom,
+            );
+        }
+        ctx.restore();
     }
 
     /// The finished world buffer, scaled onto the canvas with no smoothing.
@@ -340,6 +438,7 @@ impl Viewport {
         ctx.set_fill_style_str("#05070a");
         ctx.fill_rect(0.0, 0.0, rw, rh);
         ctx.set_image_smoothing_enabled(false);
+        self.draw_space_clouds(rw, rh);
         if rect.is_empty() {
             return;
         }
@@ -464,7 +563,14 @@ impl Viewport {
                     "rgba({}, {}, {}, {:.3})",
                     tint.r, tint.g, tint.b, dark
                 ));
-                ctx.fill_rect(self.pan_x, self.pan_y, w, h);
+                if self.space_clouds.is_some() {
+                    // The letterbox is sky too, so the night falls on all of
+                    // it rather than stopping at the map's edge.
+                    let (rw, rh) = self.rect();
+                    ctx.fill_rect(0.0, 0.0, rw, rh);
+                } else {
+                    ctx.fill_rect(self.pan_x, self.pan_y, w, h);
+                }
                 self.draw_lamps(sim, 1.0 - light);
             }
         }

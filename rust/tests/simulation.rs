@@ -2049,3 +2049,70 @@ fn somebody_new_can_be_set_down_by_hand() {
     }
     assert!(sim.people.get(id).is_some(), "the arrival fell off the register");
 }
+
+// ---- the weather ----------------------------------------------------------
+
+#[test]
+fn the_clouds_are_seamless_settable_and_on_the_clock() {
+    use grow::civ::clouds::{field, refresh, CloudLayer, TILE_H, TILE_W};
+
+    let mut state = State::new();
+    state.civ.view.clouds = true;
+
+    // The tile wraps: the noise at the far edge is the noise at the near one,
+    // or the repeat would show a line every hundred and ninety two pixels.
+    for y in [0, 17, TILE_H - 1] {
+        let a = field(0, y, 7, 0.3, 0.5);
+        let b = field(TILE_W, y, 7, 0.3, 0.5);
+        assert!((a - b).abs() < 1e-9, "a horizontal seam at y {y}: {a} vs {b}");
+    }
+    for x in [0, 41, TILE_W - 1] {
+        let a = field(x, 0, 7, 0.3, 0.5);
+        let b = field(x, TILE_H, 7, 0.3, 0.5);
+        assert!((a - b).abs() < 1e-9, "a vertical seam at x {x}: {a} vs {b}");
+    }
+
+    // The same moment is the same sky: the tile is simulation time, not the
+    // wall clock.
+    let mut a = CloudLayer::default();
+    let mut b = CloudLayer::default();
+    refresh(&mut a, &state, 12.34);
+    refresh(&mut b, &state, 12.34);
+    assert_eq!(a.key, b.key);
+    assert_eq!(a.px, b.px, "two layers built at one moment differ");
+    assert_eq!(a.drift, b.drift);
+
+    // Cover is coverage: an overcast sky holds far more cloud than wisps.
+    let count = |layer: &CloudLayer| layer.px.iter().filter(|p| **p != 0).count();
+    let sparse = count(&a);
+    state.civ.view.cloud_cover = 1.0;
+    let mut heavy = CloudLayer::default();
+    refresh(&mut heavy, &state, 12.34);
+    assert!(
+        count(&heavy) > sparse * 2,
+        "full cover ({}) should dwarf the default ({sparse})",
+        count(&heavy)
+    );
+
+    // Wobble is the edge movement: with it the shapes churn from step to
+    // step, without it the same shapes drift whole and nothing regenerates.
+    state.civ.view.cloud_cover = 0.35;
+    state.civ.view.cloud_wobble = 0.5;
+    let mut w0 = CloudLayer::default();
+    let mut w1 = CloudLayer::default();
+    refresh(&mut w0, &state, 10.0);
+    refresh(&mut w1, &state, 11.0);
+    assert_ne!(w0.px, w1.px, "a second of wobble changed nothing");
+    state.civ.view.cloud_wobble = 0.0;
+    let mut s0 = CloudLayer::default();
+    refresh(&mut s0, &state, 10.0);
+    let key = s0.key;
+    refresh(&mut s0, &state, 11.0);
+    assert_eq!(s0.key, key, "with no wobble the tile should never rebuild");
+
+    // Off empties the layer, which is also what tells the camera to leave the
+    // space around the map alone.
+    state.civ.view.clouds = false;
+    refresh(&mut s0, &state, 12.0);
+    assert!(s0.px.is_empty());
+}
