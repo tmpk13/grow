@@ -391,7 +391,9 @@ impl Sim {
         self.paint_background(state, &mut buf);
         let shadows = self.world_cfg.shadows;
         for i in self.draw_order() {
-            self.blit_plant(&mut buf, i, shadows, Foliage::Solid);
+            // No sway in the lab: its buffer is composited only when dirty,
+            // and a lean that moved between composites would smear.
+            self.blit_plant(&mut buf, i, shadows, Foliage::Solid, 0.0);
         }
         self.buffer = buf;
         self.buffer_dirty = false;
@@ -416,7 +418,17 @@ impl Sim {
     /// first.
     /// What foliage does where it covers a settler. The default is what a plant
     /// is: opaque, and whoever is behind it is behind it.
-    pub fn blit_plant(&self, buf: &mut [u32], index: usize, shadows: bool, over: Foliage) {
+    /// `sway_px` is how far the crown leans right now: rows lean by the square
+    /// of their height up the plant, so the foot stays planted. Zero draws the
+    /// sprite where it stands.
+    pub fn blit_plant(
+        &self,
+        buf: &mut [u32],
+        index: usize,
+        shadows: bool,
+        over: Foliage,
+        sway_px: f64,
+    ) {
         let plant = &self.plants[index];
         let w = &self.world;
         let b = plant.bounds;
@@ -434,11 +446,18 @@ impl Sim {
         }
         let dx = anchor_x - plant.ox;
         let dy = anchor_y - plant.oy;
+        let span = ((plant.oy - b.y0).max(1)) as f64;
         for y in b.y0..=b.y1 {
             let wy = y + dy;
             if wy < 0 || wy >= w.px_h {
                 continue;
             }
+            let lean = if sway_px != 0.0 {
+                let hf = (plant.oy - y).max(0) as f64 / span;
+                (sway_px * hf * hf).round() as i32
+            } else {
+                0
+            };
             let srow = (y * plant.w) as usize;
             let drow = (wy * w.px_w) as usize;
             for x in b.x0..=b.x1 {
@@ -446,7 +465,7 @@ impl Sim {
                 if v == 0 {
                     continue;
                 }
-                let wx = x + dx;
+                let wx = x + dx + lean;
                 if wx < 0 || wx >= w.px_w {
                     continue;
                 }
@@ -583,6 +602,28 @@ impl Sim {
         }
         Stats { total: self.plants.len(), per_species, time: self.time, ticks: self.ticks }
     }
+}
+
+/// How far this plant's crown leans right now, in pixels. Ground cover holds
+/// still, everything else leans by its own height, and the phase runs with the
+/// column so a gust reads as travelling across the map rather than the whole
+/// wood rocking in step; each plant's seed unsticks it from its neighbors.
+///
+/// Time here is simulation time: a paused world holds still, and two runs of
+/// one seed stay the same picture.
+pub fn plant_sway(plant: &Plant, time: f64, amp: f64, speed: f64) -> f64 {
+    if plant.size_class == SizeClass::Ground || plant.bounds.is_empty() {
+        return 0.0;
+    }
+    // A full tree leans the whole amplitude; anything shorter leans by how
+    // much of that height it has.
+    let height = (plant.oy - plant.bounds.y0).max(0) as f64;
+    let scale = (height / 40.0).min(1.0);
+    if scale <= 0.0 || amp == 0.0 {
+        return 0.0;
+    }
+    let phase = plant.col as f64 * 0.35 + (plant.seed % 977) as f64 * 0.37;
+    amp * scale * (time * speed * std::f64::consts::TAU + phase).sin()
 }
 
 /// Contact shadow: a foreshortened ellipse under the plant, dithered at the rim

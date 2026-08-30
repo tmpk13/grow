@@ -2079,6 +2079,39 @@
     "tab": "land",
     "tab_label": "Land",
     "group": "View",
+    "label": "Wind in the trees",
+    "hint": "standing plants lean from the tips, each in its own time; runs on settlement time, so a paused world holds still",
+    "anchor": "wind-in-the-trees",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
+    "label": "Sway lean (px)",
+    "hint": "how far the crown of a full grown tree leans; smaller plants lean less",
+    "anchor": "sway-lean-px",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
+    "label": "Sway rate (per s)",
+    "hint": "full leans per simulated second, at speed one",
+    "anchor": "sway-rate-per-s",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
     "label": "Building labels",
     "anchor": "building-labels",
     "kind": "field"

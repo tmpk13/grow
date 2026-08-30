@@ -3,6 +3,12 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) Wind in the trees, settable: standing plants lean from the tips by
+  their own height, each in its own phase, with a gust that travels across the
+  map. It runs on simulation time, so a paused world holds still and the same
+  seed is still the same picture; the lab, which composites only when dirty,
+  sits it out, and it goes with the other flourishes when the camera pulls
+  back.
 - (LLM) A dying tree's shadow follows what is left of it. The contact shadow
   was sized by the canopy radius, which only ever grows; it now takes the
   drawn box where that is smaller, so a crown eaten from the tips down stops

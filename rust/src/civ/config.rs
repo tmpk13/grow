@@ -181,6 +181,16 @@ pub struct ViewConfig {
     /// How much of the foliage is left when it is faded over a settler.
     pub foliage_alpha: f64,
     pub smoke: bool,
+    /// The wind in the trees: standing plants lean from the tips, each with
+    /// its own phase, and a gust that travels across the map. Runs on
+    /// simulation time, so a paused world holds still and two runs of one
+    /// seed stay the same picture.
+    pub sway: bool,
+    /// How far the crown of a full grown tree leans, in pixels. Small plants
+    /// lean less by their height.
+    pub sway_amp: f64,
+    /// Full leans per simulated second, at speed one.
+    pub sway_speed: f64,
     pub water_top: String,
     pub water_deep: String,
     pub path_color: String,
@@ -288,6 +298,9 @@ impl Default for ViewConfig {
             foliage: "solid".into(),
             foliage_alpha: 0.5,
             smoke: true,
+            sway: true,
+            sway_amp: 1.6,
+            sway_speed: 0.4,
             water_top: "#2b4f63".into(),
             water_deep: "#16303f".into(),
             path_color: "#6b5a44".into(),

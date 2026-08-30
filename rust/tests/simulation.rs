@@ -1952,3 +1952,60 @@ fn the_picture_list_is_searchable_and_its_table_fits_it() {
         assert!(!index.set_terms(menus), "the menus' table is not this list's table");
     }
 }
+
+// ---- the wind in the trees ------------------------------------------------
+
+#[test]
+fn the_wind_leans_a_tree_and_leaves_the_moss_alone() {
+    use grow::sim::plant_sway;
+    use grow::world::{World, WorldConfig};
+
+    let state = State::new();
+    let world = World::new(&WorldConfig::default());
+    let of_class = |class: SizeClass| {
+        state
+            .species
+            .iter()
+            .find(|s| s.size_class == class)
+            .unwrap_or_else(|| panic!("no {class:?} species in the defaults"))
+    };
+    let plant = |class: SizeClass, height_px: i32| {
+        let species = of_class(class);
+        let limits = grow::species::effective_limits(species, &state.class_limits);
+        let mut p = grow::plant::Plant::new(1, species, limits, 4, 4, &world, grow::rng::Rng::new(9));
+        p.bounds.include(p.ox - 3, p.oy - height_px);
+        p.bounds.include(p.ox + 3, p.oy);
+        p
+    };
+
+    // Ground cover holds still whatever the wind does.
+    let mat = plant(SizeClass::Ground, 2);
+    assert_eq!(plant_sway(&mat, 3.7, 2.0, 0.5), 0.0, "ground cover should not sway");
+
+    // A full tree leans, within the amplitude, and moves over a cycle.
+    let tree = plant(SizeClass::Tree, 60);
+    let leans: Vec<f64> = (0..40).map(|k| plant_sway(&tree, k as f64 * 0.1, 2.0, 0.5)).collect();
+    assert!(leans.iter().all(|l| l.abs() <= 2.0), "a lean past the amplitude: {leans:?}");
+    let swing = leans.iter().cloned().fold(f64::MIN, f64::max)
+        - leans.iter().cloned().fold(f64::MAX, f64::min);
+    assert!(swing > 1.0, "a full tree should visibly move over a cycle, swung {swing}");
+
+    // A seedling of the same species barely moves: the lean scales with height.
+    let sprout = plant(SizeClass::Tree, 6);
+    let small = plant_sway(&sprout, 0.3, 2.0, 0.5).abs();
+    let tall = plant_sway(&tree, 0.3, 2.0, 0.5).abs();
+    assert!(
+        small < tall || tall == 0.0,
+        "a sprout ({small}) should lean less than a tree ({tall})"
+    );
+
+    // The same moment gives the same lean: the wind is simulation time, not
+    // the wall clock, which is what keeps two runs of one seed one picture.
+    assert_eq!(plant_sway(&tree, 1.25, 2.0, 0.5), plant_sway(&tree, 1.25, 2.0, 0.5));
+
+    // A plant with nothing drawn has nothing to lean.
+    let species = of_class(SizeClass::Tree);
+    let limits = grow::species::effective_limits(species, &state.class_limits);
+    let bare = grow::plant::Plant::new(2, species, limits, 4, 4, &world, grow::rng::Rng::new(9));
+    assert_eq!(plant_sway(&bare, 1.0, 2.0, 0.5), 0.0);
+}

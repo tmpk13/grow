@@ -1761,13 +1761,27 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
     let night = sim.night_lights(state);
     let time = sim.time;
     let smoke_on = state.civ.view.smoke && detail.flourishes();
+    // The wind is a flourish: it goes with the rest of them when the camera
+    // pulls back, which is also when a one pixel lean stops being visible.
+    let sway_on = state.civ.view.sway && detail.flourishes();
+    let (sway_amp, sway_speed) = (state.civ.view.sway_amp, state.civ.view.sway_speed);
     let mut sprites = std::mem::take(&mut sim.sprites);
     for (_, _, _, item) in &items {
         let world = &sim.plant_sim.world;
         match item {
             Item::Plant(i) => {
                 if detail.sprites() {
-                    sim.plant_sim.blit_plant(&mut buf, *i, false, foliage);
+                    let sway = if sway_on {
+                        crate::sim::plant_sway(
+                            &sim.plant_sim.plants[*i],
+                            time,
+                            sway_amp,
+                            sway_speed,
+                        )
+                    } else {
+                        0.0
+                    };
+                    sim.plant_sim.blit_plant(&mut buf, *i, false, foliage, sway);
                 } else {
                     draw_plant_blob(&mut buf, world, &sim.plant_sim.plants[*i], detail);
                 }
