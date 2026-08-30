@@ -13,17 +13,13 @@ What is left. What is done is in TODO_COMPLETE.md.
 
 - Toggle tree sway with parameters.
 
-- Keeping performance as a top priority, add smooth panel transitions (Not just panels instantly disappearing on say, close menu) fade and collapse.
-
-- Aside panel should have a drag handel in the middle to resize.
-
 - Experimental feature toggle for a user controlled person.
     - Should have a toggle for a onscreen joystick to move
     - Buttons at the bottom of the screen for 
 
 - Add a menu for placing things in the world.
 
-
+- Shadows on trees still show without foliage when decaying.
 
 # Do later
 

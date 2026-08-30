@@ -19,6 +19,9 @@
   --ui-scale: 1;
   --hairline: 0.0625rem;
   font-size: calc(clamp(0.8rem, 0.55vw + 0.65rem, 1.06rem) * var(--ui-scale));
+  /* Lets a height ease to auto, which is what animates the section folds; a
+     browser without it snaps them shut the way they always did. */
+  interpolate-size: allow-keywords;
 }
 
 * {
@@ -92,8 +95,17 @@ body {
 .layout {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: minmax(20rem, 27rem) 1fr;
+  /* The menu track is one length so folding it away can ease to another:
+     --panel-w is where the drag handle left it, the clamp keeps both the
+     drag and a narrowed window honest. */
+  grid-template-columns: clamp(18rem, var(--panel-w, 27rem), 60vw) 1fr;
   min-height: 0;
+  transition: grid-template-columns 0.25s ease, grid-template-rows 0.25s ease;
+}
+
+/* While the handle is being dragged the pointer leads; easing would trail. */
+.resizing .layout {
+  transition: none;
 }
 
 @media (max-width: 60rem) {
@@ -152,15 +164,29 @@ body:not(.stage-only) .stage-escape {
   display: none;
 }
 
-/* Folded away, the map gets the window. The panel is taken out of the grid
-   rather than hidden in place, so the stage reflows into the space. */
-.menu-collapsed .panel {
-  display: none;
+/* Folded away, the map gets the window. The menu's track eases to nothing and
+   the panel fades as it goes; visibility waits for the slide so the fold does
+   not blink, then takes the hidden controls out of the tab order. */
+.menu-collapsed .layout {
+  grid-template-columns: 0rem 1fr;
 }
 
-.menu-collapsed .layout {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
+.panel {
+  opacity: 1;
+  transition: opacity 0.2s ease, visibility 0s linear 0s;
+}
+
+.menu-collapsed .panel {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0s linear 0.25s;
+}
+
+@media (max-width: 60rem) {
+  .menu-collapsed .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 0fr 1fr;
+  }
 }
 
 .topbar-actions .scale-box {
@@ -178,11 +204,63 @@ body:not(.stage-only) .stage-escape {
 }
 
 .panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   border-right: var(--hairline) solid var(--line);
   background: var(--bg-panel);
+}
+
+/* Held at the menu's narrowest while the track slides shut, so the fold is a
+   curtain drawn over the controls rather than the controls rewrapping. */
+.panel > :not(.panel-resize) {
+  min-width: 18rem;
+}
+
+/* The handle on the menu's edge: the whole strip drags, the grip in the
+   middle is what says so. */
+.panel-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0.5rem;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 3;
+}
+
+.panel-resize::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0.12rem;
+  transform: translateY(-50%);
+  width: 0.25rem;
+  height: 2.6rem;
+  border-radius: 0.2rem;
+  background: var(--line);
+  transition: background 0.15s ease;
+}
+
+.panel-resize:hover::after,
+.panel-resize.dragging::after {
+  background: var(--text-dim);
+}
+
+/* Stacked layouts split the window top to bottom, and the fold takes the
+   whole menu anyway: nothing for a width handle to do. */
+.menu-collapsed .panel-resize {
+  display: none;
+}
+
+@media (max-width: 60rem) {
+  .panel-resize {
+    display: none;
+  }
 }
 
 .tabs {
@@ -285,6 +363,24 @@ details.group[open] > .group-head::after {
 
 details.group:not([open]) > .group-head {
   border-bottom: 0;
+}
+
+/* The fold slides and fades rather than snapping. block-size to auto only
+   eases where interpolate-size is understood; elsewhere this whole block is
+   inert and the fold snaps as before. */
+details.group::details-content {
+  block-size: 0;
+  overflow-y: clip;
+  opacity: 0;
+  transition:
+    block-size 0.2s ease,
+    opacity 0.2s ease,
+    content-visibility 0.2s allow-discrete;
+}
+
+details.group[open]::details-content {
+  block-size: auto;
+  opacity: 1;
 }
 
 .group-head h3 {
@@ -1501,6 +1597,18 @@ body.harvesting #world-canvas {
   transform: rotate(90deg);
 }
 
+/* The dropdown fades in and out. Only opacity moves: a transform on the
+   content wrapper would become the containing block of the absolutely
+   positioned body and pull it out of place. */
+.view-menu::details-content {
+  opacity: 0;
+  transition: opacity 0.15s ease, content-visibility 0.15s allow-discrete;
+}
+
+.view-menu[open]::details-content {
+  opacity: 1;
+}
+
 .view-body {
   position: absolute;
   top: calc(100% + 0.35rem);
@@ -1737,4 +1845,15 @@ kbd.key {
 .made-slot .field-label {
   display: flex;
   flex-direction: column;
+}
+
+/* Every ease above is decoration over state that changes instantly; a reader
+   who asked for still pages gets the states without the travel. */
+@media (prefers-reduced-motion: reduce) {
+  .layout,
+  .panel,
+  details.group::details-content,
+  .view-menu::details-content {
+    transition: none;
+  }
 }

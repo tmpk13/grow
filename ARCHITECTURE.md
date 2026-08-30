@@ -122,7 +122,9 @@ flowchart TD
   sdrop --> findc
   main --> vmenu["ui/view_menu.rs<br/>grid, occupancy, label kinds"]
   main --> rbar["ui/restart_bar.rs<br/>what is waiting on Apply"]
-  main --> prefs["ui/prefs.rs<br/>menu fold, text scale, section folds"]
+  main --> prefs["ui/prefs.rs<br/>menu fold, text scale,<br/>section folds, menu width"]
+  main --> presz["ui/panel_resize.rs<br/>the handle on the menu's edge"]
+  presz --> prefs
   main --> rst["ui/reset.rs<br/>clears every browser store"]
   state --> cfg
   state --> art

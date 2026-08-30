@@ -841,6 +841,7 @@ pub fn start() -> Result<(), JsValue> {
     bind_view_actions(&handle);
     ui::view_menu::bind_close();
     ui::bind_fold_all();
+    ui::panel_resize::bind();
     ui::restart_bar::mount(&handle);
     ui::find_box::mount(&handle);
     bind_canvas(&handle, &canvas);

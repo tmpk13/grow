@@ -21,6 +21,12 @@ const KEY: &str = "grow.ui.v1";
 pub const SCALE_MIN: f64 = 0.75;
 pub const SCALE_MAX: f64 = 1.75;
 
+/// How narrow and how wide the side menu can be dragged, in rem. Below the
+/// first the controls fold onto each other; past the second it is the stage
+/// that has stopped fitting.
+pub const PANEL_REM_MIN: f64 = 18.0;
+pub const PANEL_REM_MAX: f64 = 60.0;
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Prefs {
@@ -35,11 +41,21 @@ pub struct Prefs {
     /// whole whenever its panel is, so the fold has to be read back from
     /// somewhere the rebuild can reach or every change would spring it open.
     pub folded: Vec<String>,
+    /// How wide the side menu was dragged to, in rem so it keeps its
+    /// proportion when the text is rescaled. Zero means the stylesheet's own
+    /// width, which is also what a double press on the handle goes back to.
+    pub panel_rem: f64,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { collapsed: false, scale: 1.0, keep_sprites: true, folded: Vec::new() }
+        Prefs {
+            collapsed: false,
+            scale: 1.0,
+            keep_sprites: true,
+            folded: Vec::new(),
+            panel_rem: 0.0,
+        }
     }
 }
 
@@ -54,6 +70,9 @@ impl Prefs {
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_default();
         prefs.scale = prefs.scale.clamp(SCALE_MIN, SCALE_MAX);
+        if prefs.panel_rem != 0.0 {
+            prefs.panel_rem = prefs.panel_rem.clamp(PANEL_REM_MIN, PANEL_REM_MAX);
+        }
         prefs
     }
 
@@ -92,6 +111,11 @@ impl Prefs {
             .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
         {
             let _ = root.style().set_property("--ui-scale", &format!("{}", self.scale));
+            let _ = if self.panel_rem > 0.0 {
+                root.style().set_property("--panel-w", &format!("{}rem", self.panel_rem))
+            } else {
+                root.style().remove_property("--panel-w").map(|_| ())
+            };
         }
     }
 }

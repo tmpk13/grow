@@ -23,6 +23,7 @@ pub mod grid_editor;
 pub mod land_panel;
 pub mod materials_panel;
 pub mod paint;
+pub mod panel_resize;
 pub mod people_panel;
 pub mod prefs;
 pub mod reset;
@@ -688,9 +689,14 @@ pub fn section(title: &str, children: Vec<Element>) -> Element {
     let key = title.to_string();
     let watched = node.clone();
     on(node.unchecked_ref(), "toggle", Scope::Panel, move |_| {
+        // Setting `open` on the fresh node above queues a toggle per rebuild;
+        // only an actual change of mind is worth a write.
+        let folded = !watched.has_attribute("open");
         let mut prefs = prefs::Prefs::load();
-        prefs.set_folded(&key, !watched.has_attribute("open"));
-        prefs.save();
+        if prefs.is_folded(&key) != folded {
+            prefs.set_folded(&key, folded);
+            prefs.save();
+        }
         sync_fold_all();
     });
     node

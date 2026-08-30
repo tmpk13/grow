@@ -3,6 +3,13 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) The side menu has a drag handle on its edge: the width is kept in rem
+  so it rides the text scale, it is saved with the window preferences, and a
+  double press puts the stylesheet's own width back.
+- (LLM) The chrome moves instead of blinking: folding the menu away slides its
+  track shut and fades it, sections ease open and closed, the view dropdown
+  fades, and every ease honors prefers-reduced-motion. All of it is CSS over
+  state that still changes instantly, so nothing waits on an animation.
 - (LLM) Lamp pools are screened together rather than summed, so a street of
   lamps converges on the color of one flame instead of stacking past it to
   white.

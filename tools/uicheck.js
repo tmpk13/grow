@@ -594,7 +594,15 @@ if ((await page.locator('.made-search .btn.toggle:has-text("Meaning")').count())
 }
 await page.fill('.made-search input', '');
 await page.waitForTimeout(300);
-await page.click('.made-search .btn.toggle:has-text("Every slot")');
+// The lists above this button redraw as the settlement runs, and a redraw
+// between aiming and pressing can carry the press onto whatever moved under
+// it. The button says whether the press landed, so a miss is pressed again
+// rather than reported as a hundred missing slots.
+const everySlot = '.made-search .btn.toggle:has-text("Every slot")';
+await page.click(everySlot);
+if ((await page.getAttribute(everySlot, 'aria-pressed')) !== 'true') {
+  await page.click(everySlot);
+}
 // The panel is rebuilt on the next frame and there are a hundred and thirty
 // slots to draw, so this waits for them rather than guessing at how long a
 // busy settlement takes to get round to it.
@@ -966,6 +974,31 @@ await page.waitForTimeout(1200);
 await page.click('.mode:text-is("Settlement")');
 await page.waitForTimeout(2000);
 await page.screenshot({ path: `${outDir}/12-settlement-return.png` });
+
+// The menu's edge drags. The width lands in a root custom property in rem so
+// it rides along with the text scale, and a double press puts the default
+// width back.
+const panelWidth = async () => (await page.locator('.panel').boundingBox()).width;
+const panelW0 = await panelWidth();
+const grip = await page.locator('#panel-resize').boundingBox();
+await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+await page.mouse.down();
+await page.mouse.move(grip.x + grip.width / 2 + 160, grip.y + grip.height / 2, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(300);
+const panelW1 = await panelWidth();
+if (panelW1 - panelW0 < 100) {
+  problems.push(`dragging the menu edge did not widen it (${panelW0} -> ${panelW1})`);
+}
+if (!(await page.evaluate(() => document.documentElement.style.getPropertyValue('--panel-w').endsWith('rem')))) {
+  problems.push('the dragged menu width is not kept in rem');
+}
+await page.dblclick('#panel-resize');
+await page.waitForTimeout(500);
+const panelW2 = await panelWidth();
+if (Math.abs(panelW2 - panelW0) > 8) {
+  problems.push(`a double press did not put the default width back (${panelW0} -> ${panelW2})`);
+}
 
 // The menu folds away and comes back, and the map takes the room either way.
 await page.click('#btn-panel');
