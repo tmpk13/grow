@@ -680,7 +680,9 @@ await page.click('.tab[data-tab="sheet"]');
 await page.waitForTimeout(500);
 await page.selectOption('#panel-body [data-find="or-a-made-thing"] select', 'hut');
 await page.click('#panel-body .btn:text-is("Use for that")');
-await page.waitForTimeout(600);
+// The note lands with the click; read it well before the autosave that the
+// click also queued replaces it with "saved <time>" 600ms later.
+await page.waitForTimeout(250);
 if (!(await page.textContent('#save-note')).includes('hut')) {
   problems.push(`sending a sheet to the hut said "${(await page.textContent('#save-note')).trim()}"`);
 }

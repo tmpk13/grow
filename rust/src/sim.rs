@@ -587,8 +587,17 @@ impl Sim {
 
 /// Contact shadow: a foreshortened ellipse under the plant, dithered at the rim
 /// so it stays pixel art rather than a soft blob.
+///
+/// The canopy radius only ever grows, but a dying plant is eaten from the tips
+/// down and its drawn box shrinks with it, so the shadow follows whichever is
+/// smaller: what is still standing casts it, not the crown that was.
 pub fn cast_shadow(world: &World, buf: &mut [u32], cx: i32, cy: i32, plant: &Plant) {
-    let rx = (plant.radius_px * 0.85).max(2.0);
+    if plant.bounds.is_empty() {
+        return;
+    }
+    let left = (plant.ox - plant.bounds.x0).max(0) as f64;
+    let right = (plant.bounds.x1 - plant.ox).max(0) as f64;
+    let rx = (plant.radius_px.min(left.max(right)) * 0.85).max(2.0);
     let ry = (rx * world.depth_ratio).max(1.0);
     let x0 = ((cx as f64 - rx).floor() as i32).max(0);
     let x1 = ((cx as f64 + rx).ceil() as i32).min(world.px_w - 1);

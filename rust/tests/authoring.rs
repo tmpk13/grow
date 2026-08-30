@@ -587,13 +587,18 @@ fn a_contact_shadow_stops_at_the_horizon() {
     let mut buf = vec![RED; (world.px_w * world.px_h) as usize];
 
     // A plant standing in the back row, wide enough that its ellipse would
-    // reach above the horizon if nothing stopped it.
+    // reach above the horizon if nothing stopped it. The shadow follows the
+    // drawn box rather than the bare radius - a dying plant is eaten from the
+    // tips down and stops shading ground its crown no longer covers - so the
+    // box has to say something that wide is actually drawn.
     let state = State::new();
     let species = &state.species[0];
     let limits = grow::species::effective_limits(species, &state.class_limits);
     let mut plant =
         grow::plant::Plant::new(1, species, limits, 8, 0, &world, grow::rng::Rng::new(5));
     plant.radius_px = 30.0;
+    plant.bounds.include(plant.ox - 30, 0);
+    plant.bounds.include(plant.ox + 30, 1);
     cast_shadow(&world, &mut buf, world.anchor_x(8), world.sky_px + 1, &plant);
 
     let untouched = (0..world.sky_px)

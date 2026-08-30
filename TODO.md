@@ -19,8 +19,6 @@ What is left. What is done is in TODO_COMPLETE.md.
 
 - Add a menu for placing things in the world.
 
-- Shadows on trees still show without foliage when decaying.
-
 # Do later
 
 - Zoning manager.

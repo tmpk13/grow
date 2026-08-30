@@ -3,6 +3,11 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A dying tree's shadow follows what is left of it. The contact shadow
+  was sized by the canopy radius, which only ever grows; it now takes the
+  drawn box where that is smaller, so a crown eaten from the tips down stops
+  shading ground it no longer covers, and a plant with nothing drawn casts
+  nothing.
 - (LLM) The side menu has a drag handle on its edge: the width is kept in rem
   so it rides the text scale, it is saved with the window preferences, and a
   double press puts the stylesheet's own width back.
