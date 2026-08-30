@@ -2009,3 +2009,43 @@ fn the_wind_leans_a_tree_and_leaves_the_moss_alone() {
     let bare = grow::plant::Plant::new(2, species, limits, 4, 4, &world, grow::rng::Rng::new(9));
     assert_eq!(plant_sway(&bare, 1.0, 2.0, 0.5), 0.0);
 }
+
+// ---- somebody set down by hand --------------------------------------------
+
+#[test]
+fn somebody_new_can_be_set_down_by_hand() {
+    let mut state = State::new();
+    state.civ.world.cols = 40;
+    state.civ.world.rows = 20;
+    state.civ.terrain.warmup = 30.0;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+    let before = sim.people.count();
+    let town = sim.colonies[0].id;
+    let (cc, cr) = sim.colonies[0].center;
+
+    let id = sim
+        .spawn_person_at(&state, cc as f64 + 2.0, cr as f64 + 1.0)
+        .expect("a press near the town lands somebody");
+    assert_eq!(sim.people.count(), before + 1, "nobody joined the register");
+    let p = sim.people.get(id).expect("on the register").clone();
+    assert!(p.adult(), "arrivals come grown");
+    assert_eq!(p.colony, town, "they join the town nearest the press");
+    assert!(
+        sim.walkable(p.cell_col(), p.cell_row()) || sim.in_water(p.cell_col(), p.cell_row()),
+        "they landed in something nobody can stand in"
+    );
+    assert!(p.events.iter().any(|e| e.text.contains("wandered into")),
+        "the arrival is on their record: {:?}", p.events);
+
+    // A press off the map is clamped onto it, not refused.
+    let far = sim.spawn_person_at(&state, -50.0, -50.0);
+    assert!(far.is_some(), "a press past the edge should land on it");
+
+    // The world keeps running with them in it.
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..(state.civ.people.day_length / dt) as usize {
+        sim.step(&state, dt);
+    }
+    assert!(sim.people.get(id).is_some(), "the arrival fell off the register");
+}

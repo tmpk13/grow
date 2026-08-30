@@ -1021,6 +1021,53 @@ impl Settlement {
         self.in_bounds(c, r) && self.terrain.kind[self.idx(c, r)] == Cell::Water as u8
     }
 
+    /// Somebody new, set down where the hand pointed: with the cut, one of the
+    /// two ways anything enters the world from outside the simulation. They
+    /// arrive grown, with the purse a founder would have carried, join the
+    /// nearest town still standing, and plan for themselves from the cell they
+    /// landed in. Water is a landing too - they swim out of it the way anybody
+    /// put down there does - and a cell nothing can stand in lands them on the
+    /// nearest one somebody can.
+    pub fn spawn_person_at(&mut self, state: &State, x: f64, y: f64) -> Option<u32> {
+        let (cols, rows) = (self.world().cols, self.world().rows);
+        let c = clampi(x.floor() as i32, 0, cols - 1);
+        let r = clampi(y.floor() as i32, 0, rows - 1);
+        let (c, r) = if self.walkable(c, r) || self.in_water(c, r) {
+            (c, r)
+        } else {
+            self.free_spot_near(c, r)?
+        };
+        let ci = self
+            .colonies
+            .iter()
+            .enumerate()
+            .filter(|(_, colony)| !colony.abandoned)
+            .min_by_key(|(_, colony)| {
+                let (cc, cr) = colony.center;
+                ((cc - c) as i64).pow(2) + ((cr - r) as i64).pow(2)
+            })
+            .map(|(i, _)| i)?;
+        let cfg = &state.civ;
+        let pcfg = &cfg.people;
+        let age = self.rng.int(pcfg.adult_age as i32 + 4, 34) as f64;
+        let id = self.people.claim_id();
+        let mut p = Person::new(id, c, r, age, &mut self.rng);
+        p.adult_age = pcfg.adult_age;
+        p.lifespan = self.rng.int(pcfg.lifespan_min, pcfg.lifespan_max) as f64;
+        p.coin = (cfg.economy.start_coin / cfg.start.population.max(1) as f64).round();
+        p.peak_coin = p.coin;
+        p.colony = self.colonies[ci].id;
+        p.born_in = self.colonies[ci].id;
+        p.born = self.day - age as i32;
+        let name = p.name.clone();
+        p.log(self.day, format!("wandered into {}", self.colonies[ci].name));
+        self.people.insert(p);
+        let day = self.day;
+        let arrival = format!("{} wandered into {}", name, self.colonies[ci].name);
+        self.colonies[ci].econ.log_event(arrival, day);
+        Some(id)
+    }
+
     /// Ground somebody can stand on and work from. Water is crossable but is
     /// not somewhere anything happens, so this stays dry land.
     pub fn walkable(&self, c: i32, r: i32) -> bool {

@@ -3,6 +3,12 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) An Add people switch beside Move people and Harvest, exclusive with
+  both: each press sets a new settler down where it lands. They arrive grown
+  with a founder's purse, join the nearest town still standing, land the way a
+  put-down does - water included, and a blocked cell hands them the nearest
+  one somebody can stand in - and plan for themselves from there. The arrival
+  goes on their record and into the town's book.
 - (LLM) Wind in the trees, settable: standing plants lean from the tips by
   their own height, each in its own phase, with a gust that travels across the
   map. It runs on simulation time, so a paused world holds still and the same

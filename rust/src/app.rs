@@ -120,6 +120,9 @@ pub struct UiState {
     /// The stage cuts what is growing rather than dragging the map. The other
     /// half of the same idea, and never on at the same time as it.
     pub harvest: bool,
+    /// The stage sets a new settler down where it is pressed. The third of the
+    /// exclusive press switches: never on with either of the other two.
+    pub add_people: bool,
     /// Where the pointer is while it is held down to cut, in client pixels, or
     /// nothing when it is not. The cut runs on the frame clock rather than on
     /// pointer moves: holding still on one plant is the whole gesture.
@@ -781,6 +784,7 @@ pub fn start() -> Result<(), JsValue> {
         play_time: 0.0,
         move_people: false,
         harvest: false,
+        add_people: false,
         cut_at: None,
         hover_at: None,
         marquee: None,
@@ -1178,6 +1182,8 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
                 if on {
                     sh.app.ui.harvest = false;
                     set_pressed("harvest-mode", false);
+                    sh.app.ui.add_people = false;
+                    set_pressed("add-people", false);
                     sh.app.ui.cut_at = None;
                     if let Some(civ) = &mut sh.app.settlement {
                         civ.drop_cuts();
@@ -1209,6 +1215,8 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
             if on {
                 sh.app.ui.move_people = false;
                 set_pressed("move-people", false);
+                sh.app.ui.add_people = false;
+                set_pressed("add-people", false);
             }
             sh.app.ui.cut_at = None;
             sh.app.ui.hover_at = None;
@@ -1229,6 +1237,41 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
             "hold or drag over plants to cut them; what they yield is left where they stood",
         );
         controls.push(harvest);
+
+        // The third thing a press can mean: somebody new, put down where it
+        // lands. Exclusive with the other two for the same reason they are
+        // exclusive with each other.
+        let h2 = h.clone();
+        let add_people =
+            ui::toggle_button("Add people", sh.app.ui.add_people, Scope::Toolbar, move |on| {
+                let mut sh = h2.borrow_mut();
+                sh.app.ui.add_people = on;
+                if on {
+                    sh.app.ui.move_people = false;
+                    set_pressed("move-people", false);
+                    sh.app.ui.harvest = false;
+                    set_pressed("harvest-mode", false);
+                    sh.app.ui.cut_at = None;
+                    sh.app.ui.hover_at = None;
+                    if let Some(civ) = &mut sh.app.settlement {
+                        civ.drop_cuts();
+                    }
+                }
+                sync_grab_cursor(&sh.app);
+                let note = if on {
+                    "press on the map to set a new settler down there - ctrl or middle drag moves \
+                     the map"
+                } else {
+                    "the stage moves the map again"
+                };
+                sh.app.set_note(note);
+            });
+        let _ = add_people.set_attribute("id", "add-people");
+        let _ = add_people.set_attribute(
+            "title",
+            "each press sets a new settler down where it lands; they join the nearest town",
+        );
+        controls.push(add_people);
     }
 
     let _ = toolbar.append_child(&el("div").class("toolbar-row").children(controls).get());
@@ -1441,6 +1484,14 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                 sh.app.ui.cut_at = Some((pe.client_x() as f64, pe.client_y() as f64));
                 return;
             }
+            if adds(&sh.app, pe) {
+                // Only the press itself sets somebody down: a drag with the
+                // switch on moves the map rather than sowing a trail of
+                // settlers, and a press off the map falls through to the same.
+                if spawn_person(&mut sh.app, pe.client_x() as f64, pe.client_y() as f64) {
+                    return;
+                }
+            }
             if !paints(&sh.app, pe) {
                 return;
             }
@@ -1627,6 +1678,46 @@ fn cuts(app: &App, pe: &web_sys::PointerEvent) -> bool {
         && pe.buttons() & 4 == 0
 }
 
+/// Whether this press sets a new settler down rather than dragging the map.
+/// The same rules again: the switch, the settlement, and a plain press.
+fn adds(app: &App, pe: &web_sys::PointerEvent) -> bool {
+    app.mode == Mode::Settlement
+        && app.ui.add_people
+        && app.settlement.is_some()
+        && !pe.ctrl_key()
+        && pe.button() != 1
+        && pe.buttons() & 4 == 0
+}
+
+/// Sets a new settler down under the pointer, and says who arrived. A press
+/// that misses the map spawns nobody and says so by returning false, which
+/// hands the press back to the camera.
+fn spawn_person(app: &mut App, client_x: f64, client_y: f64) -> bool {
+    let world = match app.settlement.as_ref() {
+        Some(s) => s.world().clone(),
+        None => return false,
+    };
+    let (gx, gy) = match app.viewport.ground_at(client_x, client_y, &world) {
+        Some(p) => p,
+        None => return false,
+    };
+    let id = {
+        let state = &app.state;
+        match app.settlement.as_mut().and_then(|sim| sim.spawn_person_at(state, gx, gy)) {
+            Some(id) => id,
+            None => return false,
+        }
+    };
+    let name = app
+        .settlement
+        .as_ref()
+        .and_then(|sim| sim.people.get(id))
+        .map(|p| p.name.clone())
+        .unwrap_or_default();
+    app.set_note(&format!("{name} wandered in"));
+    true
+}
+
 /// Picks up whoever is under the pointer, and says who that was.
 fn start_grab(app: &mut App, client_x: f64, client_y: f64) -> Option<u32> {
     let world = app.settlement.as_ref()?.world().clone();
@@ -1686,6 +1777,8 @@ fn sync_grab_cursor(app: &App) {
     let _ = if on { list.add_1("moving-people") } else { list.remove_1("moving-people") };
     let cutting = settlement && app.ui.harvest;
     let _ = if cutting { list.add_1("harvesting") } else { list.remove_1("harvesting") };
+    let adding = settlement && app.ui.add_people;
+    let _ = if adding { list.add_1("adding-people") } else { list.remove_1("adding-people") };
     if !on {
         set_holding(false);
     }

@@ -6,7 +6,6 @@ What is left. What is done is in TODO_COMPLETE.md.
 - Being in water should not cut people in half. Have unique sprite for `swimming` and `still` in water.
     - People being held (`Move people`) should have a unique animation.
 
-- Need to be able to add people. Add command like `Move people` and `Harvest`, to spawn people.
 - Add command like `Harvest`, to enter buildings.
 
 - People need to be able to remove built things.
@@ -16,6 +15,10 @@ What is left. What is done is in TODO_COMPLETE.md.
     - Buttons at the bottom of the screen for 
 
 - Add a menu for placing things in the world.
+
+- From an image can add zones of things (water, rock, grassy areas, no plant areas, tree areas, general plant areas).
+    - Image is used as landscape, drag a box/outline of where the area is, can select by color threshold.
+
 
 # Do later
 

@@ -968,6 +968,41 @@ await page.waitForTimeout(200);
 if (await page.evaluate(() => document.body.classList.contains('harvesting'))) {
   problems.push('turning the harvest switch off left the stage cutting');
 }
+
+// Adding people: the third exclusive press switch. A press on the map sets a
+// new settler down there; the head count says whether anybody arrived.
+const headCount = async () => {
+  const status = await page.evaluate(() => document.getElementById('statusbar').textContent);
+  const m = /people (\d+)/.exec(status);
+  return m ? Number(m[1]) : -1;
+};
+await page.click('#harvest-mode');
+await page.waitForTimeout(150);
+await page.click('#add-people');
+await page.waitForTimeout(200);
+if (!(await page.evaluate(() => document.body.classList.contains('adding-people')))) {
+  problems.push('the add people switch did not change what a press on the stage does');
+}
+if (await page.evaluate(() => document.body.classList.contains('harvesting'))) {
+  problems.push('turning add people on left the stage cutting as well');
+}
+const headsBefore = await headCount();
+await stagePress(0.5, 0.55, 'pointerdown');
+await stagePress(0.5, 0.55, 'pointerup');
+await page.waitForTimeout(600);
+const headsAfter = await headCount();
+if (headsAfter !== headsBefore + 1) {
+  problems.push(`a press with add people on went from ${headsBefore} heads to ${headsAfter}`);
+}
+if (!(await page.evaluate(() => document.getElementById('save-note').textContent)).includes('wandered in')) {
+  problems.push('nobody said who arrived');
+}
+console.log(`added a settler: ${(await page.evaluate(() => document.getElementById('save-note').textContent)).trim()}`);
+await page.click('#add-people');
+await page.waitForTimeout(200);
+if (await page.evaluate(() => document.body.classList.contains('adding-people'))) {
+  problems.push('turning the add people switch off left the stage adding people');
+}
 await resume();
 
 // Back to the lab and in again: both sims have to survive the switch.

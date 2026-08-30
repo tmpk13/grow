@@ -1283,6 +1283,11 @@ body.harvesting #world-canvas {
   cursor: crosshair;
 }
 
+/* Setting somebody new down where the press lands. */
+body.adding-people #world-canvas {
+  cursor: copy;
+}
+
 .readout.hint {
   min-width: 0;
   opacity: 0.75;
