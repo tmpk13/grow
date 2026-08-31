@@ -986,16 +986,39 @@ fn numbered_frames_sort_the_way_they_are_numbered() {
 fn a_project_carries_its_sprites_through_a_save() {
     let mut state = State::new();
     state.civ.sprites.set(Motion::Walk, Some(strip(4, 6, 8)));
-    state.civ.sprites.walk.as_mut().unwrap().height = 1.75;
+    state.civ.sprites.walk.as_mut().unwrap().scale = 1.75;
     let back = State::from_json(&state.to_json()).expect("reload");
     let clip = back.civ.sprites.walk.as_ref().expect("the walk survived");
     assert_eq!(clip.frame_count(), 4);
     assert_eq!(clip.frame_w(), 6);
     assert_eq!(clip.h, 8);
-    assert_eq!(clip.height, 1.75);
+    assert_eq!(clip.scale, 1.75);
     for f in 0..4 {
         assert_eq!(clip.pixel(f, 0, 0), (f + 1) as u32, "frame {f} came back wrong");
     }
+}
+
+#[test]
+fn a_clip_measured_in_cells_comes_back_as_the_size_it_was_drawn() {
+    // Settler art used to be given a height in cells and stretched to it. A
+    // project written then still has to draw its settlers the same size, so the
+    // height becomes the scale that puts the art at exactly that height.
+    let mut state = State::new();
+    state.civ.sprites.set(Motion::Walk, Some(strip(1, 6, 16)));
+    let raw = state.to_json().replace(r#""stride":"#, r#""height":1.75,"stride":"#);
+    assert!(raw.contains(r#""height":1.75"#), "the old field was not written to test with");
+
+    let back = State::from_json(&raw).expect("reload");
+    let clip = back.civ.sprites.walk.as_ref().expect("the walk survived");
+    // Sixteen pixels of art at eight to a cell is two cells; a cell and three
+    // quarters is seven eighths of that.
+    assert_eq!(clip.scale, 0.875);
+    assert_eq!(clip.height, 0.0, "the old field should not have been kept");
+    let cell = back.civ.world.cell_px;
+    let (_, drawn) = clip.drawn_cells(cell, back.civ.art_px_per_cell);
+    assert!((drawn - 1.75).abs() < 0.05, "it came back {drawn} cells tall rather than 1.75");
+    // And it leaves the file the first time the project is saved again.
+    assert!(!back.to_json().contains(r#""height":"#), "the old field was written back out");
 }
 
 #[test]
@@ -1443,7 +1466,7 @@ fn clearing_a_picture_takes_it_out_and_moves_the_revision_on() {
 }
 
 #[test]
-fn a_picture_fills_the_box_the_generator_would_have() {
+fn the_box_a_generated_thing_fills_is_its_footprint_and_what_stands_on_it() {
     use grow::civ::civ_render::made_box;
     let world = grow::world::World::new(&grow::civ::config::default_civ_world());
     for def in grow::civ::buildings::BUILDINGS {
@@ -1472,7 +1495,7 @@ fn pictures_survive_a_project_file() {
 
 #[test]
 fn a_finished_building_with_a_picture_is_drawn_from_it() {
-    use grow::civ::civ_render::{building_sprite, made_box, Detail, SpriteCache};
+    use grow::civ::civ_render::{building_sprite, Detail, SpriteCache};
     use grow::civ::sprites::Clip;
 
     let (mut sim, mut state) = peopled(48, 24);
@@ -1500,8 +1523,10 @@ fn a_finished_building_with_a_picture_is_drawn_from_it() {
     let mut cache = SpriteCache::default();
     let art =
         building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, false, Detail::Full);
-    let (w, h) = made_box(sim.world(), def);
-    assert_eq!((art.w, art.h), (w, h), "the picture should fill the box it was given");
+    let kept = state.civ.made.slot(def.id).expect("the picture is in its slot");
+    let want = kept.drawn_size(sim.world().cell_px, state.civ.art_px_per_cell);
+    assert_eq!((art.w, art.h), want, "the picture should come out at the size it was drawn");
+    assert_eq!(art.w, art.h, "a square picture should not take the shape of a box");
     assert!(art.px.iter().all(|v| *v == pink), "the picture is what should have been drawn");
     assert_ne!(
         (plain.w, plain.h, plain.px.clone()),
@@ -1519,7 +1544,7 @@ fn a_finished_building_with_a_picture_is_drawn_from_it() {
 
 #[test]
 fn a_half_built_building_is_still_drawn_rising_out_of_the_ground() {
-    use grow::civ::civ_render::{building_sprite, made_box, Detail, SpriteCache};
+    use grow::civ::civ_render::{building_sprite, Detail, SpriteCache};
     use grow::civ::sprites::Clip;
 
     let (mut sim, mut state) = peopled(48, 24);
@@ -1547,7 +1572,8 @@ fn a_half_built_building_is_still_drawn_rising_out_of_the_ground() {
     let mut cache = SpriteCache::default();
     let drawn =
         building_sprite(&mut cache, &state, sim.world(), &sim.buildings[site], false, false, Detail::Full);
-    let (w, h) = made_box(sim.world(), def);
+    let kept = state.civ.made.slot(def.id).expect("the picture is in its slot");
+    let (w, h) = kept.drawn_size(sim.world().cell_px, state.civ.art_px_per_cell);
     assert!(
         (drawn.w, drawn.h) != (w, h) || !drawn.px.iter().all(|v| *v == pink),
         "one picture cannot say how far up a wall has got"
@@ -1872,7 +1898,7 @@ fn a_picture_for_one_state_only_leaves_the_rest_generated() {
 
 #[test]
 fn a_site_is_never_drawn_from_the_finished_picture() {
-    use grow::civ::civ_render::{building_sprite, made_box, Detail, SpriteCache};
+    use grow::civ::civ_render::{building_sprite, Detail, SpriteCache};
     use grow::civ::sprites::Clip;
 
     let (mut sim, mut state) = peopled(48, 24);
@@ -1900,7 +1926,12 @@ fn a_site_is_never_drawn_from_the_finished_picture() {
     let mut cache = SpriteCache::default();
     let drawn =
         building_sprite(&mut cache, &state, sim.world(), &sim.buildings[site], false, false, Detail::Full);
-    let (w, h) = made_box(sim.world(), def);
+    let (w, h) = state
+        .civ
+        .made
+        .slot(def.id)
+        .expect("the picture is in its slot")
+        .drawn_size(sim.world().cell_px, state.civ.art_px_per_cell);
     assert!(
         (drawn.w, drawn.h) != (w, h) || !drawn.px.iter().all(|v| *v == pink),
         "a half built thing should not be drawn as the finished one"

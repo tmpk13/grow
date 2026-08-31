@@ -1,9 +1,13 @@
 //! Settler animations built from dropped images.
 //!
 //! A clip is one sheet of pixels read as a row of equal frames, plus how it is
-//! played and how large it is drawn. The sheet is kept whole rather than cut
-//! up, so changing the frame count re-reads the same image instead of asking
-//! for it to be dropped again.
+//! played. The sheet is kept whole rather than cut up, so changing the frame
+//! count re-reads the same image instead of asking for it to be dropped again.
+//!
+//! How large a clip comes out is the art's own business: a source pixel stands
+//! for a fixed fraction of a cell, so a frame is drawn at the size it was drawn
+//! at, in proportion, and two motions exported from the same canvas match
+//! without either of them being measured.
 //!
 //! There is one clip per motion, and a motion with nothing dropped on it falls
 //! back to a related one, so a single walk sheet is enough to stand in for the
@@ -13,12 +17,60 @@ use serde::{Deserialize, Serialize};
 
 use crate::civ::people::Person;
 
+/// A clip's pixels: tagged runs on the way out, and either those or the plain
+/// pixel-per-hex-quad form clips were written in before on the way in.
+mod px_art {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(px: &[u32], s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&crate::art::encode_runs(px))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u32>, D::Error> {
+        let raw = String::deserialize(d)?;
+        if let Some(px) = crate::art::decode_runs(&raw) {
+            return Ok(px);
+        }
+        let mut out = Vec::with_capacity(raw.len() / 8);
+        let mut at = 0;
+        while at + 8 <= raw.len() {
+            out.push(crate::util::rgba_hex_to_packed(&raw[at..at + 8]));
+            at += 8;
+        }
+        Ok(out)
+    }
+}
+
 /// Frames a clip may hold, and the largest one frame may be. Both are here to
 /// keep a project that lives in local storage from being filled by a
 /// screenshot dropped on the panel by mistake; a sheet past either is scaled
-/// down or cut short on the way in.
+/// down or cut short on the way in. A frame that had to be scaled down keeps
+/// the size it was meant to be drawn at through the clip's `scale`.
 pub const MAX_FRAMES: i32 = 24;
-pub const MAX_FRAME_PX: i32 = 64;
+pub const MAX_FRAME_PX: i32 = 256;
+
+/// Art pixels to a map cell, when a project has not said otherwise. Eight is
+/// the cell width a settlement starts at, so art dropped on a fresh project is
+/// drawn at its own pixel size.
+pub const DEFAULT_ART_PX_PER_CELL: f64 = 8.0;
+
+/// What a clip's scale may be set to. Under a twentieth nothing would be left
+/// of the art, and past sixteen a frame is a wall.
+pub const MIN_SCALE: f64 = 0.05;
+pub const MAX_SCALE: f64 = 16.0;
+
+/// The largest a frame is drawn, in cells either way. A picture past this is a
+/// mistake rather than a decision, and the blit is what would pay for it. Both
+/// sides are held to the same ratio, so hitting it shrinks the art rather than
+/// squashing it.
+pub const MAX_DRAWN_CELLS: i32 = 32;
+
+/// Map pixels one source pixel covers.
+pub fn art_zoom(cell_px: i32, px_per_cell: f64, scale: f64) -> f64 {
+    let per_cell = if px_per_cell.is_finite() { px_per_cell.clamp(1.0, 256.0) } else { DEFAULT_ART_PX_PER_CELL };
+    let scale = if scale.is_finite() { scale.clamp(MIN_SCALE, MAX_SCALE) } else { 1.0 };
+    cell_px.max(1) as f64 / per_cell * scale
+}
 
 /// Alpha below this reads as nothing there. Sprites are blitted as opaque
 /// pixels over the map, so an edge is either drawn or it is not.
@@ -155,7 +207,7 @@ pub struct Clip {
     /// count be changed after the drop.
     pub w: i32,
     pub h: i32,
-    #[serde(with = "crate::sampler::px_hex")]
+    #[serde(with = "px_art")]
     pub px: Vec<u32>,
     pub frames: i32,
     /// Frames per second, or frames per cell walked when `stride` is set.
@@ -163,7 +215,15 @@ pub struct Clip {
     /// Tie the frame to ground covered rather than to the clock, so a walk
     /// never slides and never runs on the spot.
     pub stride: bool,
-    /// Drawn height, in map cells. Width follows from the frame's shape.
+    /// Multiplies the size the art comes out at. One is the art's own size:
+    /// every source pixel covers what one art pixel is worth, which is what the
+    /// project's art pixels per cell says. A frame that had to be scaled down
+    /// to fit the cap arrives with the scale that puts it back.
+    pub scale: f64,
+    /// What this was drawn at, in cells, before art carried its own size. Read
+    /// from an older project and turned into a scale on the way in; never
+    /// written, so it leaves the file the first time the project is saved.
+    #[serde(skip_serializing)]
     pub height: f64,
     /// Cells to lift the sprite off the ground, for art that carries its own
     /// footing.
@@ -197,7 +257,8 @@ impl Default for Clip {
             frames: 1,
             fps: 6.0,
             stride: false,
-            height: 1.1,
+            scale: 1.0,
+            height: 0.0,
             lift: 0.0,
             flip: true,
             mirror: false,
@@ -209,15 +270,17 @@ impl Default for Clip {
 }
 
 impl Clip {
-    /// A single image read as a row of equal frames.
+    /// A single image read as a row of equal frames. The frame is kept as it
+    /// was drawn, padding and all: where the art sits in it is the composition,
+    /// and it is what puts a figure's feet on the ground and holds a tool out
+    /// to the side of them.
     pub fn from_strip(w: i32, h: i32, px: Vec<u32>, frames: i32, source: String) -> Option<Clip> {
         if w <= 0 || h <= 0 || px.len() < (w * h) as usize {
             return None;
         }
         let frames = frames.clamp(1, MAX_FRAMES);
-        let (w, h, px) = trim_sheet(w, h, &px, frames);
-        let (w, h, px) = fit_sheet(w, h, &px, frames);
-        Some(Clip { w, h, px, frames, source, ..Clip::default() })
+        let (w, h, px, scale) = fit_sheet(w, h, &px, frames);
+        Some(Clip { w, h, px, frames, source, scale, ..Clip::default() })
     }
 
     /// One image per frame, laid into a sheet. Every frame is given the widest
@@ -251,9 +314,8 @@ impl Clip {
                 }
             }
         }
-        let (w, h, px) = trim_sheet(w, fh, &px, frames);
-        let (w, h, px) = fit_sheet(w, h, &px, frames);
-        Some(Clip { w, h, px, frames, source, ..Clip::default() })
+        let (w, h, px, scale) = fit_sheet(w, fh, &px, frames);
+        Some(Clip { w, h, px, frames, source, scale, ..Clip::default() })
     }
 
     /// A clip built from a sheet drawn in the editor. The sheet is already a
@@ -265,13 +327,13 @@ impl Clip {
         if w <= 0 || h <= 0 || px.iter().all(|v| *v == 0) {
             return None;
         }
-        let (w, h, px) = trim_sheet(w, h, &px, frames);
-        let (w, h, px) = fit_sheet(w, h, &px, frames);
+        let (w, h, px, scale) = fit_sheet(w, h, &px, frames);
         Some(Clip {
             w,
             h,
             px,
             frames,
+            scale,
             fps: sheet.fps,
             source: format!("editor: {}", sheet.name),
             sheet: sheet.id.clone(),
@@ -346,10 +408,48 @@ impl Clip {
         (t.floor() as i64).rem_euclid(n as i64) as i32
     }
 
-    /// What the sheet costs in a saved project, where a pixel is eight hex
-    /// characters.
+    /// Turns a height in cells, which is how a clip was sized before art
+    /// carried its own, into the scale that draws it at that same height, and
+    /// forgets it. A clip written since has no height on it and is left alone.
+    pub fn take_legacy_height(&mut self, px_per_cell: f64) {
+        let height = std::mem::take(&mut self.height);
+        if height <= 0.0 || self.h <= 0 {
+            return;
+        }
+        let per_cell = if px_per_cell.is_finite() {
+            px_per_cell.clamp(1.0, 256.0)
+        } else {
+            DEFAULT_ART_PX_PER_CELL
+        };
+        self.scale = (height * per_cell / self.h as f64).clamp(MIN_SCALE, MAX_SCALE);
+    }
+
+    /// How large one frame comes out on the map, in map pixels. The art's own
+    /// pixels are what says it: nothing here is measured against a box, so the
+    /// same source at the same scale is the same size in every slot it is
+    /// dropped on, and the shape of the frame is never touched.
+    pub fn drawn_size(&self, cell_px: i32, px_per_cell: f64) -> (i32, i32) {
+        let zoom = art_zoom(cell_px, px_per_cell, self.scale);
+        let (w, h) = (self.frame_w() as f64 * zoom, self.h as f64 * zoom);
+        let cap = (cell_px.max(1) * MAX_DRAWN_CELLS) as f64;
+        let over = (w / cap).max(h / cap).max(1.0);
+        (
+            ((w / over).round() as i32).max(1),
+            ((h / over).round() as i32).max(1),
+        )
+    }
+
+    /// The same size read in cells, which is what the panel says out loud: a
+    /// settler stands about a cell and a bit, a house is two or three across.
+    pub fn drawn_cells(&self, cell_px: i32, px_per_cell: f64) -> (f64, f64) {
+        let (w, h) = self.drawn_size(cell_px, px_per_cell);
+        let cell = cell_px.max(1) as f64;
+        (w as f64 / cell, h as f64 / cell)
+    }
+
+    /// What the sheet costs in a saved project: twelve characters a run.
     pub fn bytes(&self) -> usize {
-        self.px.len() * 8
+        crate::art::run_count(&self.px) * 12
     }
 }
 
@@ -358,12 +458,16 @@ impl Clip {
 /// frame, which keeps the proportions the frame count is read against, and the
 /// scaled width is held to a whole number of frames so the sheet still divides
 /// exactly afterwards.
-fn fit_sheet(w: i32, h: i32, px: &[u32], frames: i32) -> (i32, i32, Vec<u32>) {
+///
+/// The ratio comes back with it as the scale that puts the loss back: the sheet
+/// holds fewer pixels than it was drawn with, but it is still drawn at the size
+/// those pixels were meant to cover.
+fn fit_sheet(w: i32, h: i32, px: &[u32], frames: i32) -> (i32, i32, Vec<u32>, f64) {
     let frames = frames.max(1);
     let fw = (w / frames).max(1);
     let ratio = (fw as f64 / MAX_FRAME_PX as f64).max(h as f64 / MAX_FRAME_PX as f64);
     if ratio <= 1.0 {
-        return (w, h, px.to_vec());
+        return (w, h, px.to_vec(), 1.0);
     }
     let nfw = ((fw as f64 / ratio).round() as i32).max(1);
     let nw = nfw * frames;
@@ -384,61 +488,7 @@ fn fit_sheet(w: i32, h: i32, px: &[u32], frames: i32) -> (i32, i32, Vec<u32>) {
             }
         }
     }
-    (nw, nh, out)
-}
-
-/// Crops a sheet to the smallest box that holds the art in every frame.
-///
-/// Source images are padded, and never twice by the same amount: a figure
-/// exported on a 64x64 canvas at a third of that height arrives three times
-/// smaller than the same figure exported tight, because the drawn height is
-/// measured against the frame box rather than against the art in it. Cropping
-/// to the union of what the frames actually draw makes the height mean the art,
-/// so two sheets asked for the same height come out the same size.
-///
-/// The box is shared by every frame rather than fitted frame by frame, so a
-/// figure that leans or steps still moves within it instead of being re-centered
-/// on itself every frame.
-fn trim_sheet(w: i32, h: i32, px: &[u32], frames: i32) -> (i32, i32, Vec<u32>) {
-    let frames = frames.max(1);
-    let fw = (w / frames).max(1);
-    let (mut x0, mut y0, mut x1, mut y1) = (fw, h, -1, -1);
-    for f in 0..frames {
-        let base = f * fw;
-        for y in 0..h {
-            for x in 0..fw {
-                let sx = base + x;
-                if sx >= w || px[(y * w + sx) as usize] == 0 {
-                    continue;
-                }
-                x0 = x0.min(x);
-                x1 = x1.max(x);
-                y0 = y0.min(y);
-                y1 = y1.max(y);
-            }
-        }
-    }
-    if x1 < x0 || y1 < y0 {
-        return (w, h, px.to_vec());
-    }
-    let (nfw, nh) = (x1 - x0 + 1, y1 - y0 + 1);
-    if nfw == fw && nh == h {
-        return (w, h, px.to_vec());
-    }
-    let nw = nfw * frames;
-    let mut out = vec![0u32; (nw * nh) as usize];
-    for f in 0..frames {
-        for y in 0..nh {
-            for x in 0..nfw {
-                let sx = f * fw + x0 + x;
-                if sx >= w {
-                    continue;
-                }
-                out[(y * nw + f * nfw + x) as usize] = px[((y0 + y) * w + sx) as usize];
-            }
-        }
-    }
-    (nw, nh, out)
+    (nw, nh, out, ratio.clamp(MIN_SCALE, MAX_SCALE))
 }
 
 /// How many frames a strip most likely holds. A sheet whose width is a whole
@@ -780,6 +830,17 @@ impl MadeSprites {
 
     pub fn set(&mut self, id: &str, clip: Clip) {
         self.slots.insert(id.to_string(), clip);
+        self.touch();
+    }
+
+    /// The picture for one key, to be changed in place. Whoever changes it owes
+    /// the drawing a `touch`, which is what lets go of the sprite built from
+    /// what it used to say.
+    pub fn slot_mut(&mut self, id: &str) -> Option<&mut Clip> {
+        self.slots.get_mut(id)
+    }
+
+    pub fn touch(&mut self) {
         self.rev = self.rev.wrapping_add(1);
     }
 

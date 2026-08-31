@@ -18,12 +18,12 @@ use web_sys::{
 
 use crate::app::{App, Handle};
 use crate::civ::sprites::{
-    guess_frames, Clip, Frame, FromSheet, Motion, MAX_FRAMES, MOTIONS,
+    guess_frames, Clip, Frame, FromSheet, Motion, MAX_FRAMES, MAX_SCALE, MIN_SCALE, MOTIONS,
 };
 use crate::find::{Entry, Index, Search};
 use crate::ui::{
-    app_bool, button, danger_button, document, el, input_el, note, number_field, on, section,
-    select_field, NumOpts, Scope, Tap,
+    app_bool, app_num, button, danger_button, document, el, input_el, note, number_field, on,
+    section, select_field, NumOpts, Scope, Tap,
 };
 use crate::util::unpack_rgba;
 
@@ -53,8 +53,11 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
              generated body. One image is read as a strip of frames; several are read \
              as one frame each, in the order their names sort. A motion with nothing \
              on it borrows from a related one, so a single walk sheet is enough to \
-             replace the settler everywhere.",
+             replace the settler everywhere. A frame is drawn whole, exactly as it was \
+             drawn, so motions exported from one canvas line up however much room each \
+             of them uses.",
         ),
+        art_scale_row(app, h),
         app_bool(
             h,
             "Draw settlers from dropped images",
@@ -81,6 +84,33 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
     section("Settler sprites", rows)
 }
 
+/// The one number that says how large every dropped picture comes out: the
+/// resolution the art was drawn at, against a map cell. It sits in both sprite
+/// sections because settlers and the things they build have to agree about it
+/// or a settler ends up towering over a house.
+fn art_scale_row(app: &App, h: &Handle) -> Element {
+    let cell = app.state.civ.world.cell_px;
+    let per_cell = app.state.civ.art_px_per_cell;
+    let hint = format!(
+        "art pixels to one map cell; a cell is {cell} px on the map, so art drawn at \
+         {per_cell:.0} px per cell comes out at {:.2} of its own size",
+        cell as f64 / per_cell.max(1.0)
+    );
+    app_num(
+        h,
+        "Art pixels per cell",
+        per_cell,
+        NumOpts { min: 1.0, max: 64.0, step: 1.0 },
+        Some(&hint),
+        |app, v| {
+            app.state.civ.art_px_per_cell = v;
+            app.state.civ.made.touch();
+            app.sprites_changed();
+            app.rebuild_panel();
+        },
+    )
+}
+
 /// Pictures for the things people make, one per state of each. There are forty
 /// odd things and four states apiece, so the list is not simply shown: it is
 /// searched, and the whole of it is behind a switch.
@@ -89,11 +119,13 @@ pub fn made_section(app: &App, h: &Handle) -> Element {
     let mut rows = vec![
         note(
             "Buildings, walls, boats and the loads people carry are drawn out of the sampling \
-             boxes unless there is a picture for them. A picture is scaled to the box the \
-             generator would have filled, so art and generated things stand together. A thing \
-             with a picture for one state only is drawn from it in that state and generated the \
-             rest of the time.",
+             boxes unless there is a picture for them. A picture comes out at the size it was \
+             drawn: its own pixels against the art resolution below, never stretched to the box \
+             the generator would have filled, and stood on the front edge of the footprint with \
+             whatever it does not cover hanging evenly either side. A thing with a picture for \
+             one state only is drawn from it in that state and generated the rest of the time.",
         ),
+        art_scale_row(app, h),
         app_bool(
             h,
             "Draw made things from pictures",
@@ -229,6 +261,20 @@ fn made_row(app: &App, h: &Handle, entry: &Entry) -> Element {
         )
         .child(&drop_zone(h, Slot::Made(key.clone()), clip))
         .get();
+    if let Some(c) = clip.filter(|c| c.ready()) {
+        let (dw, dh) = c.drawn_cells(app.state.civ.world.cell_px, app.state.civ.art_px_per_cell);
+        let _ = row.append_child(
+            &el("span")
+                .class("field-hint")
+                .text(&format!(
+                    "{}x{} px, drawn {dw:.1}x{dh:.1} cells",
+                    c.frame_w(),
+                    c.h
+                ))
+                .get(),
+        );
+        let _ = row.append_child(&made_num(h, &key, c.scale));
+    }
     if clip.is_some() {
         let h2 = h.clone();
         let _ = row.append_child(&crate::ui::danger_button("Clear", Scope::Panel, move || {
@@ -242,6 +288,29 @@ fn made_row(app: &App, h: &Handle, entry: &Entry) -> Element {
     row
 }
 
+/// The scale of one picture, changed in place. A made slot has no playback to
+/// tune, so this is the whole of it: how large the art comes out, against what
+/// it was drawn at.
+fn made_num(h: &Handle, key: &str, value: f64) -> Element {
+    let h2 = h.clone();
+    let key = key.to_string();
+    number_field(
+        "Scale",
+        value,
+        NumOpts { min: MIN_SCALE, max: MAX_SCALE, step: 0.05 },
+        None,
+        move |v| {
+            let mut sh = h2.borrow_mut();
+            sh.app.record("made scale", true);
+            if let Some(clip) = sh.app.state.civ.made.slot_mut(&key) {
+                clip.scale = v;
+            }
+            sh.app.state.civ.made.touch();
+            sh.app.sprites_changed();
+        },
+    )
+}
+
 fn size_text(bytes: usize) -> String {
     if bytes >= 1 << 20 {
         format!("{:.1} MB", bytes as f64 / (1 << 20) as f64)
@@ -250,16 +319,25 @@ fn size_text(bytes: usize) -> String {
     }
 }
 
-fn meta_text(clip: Option<&Clip>) -> String {
+fn meta_text(app: &App, clip: Option<&Clip>) -> String {
     match clip.filter(|c| c.ready()) {
-        Some(c) => format!("{} frames, {}x{}", c.frame_count(), c.frame_w(), c.h),
+        Some(c) => {
+            let (w, h) =
+                c.drawn_cells(app.state.civ.world.cell_px, app.state.civ.art_px_per_cell);
+            format!(
+                "{} frames, {}x{} px, drawn {w:.1}x{h:.1} cells",
+                c.frame_count(),
+                c.frame_w(),
+                c.h
+            )
+        }
         None => "nothing dropped".to_string(),
     }
 }
 
 fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
     let clip = app.state.civ.sprites.clip(motion);
-    let meta = el("span").class("sprite-meta").text(&meta_text(clip)).get();
+    let meta = el("span").class("sprite-meta").text(&meta_text(app, clip)).get();
     let head = el("header")
         .class("sprite-head")
         .child(&el("span").class("sprite-name").text(motion.label()).get())
@@ -309,13 +387,13 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
             h,
             motion,
             &meta,
-            "Height (cells)",
-            c.height,
-            0.2,
-            6.0,
+            "Scale",
+            c.scale,
+            MIN_SCALE,
+            MAX_SCALE,
             0.05,
-            Some("width follows the shape of the frame"),
-            |clip, v| clip.height = v,
+            Some("1 is the art at its own size; both sides move together, so the frame's shape is never changed"),
+            |clip, v| clip.scale = v,
         ));
         body.push(clip_num(
             h,
@@ -598,9 +676,15 @@ fn load_files(h: &Handle, slot: Slot, files: FileList) {
 
 fn apply(h: &Handle, slot: Slot, frames: Vec<Frame>, strip: bool, source: &str) {
     let mut sh = h.borrow_mut();
+    // A settler's motion is an animation, so a single image is read as a strip
+    // of equal frames. A thing people make stands still and is drawn from its
+    // first frame, so guessing at columns there would only cut a wide picture
+    // of a barn into pieces of one.
+    let animated = matches!(slot, Slot::Motion(_));
     let built = if strip {
         frames.into_iter().next().and_then(|(w, height, px)| {
-            Clip::from_strip(w, height, px, guess_frames(w, height), source.to_string())
+            let frames = if animated { guess_frames(w, height) } else { 1 };
+            Clip::from_strip(w, height, px, frames, source.to_string())
         })
     } else {
         Clip::from_frames(frames, source.to_string())
@@ -642,7 +726,12 @@ pub fn apply_clip(app: &mut App, motion: Motion, mut clip: Clip) {
         Some(old) => {
             clip.fps = old.fps;
             clip.stride = old.stride;
-            clip.height = old.height;
+            // A scale the new art brought with it is that art putting back what
+            // it lost fitting the cap, and outranks the old tuning; a clip that
+            // came in at its own size keeps whatever the slot was set to.
+            if clip.scale == 1.0 {
+                clip.scale = old.scale;
+            }
             clip.lift = old.lift;
             clip.flip = old.flip;
             clip.mirror = old.mirror;
@@ -687,7 +776,8 @@ fn clip_num(
         }
         // The header carries the frame size, which the frame count changes, and
         // rebuilding the whole panel on every drag of a slider would not.
-        meta.set_text_content(Some(&meta_text(sh.app.state.civ.sprites.clip(motion))));
+        let text = meta_text(&sh.app, sh.app.state.civ.sprites.clip(motion));
+        meta.set_text_content(Some(&text));
         sh.app.sprites_changed();
     })
 }

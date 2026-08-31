@@ -15,50 +15,114 @@ use serde::{Deserialize, Serialize};
 
 use crate::util::{hsl_to_packed, EMPTY_COLOR};
 
-/// Caps on one sheet. A frame past the size cap is not something the map can
-/// draw, and the rest is what keeps a project small enough to save.
-pub const MAX_SHEET_PX: i32 = 64;
+/// Caps on one sheet. The size cap is the largest a frame may be drawn at,
+/// which has to cover the tallest thing on the map: a tower at the widest cell
+/// runs to about a hundred and thirty pixels, and art authored above the map's
+/// own resolution goes further again. The rest is what keeps a project small
+/// enough to save.
+pub const MAX_SHEET_PX: i32 = 256;
 pub const MAX_SHEET_FRAMES: i32 = 24;
 pub const MAX_LAYERS: usize = 8;
 
-/// Longest run the encoding can carry, because a run length is two hex digits.
+/// Longest run the first cel encoding could carry, because its run length was
+/// two hex digits. Still read; no longer written.
 const MAX_RUN: usize = 255;
 
-/// Cels travel as runs of `<count><rgba>`, two hex digits then eight.
+/// Longest run the tagged encoding carries, in four hex digits. A frame is up
+/// to 256 pixels either way now, so a blank one is a single run rather than the
+/// two hundred and fifty seven the narrow form needed.
+const MAX_RUN_WIDE: usize = 0xffff;
+
+/// What tells the tagged encoding apart from the two that came before it. Both
+/// of those are plain hex, so a leading letter cannot be mistaken for either.
+const RUNS_TAG: char = 'r';
+
+/// Pixels as `r` then runs of `<count><rgba>`, four hex digits then eight.
+///
+/// Everything the project saves that is a rectangle of pixels is written this
+/// way; what differs is what an untagged string means, which is why decoding
+/// a tagged string and the two older forms are separate functions.
+pub fn encode_runs(px: &[u32]) -> String {
+    let mut out = String::with_capacity(px.len() / 4 + 1);
+    out.push(RUNS_TAG);
+    let mut at = 0;
+    while at < px.len() {
+        let v = px[at];
+        let mut run = 1;
+        while at + run < px.len() && px[at + run] == v && run < MAX_RUN_WIDE {
+            run += 1;
+        }
+        out.push_str(&format!("{run:04x}"));
+        out.push_str(&crate::util::packed_to_rgba_hex(v));
+        at += run;
+    }
+    out
+}
+
+/// Nothing when the string is not tagged, so the caller can fall back to
+/// whatever untagged used to mean where it is being read.
+pub fn decode_runs(raw: &str) -> Option<Vec<u32>> {
+    let body = raw.strip_prefix(RUNS_TAG)?;
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at + 12 <= body.len() {
+        let run = usize::from_str_radix(&body[at..at + 4], 16).unwrap_or(0);
+        let v = crate::util::rgba_hex_to_packed(&body[at + 4..at + 12]);
+        for _ in 0..run {
+            out.push(v);
+        }
+        at += 12;
+    }
+    Some(out)
+}
+
+/// Runs the encoding would spend on these pixels, which is what a saved sheet
+/// costs beyond the twelve characters each of them takes.
+pub fn run_count(px: &[u32]) -> usize {
+    let mut runs = 0;
+    let mut at = 0;
+    while at < px.len() {
+        let v = px[at];
+        let mut run = 1;
+        while at + run < px.len() && px[at + run] == v && run < MAX_RUN_WIDE {
+            run += 1;
+        }
+        runs += 1;
+        at += run;
+    }
+    runs
+}
+
+/// Cels: tagged runs on the way out, and either those or the narrow runs an
+/// older project was written with on the way in.
 pub mod px_rle {
-    use super::MAX_RUN;
-    use crate::util::{packed_to_rgba_hex, rgba_hex_to_packed};
+    use super::{decode_runs, encode_runs, MAX_RUN};
+    use crate::util::rgba_hex_to_packed;
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S: Serializer>(px: &[u32], s: S) -> Result<S::Ok, S::Error> {
-        let mut out = String::new();
-        let mut at = 0;
-        while at < px.len() {
-            let v = px[at];
-            let mut run = 1;
-            while at + run < px.len() && px[at + run] == v && run < MAX_RUN {
-                run += 1;
-            }
-            out.push_str(&format!("{run:02x}"));
-            out.push_str(&packed_to_rgba_hex(v));
-            at += run;
-        }
-        s.serialize_str(&out)
+        s.serialize_str(&encode_runs(px))
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u32>, D::Error> {
-        let raw = String::deserialize(d)?;
+    /// Runs of `<count><rgba>`, two hex digits then eight, capped at
+    /// `MAX_RUN` a run. What every cel saved before the tag looks like.
+    pub fn decode_narrow(raw: &str) -> Vec<u32> {
         let mut out = Vec::new();
         let mut at = 0;
         while at + 10 <= raw.len() {
-            let run = usize::from_str_radix(&raw[at..at + 2], 16).unwrap_or(0);
+            let run = usize::from_str_radix(&raw[at..at + 2], 16).unwrap_or(0).min(MAX_RUN);
             let v = rgba_hex_to_packed(&raw[at + 2..at + 10]);
             for _ in 0..run {
                 out.push(v);
             }
             at += 10;
         }
-        Ok(out)
+        out
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u32>, D::Error> {
+        let raw = String::deserialize(d)?;
+        Ok(decode_runs(&raw).unwrap_or_else(|| decode_narrow(&raw)))
     }
 }
 
@@ -596,10 +660,11 @@ impl Sheet {
         format!("{h:016x}")
     }
 
+    /// What the sheet costs in a saved project: twelve characters a run.
     pub fn bytes(&self) -> usize {
         self.layers
             .iter()
-            .map(|l| l.cels.iter().map(|c| runs(&c.px) * 10).sum::<usize>())
+            .map(|l| l.cels.iter().map(|c| run_count(&c.px) * 12).sum::<usize>())
             .sum()
     }
 }
@@ -634,20 +699,7 @@ fn flip_px(px: &mut [u32], w: i32, h: i32) {
     }
 }
 
-fn runs(px: &[u32]) -> usize {
-    let mut n = 0;
-    let mut at = 0;
-    while at < px.len() {
-        let v = px[at];
-        let mut run = 1;
-        while at + run < px.len() && px[at + run] == v && run < MAX_RUN {
-            run += 1;
-        }
-        n += 1;
-        at += run;
-    }
-    n
-}
+
 
 /// Every sheet in a project.
 #[derive(Clone, Debug, Serialize, Deserialize)]

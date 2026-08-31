@@ -292,6 +292,8 @@ classDiagram
     +work, build, economy
     +tech, start, sim, view
     +PeopleSprites sprites
+    +MadeSprites made
+    +f64 art_px_per_cell
   }
 
   class PeopleSprites {
@@ -306,9 +308,10 @@ classDiagram
     +i32 w, h
     +Vec~u32~ px
     +i32 frames
-    +f64 fps, height, lift
+    +f64 fps, scale, lift
     +bool stride, flip
     +frame_w() pixel() frame_index()
+    +drawn_size(cell_px, px_per_cell)
   }
 
   class Task {
@@ -1396,10 +1399,11 @@ flowchart TD
   subgraph made [A thing people made]
     state["going up / at work / after dark"] --> key["id:state"]
     key --> fall["falls back to id"]
-    fall --> box["scaled into the box<br/>the generator would have filled"]
+    fall --> stand["stood on the footprint's front edge,<br/>centered across its width"]
   end
-  clip --> draw["drawn on the map"]
-  box --> draw
+  clip --> size["source px * cell_px / art_px_per_cell * scale<br/>one ratio, both sides"]
+  stand --> size
+  size --> draw["drawn on the map"]
   none["no picture"] --> gen["generated from the sampling boxes"]
   gen --> draw
 ```
@@ -1408,9 +1412,13 @@ A site is the one place the fallback does not apply: a half built thing never
 borrows the finished picture, because one image cannot say how far a wall has
 got.
 
-The box is the footprint's width by the walls and roof over its depth. Sizing
-it from the art instead would let a picture change where people can walk, which
-is the map's business rather than the art's.
+How large a picture comes out is the picture's own business. One project-wide
+number, `art_px_per_cell`, says what an art pixel is worth against a map cell,
+and both sides of a frame go through it together, so nothing is ever squashed
+and everything drawn at one resolution comes out in proportion. The footprint is
+untouched by any of it: a picture wider than the thing it stands for hangs over
+the ground either side rather than changing where people can walk, which is the
+map's business rather than the art's.
 
 ## The sprite editor
 

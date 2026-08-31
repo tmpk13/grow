@@ -337,6 +337,26 @@ if (!staleNow.includes('out of date')) {
 }
 await page.screenshot({ path: `${outDir}/08g-sheet-moved-on.png` });
 
+// The canvas goes well past the sixty four pixels it was once capped at: a
+// large building at a wide cell needs the room, and a picture is drawn at the
+// size its own pixels say. The panel says what the frame is worth in cells.
+const widthField = '#panel-body [data-find="frame-width"] input.num';
+const wasWide = await page.inputValue(widthField);
+await page.fill(widthField, '160');
+await page.waitForTimeout(700);
+const nowWide = await page.inputValue(widthField);
+if (nowWide !== '160') {
+  problems.push(`the frame would not go to 160 px wide: it reads ${nowWide}`);
+}
+const cellNote = await page.$$eval('#panel-body .note', (n) =>
+  n.map((x) => x.textContent).find((t) => t.includes('pixels to a cell')),
+);
+if (!/stands [\d.]+ by [\d.]+ cells/.test(cellNote ?? '')) {
+  problems.push(`the sheet does not say what it is worth in cells: "${cellNote}"`);
+}
+await page.fill(widthField, wasWide);
+await page.waitForTimeout(700);
+
 // Downloads: one frame as a PNG, and the ticked sheets as a zip.
 const grab = async (selector) => {
   const [download] = await Promise.all([
@@ -704,6 +724,17 @@ const picturesOn = await page.evaluate(() => {
   return button ? button.getAttribute('aria-pressed') === 'true' : null;
 });
 if (picturesOn !== true) problems.push('sending a picture did not turn pictures on');
+// A filled slot says how large the picture comes out and carries the scale
+// that changes it; a picture is drawn at its own size, never stretched to a box.
+const madeSize = await page.textContent('.made-slot > .field-hint');
+if (!/px, drawn [\d.]+x[\d.]+ cells/.test(madeSize ?? '')) {
+  problems.push(`a filled picture slot said "${madeSize}" rather than what it draws`);
+}
+if ((await page.locator('.made-slot .field[data-find="scale"]').count()) === 0) {
+  problems.push('a filled picture slot has no scale to set');
+}
+await page.locator('.made-slot').first().evaluate((n) => n.scrollIntoView());
+await page.waitForTimeout(200);
 await page.screenshot({ path: `${outDir}/10f-made-filled.png` });
 // Clear it again, so the rest of the run looks like the rest of the run.
 await page.click('.made-slot .btn.danger');

@@ -367,6 +367,12 @@ pub struct CivConfig {
     /// Pictures for the things people make: buildings, walls, boats and loads
     /// in hand. Empty means everything is generated from the sampling boxes.
     pub made: MadeSprites,
+    /// Art pixels to one map cell: the one number that says how large every
+    /// dropped picture comes out. Art authored at this resolution is drawn at
+    /// its own size, so a settler drawn twelve pixels tall stands a cell and a
+    /// half against a house drawn twenty, and all of it scales together when
+    /// the cell width changes.
+    pub art_px_per_cell: f64,
     /// How many dead settlers stay on file. The register keeps a slot per
     /// person ever born; this is where a very long run stops growing.
     pub people_archive: usize,
@@ -391,6 +397,7 @@ impl Default for CivConfig {
             experiments: Experiments::default(),
             sprites: PeopleSprites::default(),
             made: MadeSprites::default(),
+            art_px_per_cell: crate::civ::sprites::DEFAULT_ART_PX_PER_CELL,
             people_archive: 400,
         }
     }

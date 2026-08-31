@@ -1,7 +1,7 @@
 //! The drawing side of the tool: sheets in the sprite editor, the sizing a
 //! dropped sprite comes out at, and how a sampling box is read as a ramp.
 
-use grow::art::{ArtLibrary, Sheet};
+use grow::art::{ArtLibrary, Sheet, MAX_SHEET_PX};
 use grow::civ::sprites::Clip;
 use grow::sampler::{ramp_pick, Materials, ROLES};
 use grow::state::State;
@@ -116,12 +116,58 @@ fn a_sheet_of_nothing_is_not_offered_as_settler_art() {
     let sheet = sheet_with_two_layers();
     let clip = Clip::from_sheet(&sheet).expect("a drawn sheet makes a clip");
     assert_eq!(clip.frame_count(), 2);
-    // Only the middle row is drawn, so the clip is cropped to it and reads the
-    // flattened stack rather than any one layer.
-    assert_eq!(clip.h, 1);
-    assert_eq!(clip.frame_w(), 4);
-    assert_eq!(clip.pixel(0, 1, 0), BLUE);
-    assert_eq!(clip.pixel(1, 1, 0), RED);
+    // The frame is the canvas it was drawn on, empty rows and all, and it reads
+    // the flattened stack rather than any one layer.
+    assert_eq!((clip.frame_w(), clip.h), (4, 4));
+    assert_eq!(clip.pixel(0, 1, 2), BLUE);
+    assert_eq!(clip.pixel(1, 3, 2), RED);
+    assert_eq!(clip.pixel(0, 0, 0), 0, "an empty row of the canvas was dropped");
+}
+
+#[test]
+fn pixels_saved_before_the_run_encoding_still_read_back() {
+    // Cels were runs of a two digit count and a color; clips were one color per
+    // pixel with nothing in front of them. Both still load, and both are
+    // written back out tagged, which is what makes the wider run safe to use.
+    use grow::util::packed_to_rgba_hex as hex;
+    let red = grow::util::pack_rgba(255, 0, 0, 255);
+    let blue = grow::util::pack_rgba(0, 0, 255, 255);
+
+    let narrow = format!("02{}01{}", hex(red), hex(blue));
+    let cel: grow::art::Cel =
+        serde_json::from_str(&format!(r#"{{"px":"{narrow}"}}"#)).expect("a cel");
+    assert_eq!(cel.px, vec![red, red, blue]);
+
+    let plain = format!("{}{}{}", hex(red), hex(red), hex(blue));
+    let clip: Clip = serde_json::from_str(&format!(
+        r#"{{"w":3,"h":1,"px":"{plain}","frames":1}}"#
+    ))
+    .expect("a clip");
+    assert_eq!(clip.px, vec![red, red, blue]);
+    assert_eq!(clip.pixel(0, 2, 0), blue);
+
+    let out = serde_json::to_string(&clip).expect("writes");
+    assert!(out.contains(r#""px":"r"#), "the clip was not written as runs: {out}");
+    let back: Clip = serde_json::from_str(&out).expect("reads its own writing");
+    assert_eq!(back.px, clip.px);
+}
+
+#[test]
+fn a_blank_frame_costs_almost_nothing_to_save() {
+    // The cap on a frame is two hundred and fifty six pixels a side, which is
+    // sixty five thousand of them. Whatever a project spends on that, it cannot
+    // be a character each.
+    let sheet = Sheet::new("big", "Big", MAX_SHEET_PX, MAX_SHEET_PX);
+    assert!(sheet.bytes() < 64, "an empty sheet costs {} characters", sheet.bytes());
+    let clip = Clip::from_strip(
+        MAX_SHEET_PX,
+        MAX_SHEET_PX,
+        vec![0u32; (MAX_SHEET_PX * MAX_SHEET_PX) as usize],
+        1,
+        "blank".into(),
+    )
+    .expect("a strip");
+    assert!(clip.bytes() < 64, "an empty clip costs {} characters", clip.bytes());
 }
 
 // ---- what a dropped sprite comes out sized at ----------------------------
@@ -142,18 +188,60 @@ fn padded_strip(frames: i32, fw: i32, fh: i32, art_w: i32, art_h: i32, pad: i32)
 }
 
 #[test]
-fn how_much_a_sprite_was_padded_does_not_change_how_large_it_comes_out() {
-    // The same art on two very different canvases. What is drawn is four by
-    // six either way, so the clip has to be four by six either way; anything
-    // else means the drawn height is being measured against the padding.
+fn a_dropped_sprite_keeps_the_frame_it_was_drawn_in() {
+    // Where the art sits in the frame is the composition: it is what puts a
+    // figure's feet on the ground and holds a tool out to the side of them, and
+    // it is what makes two motions exported from one canvas line up.
     let tight = padded_strip(2, 6, 8, 4, 6, 1);
     let loose = padded_strip(2, 32, 40, 4, 6, 9);
-    for clip in [&tight, &loose] {
-        assert_eq!(clip.frame_w(), 4, "the art was not what the width was read from");
-        assert_eq!(clip.h, 6, "the art was not what the height was read from");
-        assert_eq!(clip.frame_count(), 2);
-        assert_eq!(clip.pixel(0, 0, 0), RED, "the crop cut into the art");
-        assert_eq!(clip.pixel(1, 3, 5), RED);
+    assert_eq!((tight.frame_w(), tight.h), (6, 8));
+    assert_eq!((loose.frame_w(), loose.h), (32, 40));
+    assert_eq!(tight.pixel(0, 1, 1), RED, "the art moved inside the frame");
+    assert_eq!(loose.pixel(0, 9, 9), RED, "the art moved inside the frame");
+    assert_eq!(tight.pixel(0, 0, 0), 0, "the padding was cropped away");
+    assert_eq!(loose.pixel(1, 0, 0), 0, "the padding was cropped away");
+}
+
+#[test]
+fn how_large_a_sprite_comes_out_is_the_size_of_the_image() {
+    // A source pixel is worth a fixed fraction of a cell, so the same art is
+    // the same size in every slot it is dropped on, and however it was padded.
+    let tight = padded_strip(2, 6, 8, 4, 6, 1);
+    let loose = padded_strip(2, 32, 40, 4, 6, 9);
+    // Drawn at the resolution it was authored at, a pixel is a pixel.
+    assert_eq!(tight.drawn_size(8, 8.0), (6, 8));
+    assert_eq!(loose.drawn_size(8, 8.0), (32, 40));
+    // Half the resolution is twice the size, and the padding scales with the
+    // art rather than being measured against it.
+    assert_eq!(tight.drawn_size(8, 4.0), (12, 16));
+    assert_eq!(loose.drawn_size(8, 4.0), (64, 80));
+    // A wider cell is a larger world, and the art grows with it.
+    assert_eq!(tight.drawn_size(16, 8.0), (12, 16));
+}
+
+#[test]
+fn a_picture_is_never_squashed_to_fit_what_it_stands_for() {
+    // Three by nine is three by nine at any resolution, at any cell width and
+    // at any scale: both sides are held to one ratio.
+    let (w, h) = (3, 9);
+    let mut clip = padded_strip(1, w, h, w, h, 0);
+    for cell in [4, 8, 11, 24] {
+        for per_cell in [1.0, 5.0, 8.0, 32.0] {
+            for scale in [0.25, 1.0, 3.0] {
+                clip.scale = scale;
+                let (dw, dh) = clip.drawn_size(cell, per_cell);
+                assert!(dh >= dw, "the taller side came out the shorter one");
+                // Below a couple of pixels there is nothing left to hold a
+                // ratio in: a pixel is the smallest a side can be.
+                if dw >= 2 {
+                    let want = dw as f64 * h as f64 / w as f64;
+                    assert!(
+                        (dh as f64 - want).abs() <= 1.0,
+                        "{dw}x{dh} is not three by nine at cell {cell}, {per_cell} per cell, scale {scale}"
+                    );
+                }
+            }
+        }
     }
 }
 

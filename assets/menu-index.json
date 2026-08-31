@@ -2375,6 +2375,17 @@
     "tab": "people",
     "tab_label": "People",
     "group": "Settler sprites",
+    "label": "Art pixels per cell",
+    "hint": "art pixels to one map cell; a cell is 8 px on the map, so art drawn at 8 px per cell comes out at 1.00 of its own size",
+    "anchor": "art-pixels-per-cell",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "Settler sprites",
     "label": "Draw settlers from dropped images",
     "hint": "off keeps every sheet and goes back to the generated settler",
     "anchor": "draw-settlers-from-dropped-images",
@@ -3459,6 +3470,17 @@
     "label": "Build",
     "anchor": "build",
     "kind": "button"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Pictures for made things",
+    "label": "Art pixels per cell",
+    "hint": "art pixels to one map cell; a cell is 8 px on the map, so art drawn at 8 px per cell comes out at 1.00 of its own size",
+    "anchor": "art-pixels-per-cell",
+    "kind": "field"
   },
   {
     "mode": "settlement",

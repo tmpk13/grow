@@ -1822,6 +1822,18 @@ kbd.key {
   justify-self: start;
 }
 
+/* A filled slot says what the picture is and how large it comes out on the
+   map, and carries the one number that changes it. Both belong under the drop
+   zone rather than beside the label, which the first column is. */
+.made-slot > .field-hint,
+.made-slot > .field {
+  grid-column: 2;
+}
+
+.made-slot > .field {
+  grid-template-columns: 30% 1fr;
+}
+
 .made-group > summary {
   cursor: pointer;
   list-style: none;

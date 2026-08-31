@@ -428,9 +428,11 @@ fn building_key(
 /// sampling boxes. Which of the three shapes it takes is the one thing the
 /// catalog says outright, because a wall and a house share nothing but the
 /// projection they stand in.
-/// A thing given a picture, scaled to the box asked for. Nearest neighbor, the
-/// way every other sprite here is scaled: this is pixel art and a smooth
-/// resample would be the one blurred thing on the map.
+/// A thing given a picture, at the size the picture is. The caller works the
+/// size out from the clip's own pixels, so both sides are held to one ratio and
+/// nothing is ever squashed to fit what the generator would have drawn.
+/// Nearest neighbor, the way every other sprite here is scaled: this is pixel
+/// art and a smooth resample would be the one blurred thing on the map.
 #[allow(clippy::too_many_arguments)]
 pub fn made_sprite(
     cache: &mut SpriteCache,
@@ -516,9 +518,13 @@ pub fn building_sprite(
         state.civ.made.slot_ready(&crate::civ::sprites::made_key(b.def.id, "site"))
     };
     if let Some(clip) = picked {
-        let (w, h) = made_box(world, b.def);
+        let (w, h) = clip.drawn_size(world.cell_px, state.civ.art_px_per_cell);
         let key = crate::civ::sprites::made_key(b.def.id, want);
-        return made_sprite(cache, clip, &key, 0, w, h, 0, state.civ.made.rev);
+        // Stood on the front edge and centered across the footprint: a picture
+        // drawn wider than the thing it stands for hangs evenly either side
+        // rather than growing out of one corner of it.
+        let ox = (w - made_box(world, b.def).0) / 2;
+        return made_sprite(cache, clip, &key, 0, w, h, ox, state.civ.made.rev);
     }
     let key = building_key(state, world, b, night, detail);
     if let Some(hit) = cache.map.get(&key) {
@@ -684,7 +690,10 @@ fn house_sprite(
         ruin(&mut px, w, h, roof_bottom, b.decay, seed);
     }
 
-    Rc::new(Sprite { w, h, px, ox: eave, oy: h })
+    // Nothing hangs left of the footprint's corner: the eaves are drawn inside
+    // the sprite and stand out to the right of it, which is where the anchor
+    // has always put them.
+    Rc::new(Sprite { w, h, px, ox: 0, oy: h })
 }
 
 /// Door and windows, spaced along the wall rather than placed by hand, and lit
@@ -862,7 +871,7 @@ fn stall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
         }
     }
     if progress < 1.0 {
-        return Rc::new(Sprite { w, h, px, ox: eave, oy: h });
+        return Rc::new(Sprite { w, h, px, ox: 0, oy: h });
     }
 
     // The awning, sloping toward the viewer, striped along its width.
@@ -894,7 +903,7 @@ fn stall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
         }
     }
 
-    Rc::new(Sprite { w, h, px, ox: eave, oy: h })
+    Rc::new(Sprite { w, h, px, ox: 0, oy: h })
 }
 
 /// A post with a light on it: a stone foot, a timber shaft, and a head that
@@ -944,7 +953,7 @@ fn lamp_sprite(state: &State, world: &World, b: &Building, night: bool) -> Rc<Sp
             }
         }
     }
-    Rc::new(Sprite { w, h, px, ox: w / 2, oy: h })
+    Rc::new(Sprite { w, h, px, ox: 0, oy: h })
 }
 
 /// What is actually on the counter, drawn straight into the frame rather than
@@ -1041,13 +1050,19 @@ pub fn person_sprite(cache: &mut SpriteCache, world: &World, p: &Person, frame: 
     sprite
 }
 
-/// One frame of a dropped clip, scaled to the map. Nearest sampling both ways,
-/// so art authored smaller than the cell keeps its edges instead of blurring
-/// into it, and art authored larger loses whole pixels rather than smearing.
+/// One frame of a dropped clip, at the size the art is. Nearest sampling both
+/// ways, so art authored smaller than the cell keeps its edges instead of
+/// blurring into it, and art authored larger loses whole pixels rather than
+/// smearing.
+///
+/// The frame is drawn whole, padding included: every motion exported from one
+/// canvas then lines up, whatever each of them has room for, and a swing that
+/// reaches further than a walk does not make the settler a different size.
 ///
 /// The sprite is cached against the clip revision rather than against the
 /// pixels, which is what makes a hit cheap: the whole settlement shares one
 /// entry per motion, frame and facing.
+#[allow(clippy::too_many_arguments)]
 pub fn person_clip_sprite(
     cache: &mut SpriteCache,
     world: &World,
@@ -1055,15 +1070,13 @@ pub fn person_clip_sprite(
     motion: Motion,
     frame: i32,
     mirror: bool,
+    px_per_cell: f64,
     rev: u32,
 ) -> Rc<Sprite> {
     let fw = clip.frame_w();
     let fh = clip.h.max(1);
     let cell = world.cell_px.max(1);
-    // A clip drawn taller than a few cells is somebody's mistake, not a
-    // decision, and the blit is what would pay for it.
-    let h = ((cell as f64 * clip.height).round() as i32).clamp(1, cell * 8);
-    let w = (((fw as f64 * h as f64) / fh as f64).round() as i32).clamp(1, cell * 8);
+    let (w, h) = clip.drawn_size(cell, px_per_cell);
     let lift = (cell as f64 * clip.lift).round() as i32;
     let key = SpriteKey::PersonClip {
         motion: motion.index() as u8,
@@ -1139,7 +1152,7 @@ pub fn boat_sprite(
     let mast_h = ((world.cell_px as f64 * 1.1).round() as i32).max(3);
     let want = if boat.cargo.iter().sum::<f64>() > 0.0 { "laden" } else { "" };
     if let Some(clip) = state.civ.made.clip_in("boat", want) {
-        let (w, h) = (hull_w, hull_h + mast_h);
+        let (w, h) = clip.drawn_size(world.cell_px, state.civ.art_px_per_cell);
         let key = crate::civ::sprites::made_key("boat", want);
         return made_sprite(cache, clip, &key, 0, w, h, w / 2, state.civ.made.rev);
     }
@@ -1415,13 +1428,13 @@ fn draw_carry(
     };
     let slot = format!("carry-{}", res.id());
     // A load in hand is a couple of pixels when it is generated; a picture of
-    // one wants room to be a picture, so it is drawn at the size of the hand
-    // rather than of the marker.
+    // one comes out at whatever it was drawn at, held beside the settler at the
+    // height their hand is.
     if let Some(clip) = state.civ.made.clip(&slot) {
-        let side = ((world.cell_px as f64 * 0.6).round() as i32).max(3);
-        let art = made_sprite(cache, clip, &slot, 0, side, side, 0, state.civ.made.rev);
-        let x = sx + if p.facing > 0 { sprite.ox } else { -sprite.ox - side + 1 };
-        let y = sy - sprite.oy + (sprite.h as f64 * 0.35).round() as i32 + side;
+        let (w, h) = clip.drawn_size(world.cell_px, state.civ.art_px_per_cell);
+        let art = made_sprite(cache, clip, &slot, 0, w, h, 0, state.civ.made.rev);
+        let x = sx + if p.facing > 0 { sprite.ox } else { -sprite.ox - w + 1 };
+        let y = sy - sprite.oy + (sprite.h as f64 * 0.35).round() as i32 + h;
         blit(buf, world, &art, x, y, false);
         return;
     }
@@ -1841,7 +1854,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                 // grace so the picture does not flicker between swings.
                 let busy = b.active > 0.0 && time - b.active < 2.0;
                 let sprite = building_sprite(&mut sprites, state, world, b, lit, busy, detail);
-                blit(&mut buf, world, &sprite, sx + sprite.ox, sy, false);
+                blit(&mut buf, world, &sprite, sx, sy, false);
                 if detail.flourishes() {
                     draw_occupancy(&mut buf, world, b, sx + b.w * world.cell_px / 2, sy);
                     if b.def.structure == Structure::Stall {
@@ -1849,7 +1862,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                     }
                 }
                 if smoke_on {
-                    draw_smoke(world, &mut buf, b, &sprite, sx + sprite.ox, sy, time);
+                    draw_smoke(world, &mut buf, b, &sprite, sx, sy, time);
                 }
             }
             Item::Person(i) => {
@@ -1873,6 +1886,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                             slot,
                             frame,
                             mirror,
+                            state.civ.art_px_per_cell,
                             state.civ.sprites.rev,
                         )
                     }

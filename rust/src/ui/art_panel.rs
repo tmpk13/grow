@@ -331,6 +331,15 @@ fn sheet_section(app: &App, h: &Handle) -> Element {
                 }
                 app.art_changed();
             }));
+        let per_cell = app.state.civ.art_px_per_cell.max(1.0);
+        rows.push(note(&format!(
+            "The settlement draws art at {per_cell:.0} pixels to a cell, so this frame stands \
+             {:.1} by {:.1} cells there. A settler is about a cell and a half tall; a house is \
+             two or three cells across. Dropping a picture larger than the frame grows the \
+             frame rather than shrinking the picture.",
+            sheet.w as f64 / per_cell,
+            sheet.h as f64 / per_cell
+        )));
         rows.push(btn_row(vec![app_button(h, "Download PNG", download_sheet)]));
         rows.push(note(
             "One image, every frame side by side at one pixel each, which is the shape a \
@@ -442,7 +451,18 @@ fn place_images(h: &Handle, images: Vec<crate::civ::sprites::Frame>) {
     let layer = sh.app.ui.sheet_layer;
     let mut landed = start;
     let count = images.len();
+    let want_w = images.iter().map(|f| f.0).max().unwrap_or(1).clamp(1, MAX_SHEET_PX);
+    let want_h = images.iter().map(|f| f.1).max().unwrap_or(1).clamp(1, MAX_SHEET_PX);
+    let mut grew = None;
     with_sheet(&mut sh.app, |sheet| {
+        // The frame grows to hold what was dropped rather than the drop being
+        // shrunk into it. Pixel art does not survive a resample, and the map
+        // draws a frame at the size its own pixels say, so a picture that
+        // arrives whole is a picture that comes out at the size it was drawn.
+        if want_w > sheet.w || want_h > sheet.h {
+            sheet.resize(sheet.w.max(want_w), sheet.h.max(want_h));
+            grew = Some((sheet.w, sheet.h));
+        }
         let mut at = start;
         for (w, h, px) in images {
             if at >= sheet.frame_count() {
@@ -459,11 +479,18 @@ fn place_images(h: &Handle, images: Vec<crate::civ::sprites::Frame>) {
         }
     });
     sh.app.ui.sheet_frame = landed;
-    sh.app.set_note(&if count == 1 {
+    let placed = if count == 1 {
         "dropped onto this layer".to_string()
     } else {
         format!("{count} images across {} frames", landed - start + 1)
+    };
+    sh.app.set_note(&match grew {
+        Some((w, h)) => format!("{placed}; the frame grew to {w}x{h}"),
+        None => placed,
     });
+    if grew.is_some() {
+        crate::app::fit_view(&mut sh.app);
+    }
     sh.app.rebuild_panel = true;
 }
 

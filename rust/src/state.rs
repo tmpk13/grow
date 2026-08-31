@@ -73,6 +73,23 @@ impl Default for State {
     }
 }
 
+/// Settler art used to be sized by a height in cells; it carries its own size
+/// now. A project written before that says what height each clip was drawn at,
+/// which becomes the scale that keeps it exactly that size. Pictures of made
+/// things have nothing to keep: they were stretched to whatever box the
+/// generator would have filled, so they come back as themselves.
+fn migrate_art_size(state: &mut State) {
+    let per_cell = state.civ.art_px_per_cell;
+    for motion in crate::civ::sprites::MOTIONS {
+        if let Some(clip) = state.civ.sprites.slot_mut(motion).as_mut() {
+            clip.take_legacy_height(per_cell);
+        }
+    }
+    for clip in state.civ.made.slots.values_mut() {
+        clip.height = 0.0;
+    }
+}
+
 impl State {
     pub fn new() -> Self {
         State::default()
@@ -100,9 +117,14 @@ impl State {
             state.species = default_species_list();
         }
         state.art.fit();
+        migrate_art_size(&mut state);
         state.materials.ensure_role_samplers();
         state.materials.invalidate();
         Ok(state)
+    }
+
+    pub fn art_px_per_cell(&self) -> f64 {
+        self.civ.art_px_per_cell
     }
 
     pub fn species_index(&self, id: &str) -> Option<usize> {
