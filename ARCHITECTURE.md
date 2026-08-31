@@ -1393,8 +1393,11 @@ the same way: most particular first, falling back to the general.
 ```mermaid
 flowchart TD
   subgraph settlers [A settler]
-    motion["what they are doing"] --> chain["Motion::chain<br/>swim to walk to stand"]
+    motion["what they are doing:<br/>in hand, asleep, in water,<br/>walking, carrying, working"] --> chain["Motion::chain<br/>swim to tread to walk to stand"]
     chain --> clip["the first clip that has art"]
+    clip --> wet{"in water, and the art<br/>came from a dry slot?"}
+    wet -->|yes| cutoff["cut at the waterline"]
+    wet -->|no| whole["drawn whole:<br/>water art draws its own line"]
   end
   subgraph made [A thing people made]
     state["going up / at work / after dark"] --> key["id:state"]
@@ -1411,6 +1414,13 @@ flowchart TD
 A site is the one place the fallback does not apply: a half built thing never
 borrows the finished picture, because one image cannot say how far a wall has
 got.
+
+The generated settler has four poses rather than one: the walk cycle, a swimmer
+(head and shoulders over a waterline, an arm out with the stroke), somebody
+treading water (arms out either side, riding a row higher every other frame),
+and somebody held in a hand (arms up, feet swinging, lifted off the ground). A
+pose is what the generator draws for a motion, so nothing has to be cut down
+from a standing figure to be put in the water.
 
 How large a picture comes out is the picture's own business. One project-wide
 number, `art_px_per_cell`, says what an art pixel is worth against a map cell,

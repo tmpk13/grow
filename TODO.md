@@ -1,8 +1,5 @@
 What is left. What is done is in TODO_COMPLETE.md.
 
-- Being in water should not cut people in half. Have unique sprite for `swimming` and `still` in water.
-    - People being held (`Move people`) should have a unique animation.
-
 - People need to be able to remove built things.
 
 - Experimental feature toggle for a user controlled person.
@@ -16,6 +13,8 @@ What is left. What is done is in TODO_COMPLETE.md.
 
 - If people are too far from a settlement they will try to start a new one.
 
+
+- Midground drag and drop and adjustments, for example: add a mountain in front of the sky.
 
 # Do later
 

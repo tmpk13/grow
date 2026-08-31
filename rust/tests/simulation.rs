@@ -626,14 +626,19 @@ fn a_settler_reports_the_motion_they_are_in() {
             .iter_indexed()
             .map(|(_, p)| {
                 let wet = sim.in_water(p.cell_col(), p.cell_row());
-                (wet, motion_of(p, wet))
+                (wet, motion_of(p, wet, false))
             })
             .collect();
         for ((wet, motion), (_, p)) in seen.iter().zip(sim.people.iter_indexed()) {
             swam |= *wet;
             match motion {
                 Motion::Sleep => assert!(p.sleeping),
-                Motion::Swim => assert!(*wet && !p.sleeping),
+                // In the water: crossing it if they are going somewhere,
+                // treading it if they are not.
+                Motion::Swim => assert!(*wet && !p.sleeping && !p.path.is_empty()),
+                Motion::Float => assert!(*wet && !p.sleeping && p.path.is_empty()),
+                // Nobody is in hand: the simulation never puts anybody there.
+                Motion::Held => panic!("a settler was in hand with nobody holding them"),
                 Motion::ToBed => assert!(
                     !p.sleeping && p.task.as_ref().is_some_and(|t| t.is_sleep()),
                     "turning in without a bed to turn in to"
@@ -645,6 +650,59 @@ fn a_settler_reports_the_motion_they_are_in() {
         }
     }
     let _ = swam;
+
+    // Being in hand beats everything, wet or dry, awake or asleep.
+    for (_, p) in sim.people.iter_indexed() {
+        assert_eq!(motion_of(p, false, true), Motion::Held);
+        assert_eq!(motion_of(p, true, true), Motion::Held);
+    }
+}
+
+#[test]
+fn what_is_drawn_in_the_water_is_only_cut_when_it_was_drawn_for_dry_land() {
+    use grow::civ::sprites::cut_at_waterline;
+    // The generated settler has a pose for the water, and so does anything
+    // dropped on the two water slots: those draw their own waterline and are
+    // left whole. A walk borrowed for the water is a standing figure, and the
+    // cut is what puts it in the water rather than on it.
+    assert!(!cut_at_waterline(None), "the generated water pose was cut in half");
+    assert!(!cut_at_waterline(Some(Motion::Swim)));
+    assert!(!cut_at_waterline(Some(Motion::Float)));
+    assert!(cut_at_waterline(Some(Motion::Walk)));
+    assert!(cut_at_waterline(Some(Motion::Idle)));
+    assert!(cut_at_waterline(Some(Motion::Carry)));
+}
+
+#[test]
+fn the_water_and_hand_poses_are_not_the_walking_body_cut_down() {
+    use grow::civ::civ_render::{person_sprite, Pose, SpriteCache};
+    let mut sim = Settlement::new(&State::new());
+    sim.bootstrap(&State::new());
+    let world = sim.world().clone();
+    let (_, p) = sim.people.iter_indexed().next().expect("a settler");
+
+    let mut cache = SpriteCache::default();
+    let land = person_sprite(&mut cache, &world, p, 0, Pose::Land);
+    let swim = person_sprite(&mut cache, &world, p, 0, Pose::Swim);
+    let float = person_sprite(&mut cache, &world, p, 0, Pose::Float);
+    let held = person_sprite(&mut cache, &world, p, 0, Pose::Held);
+
+    // What is above the water is head and shoulders, so it is shorter than the
+    // whole body, and its last row is the surface: drawn all the way across
+    // rather than stopping where a pair of legs would.
+    assert!(swim.h < land.h, "the swimmer is as tall as somebody standing up");
+    let surface = |s: &grow::civ::civ_render::Sprite| {
+        let row = ((s.h - 1) * s.w) as usize;
+        s.px[row..row + s.w as usize].iter().filter(|v| **v != 0).count()
+    };
+    assert!(surface(&swim) > surface(&land), "the swimmer has no waterline under them");
+    assert!(surface(&float) > surface(&land), "the one treading water has no waterline");
+    // The two water poses are not the same picture: one has an arm out ahead,
+    // the other has both out and bobs.
+    assert_ne!(swim.px, float.px, "treading water is the same as swimming");
+    // Somebody in hand is the whole body, dangling rather than mid step.
+    assert_eq!((held.w, held.h), (land.w, land.h));
+    assert_ne!(held.px, land.px, "being carried looks like standing there");
 }
 
 #[test]

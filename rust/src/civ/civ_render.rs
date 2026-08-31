@@ -23,7 +23,7 @@ use crate::civ::buildings::{Grain, Structure};
 use crate::civ::config::ViewConfig;
 use crate::civ::people::Person;
 use crate::civ::settlement::{Building, Rect, Settlement};
-use crate::civ::sprites::{motion_of, Clip, Motion};
+use crate::civ::sprites::{cut_at_waterline, motion_of, Clip, Motion};
 use crate::civ::terrain::{Cell, FLOW_DIRS};
 use crate::sampler::{Bands, Materials};
 use crate::sim::cast_shadow;
@@ -122,6 +122,7 @@ pub enum SpriteKey {
         body_w: i32,
         body_h: i32,
         adult: bool,
+        pose: Pose,
     },
     /// A picture given to a thing people make, scaled to the box the generator
     /// would have filled. Keyed by the slot rather than by the thing standing
@@ -158,6 +159,36 @@ pub enum SpriteKey {
         h: i32,
         banner: u32,
     },
+}
+
+/// How the generated settler is standing. A clip has a motion for every one of
+/// them; the generator has these, because most motions come out as the same two
+/// frames of a walk and the ones that cannot are the ones that leave the
+/// ground or go under water.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Pose {
+    /// On their feet: the walk cycle, which is every dry motion.
+    Land,
+    /// Crossing water: head and shoulders over a wake, with an arm out.
+    Swim,
+    /// In water with nowhere to be: the same, arms out either side, bobbing.
+    Float,
+    /// Off the ground in somebody's hand, arms up and legs dangling.
+    Held,
+}
+
+impl Pose {
+    /// What the generator draws for a motion. Everything dry is the walk cycle;
+    /// what is not dry has a pose of its own, which is what keeps a swimmer
+    /// from being a standing figure with the bottom half taken off.
+    pub fn of(motion: Motion) -> Pose {
+        match motion {
+            Motion::Swim => Pose::Swim,
+            Motion::Float => Pose::Float,
+            Motion::Held => Pose::Held,
+            _ => Pose::Land,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -986,10 +1017,143 @@ fn draw_wares(world: &World, buf: &mut [u32], b: &Building, sx: i32, sy: i32) {
 
 // ---- people --------------------------------------------------------------
 
+/// The generated settler in parts: the colors and the proportions, so a pose
+/// that is not the walk cycle can be built out of the same body rather than out
+/// of a second copy of it.
+struct Body {
+    skin: u32,
+    shirt: u32,
+    legs: u32,
+    hair: u32,
+    w: i32,
+    ww: i32,
+    hh: i32,
+    head_h: i32,
+    leg_h: i32,
+    x0: i32,
+    frame: i32,
+}
+
+impl Body {
+    /// On their feet. `lifted` is somebody in hand: the legs hang rather than
+    /// stepping, and the arms are up where whoever picked them up has hold.
+    fn standing(&self, h: i32, lifted: bool) -> Sprite {
+        let (w, ww, hh, x0) = (self.w, self.ww, self.hh, self.x0);
+        let mut px = vec![0u32; (w * h) as usize];
+        for y in 0..h {
+            for x in x0..x0 + ww {
+                let mut c = 0;
+                if y < self.head_h {
+                    c = if y == 0 { self.hair } else { self.skin };
+                } else if y < hh - self.leg_h {
+                    c = self.shirt;
+                } else if y < hh {
+                    if lifted {
+                        // The feet swing: apart on one frame and together on
+                        // the next, which is what dangling looks like when
+                        // there are three pixels to say it in.
+                        let edge = x == x0 || x == x0 + ww - 1;
+                        let swing = if self.frame == 1 { !edge } else { edge };
+                        c = if y == hh - 1 && !swing { 0 } else { self.legs };
+                    } else {
+                        // Legs split and swap with the frame, which reads as a
+                        // step.
+                        let left = (x as f64) < x0 as f64 + ww as f64 / 2.0;
+                        let lift = if self.frame == 1 { left } else { !left };
+                        c = if lift && y == hh - 1 { 0 } else { self.legs };
+                    }
+                }
+                if c != 0 {
+                    px[(y * w + x) as usize] = c;
+                }
+            }
+        }
+        if lifted {
+            // Arms up, one either side of the shoulders, which is where the
+            // hand that lifted them is.
+            let arm = self.head_h.max(1);
+            for x in [x0 - 1, x0 + ww] {
+                if x >= 0 && x < w && arm < h {
+                    px[(arm * w + x) as usize] = self.skin;
+                }
+            }
+        }
+        Sprite { w, h, px, ox: w / 2, oy: h }
+    }
+
+    /// In the water: what is above the surface, and the surface closing over
+    /// the rest. This is its own shape rather than a standing figure with the
+    /// bottom taken off, which is what somebody in the water used to be, and
+    /// which read as a settler cut in half.
+    ///
+    /// The sprite stands on the waterline, so what is drawn is above the row
+    /// the settler is in rather than sunk into the ground below it.
+    fn in_water(&self, facing: i32, still: bool) -> Sprite {
+        let (w, ww, x0) = (self.w, self.ww, self.x0);
+        // Treading rides a row higher every other frame, which is the only
+        // movement there is room for at this size.
+        let bob = if still && self.frame % 2 == 1 { 1 } else { 0 };
+        // Head, what is left of the shoulders, and the surface under them.
+        let h = self.head_h + 2 + bob;
+        let mut px = vec![0u32; (w * h) as usize];
+        let foam = pack_rgba(214, 234, 244, 255);
+        let wake = pack_rgba(150, 190, 214, 255);
+        for y in 0..self.head_h {
+            for x in x0..x0 + ww {
+                px[(y * w + x) as usize] = if y == 0 { self.hair } else { self.skin };
+            }
+        }
+        // Shoulders down to the water, and an arm out of it: forward and back
+        // with the stroke, or out either side while treading.
+        let shoulder = self.head_h;
+        for y in shoulder..h - 1 {
+            for x in x0..x0 + ww {
+                px[(y * w + x) as usize] = self.shirt;
+            }
+        }
+        let (ahead, behind) = if facing < 0 { (x0 - 1, x0 + ww) } else { (x0 + ww, x0 - 1) };
+        let arms: &[i32] = if still {
+            &[-1, 1]
+        } else if self.frame % 2 == 0 {
+            &[1]
+        } else {
+            &[-1]
+        };
+        for side in arms {
+            let x = if *side > 0 { ahead } else { behind };
+            if x >= 0 && x < w {
+                px[(shoulder * w + x) as usize] = self.skin;
+            }
+        }
+        // The surface itself: foam where the body goes into it, and a wake off
+        // to the side that swaps with the stroke.
+        let line = h - 1;
+        for x in 0..w {
+            let c = if x >= x0 && x < x0 + ww {
+                foam
+            } else if still || (self.frame % 2 == 0) == (x < w / 2) {
+                wake
+            } else {
+                0
+            };
+            if c != 0 {
+                px[(line * w + x) as usize] = c;
+            }
+        }
+        Sprite { w, h, px, ox: w / 2, oy: h }
+    }
+}
+
 /// Three pixels wide and a head: enough to read a walk cycle, a facing and
 /// whether somebody is carrying something. Colors are hashed from the person id
 /// so a settler looks the same for their whole life.
-pub fn person_sprite(cache: &mut SpriteCache, world: &World, p: &Person, frame: i32) -> Rc<Sprite> {
+pub fn person_sprite(
+    cache: &mut SpriteCache,
+    world: &World,
+    p: &Person,
+    frame: i32,
+    pose: Pose,
+) -> Rc<Sprite> {
     let body_h = ((world.cell_px as f64 * 0.85).round() as i32).max(4);
     let body_w = ((world.cell_px as f64 * 0.3).round() as i32).max(2);
     let adult = p.adult();
@@ -1000,6 +1164,7 @@ pub fn person_sprite(cache: &mut SpriteCache, world: &World, p: &Person, frame: 
         body_w,
         body_h,
         adult,
+        pose,
     };
     if let Some(hit) = cache.map.get(&key) {
         return hit.clone();
@@ -1010,7 +1175,6 @@ pub fn person_sprite(cache: &mut SpriteCache, world: &World, p: &Person, frame: 
     let ww = (((body_w as f64 * scale).round() as i32) + 1).max(2);
     let w = ww + 2;
     let h = hh + 1;
-    let mut px = vec![0u32; (w * h) as usize];
     let seed = p.seed as i32;
     let skin_tone = hash2(seed, 3, 11);
     let skin = pack_rgba(
@@ -1027,25 +1191,13 @@ pub fn person_sprite(cache: &mut SpriteCache, world: &World, p: &Person, frame: 
     let head_h = ((hh as f64 * 0.32).round() as i32).max(1);
     let leg_h = ((hh as f64 * 0.3).round() as i32).max(1);
     let x0 = 1;
-    for y in 0..h {
-        for x in x0..x0 + ww {
-            let mut c = 0;
-            if y < head_h {
-                c = if y == 0 { hair } else { skin };
-            } else if y < hh - leg_h {
-                c = shirt;
-            } else if y < hh {
-                // Legs split and swap with the frame, which reads as a step.
-                let left = (x as f64) < x0 as f64 + ww as f64 / 2.0;
-                let lift = if frame == 1 { left } else { !left };
-                c = if lift && y == hh - 1 { 0 } else { legs };
-            }
-            if c != 0 {
-                px[(y * w + x) as usize] = c;
-            }
-        }
-    }
-    let sprite = Rc::new(Sprite { w, h, px, ox: w / 2, oy: h });
+    let body = Body { skin, shirt, legs, hair, w, ww, hh, head_h, leg_h, x0, frame };
+    let sprite = Rc::new(match pose {
+        Pose::Land => body.standing(h, false),
+        Pose::Held => body.standing(h, true),
+        Pose::Swim => body.in_water(p.facing, false),
+        Pose::Float => body.in_water(p.facing, true),
+    });
     cache.map.insert(key, sprite.clone());
     sprite
 }
@@ -1289,7 +1441,14 @@ pub fn balloon_sprite(
 // ---- compositing ---------------------------------------------------------
 
 /// How much of a settler is under the water, as a fraction of their height.
+/// Only what was drawn for dry land is cut by it.
 const WADE_DEPTH: f64 = 0.45;
+
+/// How far off the ground somebody in hand is held. Enough to read as lifted at
+/// any cell size, and never less than a couple of pixels.
+fn hold_lift(world: &World) -> i32 {
+    ((world.cell_px as f64 * 0.45).round() as i32).max(2)
+}
 
 /// The same as `blit`, with the bottom `sunk` of the sprite left undrawn. What
 /// is under the water is not drawn at all rather than tinted: the water is
@@ -1874,12 +2033,16 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                     continue;
                 }
                 let swimming = sim.in_water(p.cell_col(), p.cell_row());
-                let motion = motion_of(p, swimming);
-                let sprite = match state.civ.sprites.resolve(motion) {
+                let held = sim.held != 0 && sim.held == p.id;
+                let motion = motion_of(p, swimming, held);
+                // Somebody in hand is off the ground, and the ground is where
+                // everything else is drawn from.
+                let sy = if held { sy - hold_lift(world) } else { sy };
+                let (sprite, drawn) = match state.civ.sprites.resolve(motion) {
                     Some((slot, clip)) => {
                         let frame = clip.frame_index(p.bob, time);
                         let mirror = clip.flip && p.facing < 0;
-                        person_clip_sprite(
+                        let art = person_clip_sprite(
                             &mut sprites,
                             world,
                             clip,
@@ -1888,21 +2051,37 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                             mirror,
                             state.civ.art_px_per_cell,
                             state.civ.sprites.rev,
-                        )
+                        );
+                        (art, Some(slot))
                     }
                     None => {
-                        let frame = (p.bob.floor() as i64).rem_euclid(2) as i32;
-                        let frame = if p.path.is_empty() { 0 } else { frame };
-                        person_sprite(&mut sprites, world, p, frame)
+                        let pose = Pose::of(motion);
+                        let frame = match pose {
+                            // Treading water and hanging from a hand are the
+                            // two poses nothing else moves: the bob and the
+                            // swinging feet come off the clock, offset per
+                            // settler so a river full of people does not rise
+                            // and fall as one.
+                            Pose::Float | Pose::Held => {
+                                ((time * 1.5) as i64 + (p.seed % 2) as i64).rem_euclid(2) as i32
+                            }
+                            _ => {
+                                let step = (p.bob.floor() as i64).rem_euclid(2) as i32;
+                                if p.path.is_empty() { 0 } else { step }
+                            }
+                        };
+                        (person_sprite(&mut sprites, world, p, frame, pose), None)
                     }
                 };
-                if swimming {
-                    // In the water, only what is above the waterline is drawn,
-                    // so somebody crossing a river is in it rather than on it.
+                if swimming && cut_at_waterline(drawn) {
+                    // A pose borrowed from dry land is a standing figure, and
+                    // cutting it at the waterline is the whole of what puts it
+                    // in the water rather than on it. Art drawn for the water
+                    // draws its own line and is left alone.
                     blit_above(&mut buf, world, &sprite, sx, sy, WADE_DEPTH, true);
                 } else {
                     blit(&mut buf, world, &sprite, sx, sy, true);
-                    if p.carrying() && detail.flourishes() {
+                    if p.carrying() && detail.flourishes() && !swimming && !held {
                         draw_carry(&mut sprites, state, world, &mut buf, p, &sprite, sx, sy);
                     }
                 }

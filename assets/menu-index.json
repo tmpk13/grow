@@ -1484,6 +1484,26 @@
     "tab": "sheet",
     "tab_label": "Sheet",
     "group": "Use as settler art",
+    "label": "Still in water",
+    "anchor": "still-in-water",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "sheet",
+    "tab_label": "Sheet",
+    "group": "Use as settler art",
+    "label": "Picked up",
+    "anchor": "picked-up",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "sheet",
+    "tab_label": "Sheet",
+    "group": "Use as settler art",
     "label": "Or a made thing",
     "anchor": "or-a-made-thing",
     "kind": "field"

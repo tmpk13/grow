@@ -3,6 +3,20 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) Nobody is cut in half by water any more. The generated settler has
+  poses of its own for crossing water and for treading it - head and shoulders
+  over a waterline, an arm out with the stroke, a bob while treading - and two
+  new slots, Still in water and Picked up, take art for them. Only a pose
+  borrowed from dry land is still cut at the waterline, which is what puts it
+  in the water rather than on it. Somebody lifted by Move people hangs off the
+  ground with their arms up and their feet swinging.
+- (LLM) Art carries its own size. One number, art pixels per cell, says what a
+  source pixel is worth against a map cell, and both sides of a frame go
+  through it together, so nothing dropped on a slot is ever squashed to fit a
+  box the generator would have drawn. Frames keep the padding they were drawn
+  with, the editor canvas and the import cap go to 256 pixels, pixels are saved
+  run length encoded, and a picture dropped on a smaller frame grows the frame
+  rather than shrinking the picture.
 - (LLM) Clouds passing over the settlement, settable: cover, drift, and how
   strongly the edges churn as they pass - the shapes boil slowly rather than
   sliding as one picture. One seamless tile of wrapped value noise, on

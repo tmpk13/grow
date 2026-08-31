@@ -88,9 +88,14 @@ pub enum Motion {
     Sleep,
     Swim,
     ToBed,
+    /// In the water and going nowhere: treading rather than crossing.
+    Float,
+    /// Off the ground in somebody's hand, which is the one motion the
+    /// simulation never puts anybody in: it is a person doing the lifting.
+    Held,
 }
 
-pub const MOTIONS: [Motion; 7] = [
+pub const MOTIONS: [Motion; 9] = [
     Motion::Idle,
     Motion::Walk,
     Motion::Carry,
@@ -98,6 +103,8 @@ pub const MOTIONS: [Motion; 7] = [
     Motion::ToBed,
     Motion::Sleep,
     Motion::Swim,
+    Motion::Float,
+    Motion::Held,
 ];
 
 pub const MOTION_COUNT: usize = MOTIONS.len();
@@ -111,6 +118,8 @@ impl Motion {
             Motion::Work => "Working",
             Motion::Sleep => "Sleeping",
             Motion::Swim => "Swimming",
+            Motion::Float => "Still in water",
+            Motion::Held => "Picked up",
             Motion::ToBed => "Going to sleep",
         }
     }
@@ -124,6 +133,8 @@ impl Motion {
             Motion::Work => "work",
             Motion::Sleep => "sleep",
             Motion::Swim => "swim",
+            Motion::Float => "float",
+            Motion::Held => "held",
             Motion::ToBed => "tobed",
         }
     }
@@ -136,6 +147,8 @@ impl Motion {
             Motion::Work => "stood at the work rather than walking to it",
             Motion::Sleep => "asleep out in the open",
             Motion::Swim => "in the water, crossing it",
+            Motion::Float => "in the water with nowhere to be, treading it",
+            Motion::Held => "off the ground, in hand, while somebody moves them",
             Motion::ToBed => "turning in: on the way to a bed, or lying down in the open",
         }
     }
@@ -156,6 +169,10 @@ impl Motion {
             Motion::Work => (6.0, false),
             Motion::Sleep => (1.5, false),
             Motion::Swim => (4.0, true),
+            Motion::Float => (2.0, false),
+            // Nothing about being carried is tied to the ground: the ground is
+            // what they are not on.
+            Motion::Held => (3.0, false),
             Motion::ToBed => (4.0, true),
         }
     }
@@ -170,10 +187,16 @@ impl Motion {
             Motion::Carry => &[Motion::Carry, Motion::Walk, Motion::Idle],
             Motion::Work => &[Motion::Work, Motion::Idle, Motion::Walk],
             Motion::Sleep => &[Motion::Sleep, Motion::Idle],
-            // A swim falls back to a walk: the drawing cuts a swimmer off at
-            // the waterline either way, so a walk cycle in the water reads as
-            // somebody wading rather than as somebody standing on it.
-            Motion::Swim => &[Motion::Swim, Motion::Walk, Motion::Idle],
+            // A swim falls back to treading, and only then to a walk: a walk
+            // borrowed for the water is cut at the waterline, which reads as
+            // wading rather than as standing on it, but art drawn for the water
+            // is the better answer and comes first.
+            Motion::Swim => &[Motion::Swim, Motion::Float, Motion::Walk, Motion::Idle],
+            Motion::Float => &[Motion::Float, Motion::Swim, Motion::Idle, Motion::Walk],
+            // Being carried falls back to standing: dangling from a hand is
+            // nothing like a walk cycle, and a stand at least does not stride
+            // through the air.
+            Motion::Held => &[Motion::Held, Motion::Idle],
             // Turning in is a walk until somebody draws it otherwise, and a
             // stand when there is nowhere to walk to.
             Motion::ToBed => &[Motion::ToBed, Motion::Walk, Motion::Idle],
@@ -513,6 +536,11 @@ pub struct PeopleSprites {
     pub work: Option<Clip>,
     pub sleep: Option<Clip>,
     pub swim: Option<Clip>,
+    /// Treading water, which is what somebody in the water with nothing to do
+    /// is doing.
+    pub float: Option<Clip>,
+    /// Held in hand, off the ground and going where the pointer goes.
+    pub held: Option<Clip>,
     pub to_bed: Option<Clip>,
     /// Bumped whenever a clip changes, so the drawing can tell a cached sprite
     /// built from the old pixels is stale. Not saved: a project that has only
@@ -531,6 +559,8 @@ impl Default for PeopleSprites {
             work: None,
             sleep: None,
             swim: None,
+            float: None,
+            held: None,
             to_bed: None,
             rev: 0,
         }
@@ -546,6 +576,8 @@ impl PeopleSprites {
             Motion::Work => self.work.as_ref(),
             Motion::Sleep => self.sleep.as_ref(),
             Motion::Swim => self.swim.as_ref(),
+            Motion::Float => self.float.as_ref(),
+            Motion::Held => self.held.as_ref(),
             Motion::ToBed => self.to_bed.as_ref(),
         }
     }
@@ -558,6 +590,8 @@ impl PeopleSprites {
             Motion::Work => &mut self.work,
             Motion::Sleep => &mut self.sleep,
             Motion::Swim => &mut self.swim,
+            Motion::Float => &mut self.float,
+            Motion::Held => &mut self.held,
             Motion::ToBed => &mut self.to_bed,
         }
     }
@@ -599,14 +633,31 @@ impl PeopleSprites {
 /// Sleeping wins over everything, then being in the water, then turning in for
 /// the night, then being on a path, and only somebody stood still and mid-task
 /// counts as working.
-pub fn motion_of(p: &Person, swimming: bool) -> Motion {
+/// Whether art about to be drawn in the water has to be cut at the waterline.
+///
+/// Art drawn for the water draws its own: a swimmer is a head and a wake, and
+/// cutting it would take the wake off along with the rest. Anything borrowed
+/// from dry land is a standing figure, and the cut is what puts it in the water
+/// rather than on it. Nothing at all is the generated settler, which has a
+/// water pose of its own.
+pub fn cut_at_waterline(drawn: Option<Motion>) -> bool {
+    matches!(drawn, Some(m) if !matches!(m, Motion::Swim | Motion::Float))
+}
+
+pub fn motion_of(p: &Person, swimming: bool, held: bool) -> Motion {
+    // Being in hand beats everything, including sleep: whoever is holding them
+    // has taken them out of whatever they were doing.
+    if held {
+        return Motion::Held;
+    }
     if p.sleeping {
         return Motion::Sleep;
     }
-    // Being in the water beats what is being carried through it: a swimmer is
-    // drawn cut off at the waterline whatever is in their hands.
+    // Being in the water beats what is being carried through it. Somebody
+    // crossing it is swimming; somebody in it with nowhere to be is treading,
+    // which is a pose rather than a stroke.
     if swimming {
-        return Motion::Swim;
+        return if p.path.is_empty() { Motion::Float } else { Motion::Swim };
     }
     // Turning in is its own thing, whether that is the walk to a bed or lying
     // down where they stand: the settler has finished for the day either way,
