@@ -132,6 +132,11 @@ pub struct Building {
     /// search per field cell.
     #[serde(skip)]
     pub soak: Option<(i32, f64)>,
+    /// Marked to be pulled down. Nobody lives or works in a condemned thing
+    /// and nothing is assigned to one; it stands, coming apart, until somebody
+    /// has finished taking it down.
+    #[serde(default)]
+    pub condemned: bool,
 }
 
 /// What a building is, through a save and back: the definition is one of the
@@ -830,7 +835,10 @@ impl Settlement {
             c.stores.clear();
         }
         for (bi, b) in self.buildings.iter().enumerate() {
-            if !b.built {
+            // A thing being pulled down is counted out of the town before it is
+            // gone, so the planner starts on what replaces it while it is still
+            // coming down rather than the day after.
+            if !b.built || b.condemned {
                 continue;
             }
             let ci = match self.colonies.iter().position(|c| c.id == b.colony) {
@@ -1344,6 +1352,7 @@ impl Settlement {
             empty_days: 0.0,
             decay: 0.0,
             soak: None,
+            condemned: false,
         };
         self.buildings.push(b);
         let bi = self.buildings.len() - 1;
@@ -1457,6 +1466,122 @@ impl Settlement {
             }
         }
         self.buffer_dirty = true;
+    }
+
+    /// Marks a standing thing to be pulled down, or lets it stand again.
+    ///
+    /// A site that has not gone up yet is cancelled outright rather than
+    /// condemned: there is nothing to take apart, only materials to put back,
+    /// and everything delivered to it is left on the ground where it stood.
+    ///
+    /// Condemning empties the thing first - beds, benches, deeds and counters -
+    /// so nothing is assigned to it again while it comes down, and whoever
+    /// lived there is re-homed on the next pass rather than left holding a
+    /// bed in a building that is going away.
+    pub fn condemn(&mut self, id: i32, on: bool) -> bool {
+        let bi = match self.building_index(id) {
+            Some(bi) => bi,
+            None => return false,
+        };
+        if !self.buildings[bi].built {
+            if !on {
+                return false;
+            }
+            return self.cancel_site(bi);
+        }
+        if self.buildings[bi].condemned == on {
+            return false;
+        }
+        self.buildings[bi].condemned = on;
+        if on {
+            let (id, colony, label) = {
+                let b = &mut self.buildings[bi];
+                b.residents.clear();
+                b.guests.clear();
+                b.workers.clear();
+                b.owner = 0;
+                (b.id, b.colony, b.label())
+            };
+            for pi in self.people.live_indices() {
+                let p = &mut self.people[pi];
+                if p.home == id {
+                    p.home = 0;
+                }
+                if p.work == id {
+                    p.work = 0;
+                }
+                if p.owns == id {
+                    p.owns = 0;
+                }
+                if p.stall == id {
+                    p.stall = 0;
+                }
+            }
+            if let Some(ci) = self.colony_index(colony) {
+                let day = self.day;
+                self.colonies[ci].econ.log_event(format!("{label} condemned"), day);
+                self.assign_homes(ci);
+            }
+        } else {
+            // Called off: they put back what they had started to take apart.
+            // The work is lost, which is what changing your mind costs, and
+            // nothing is left standing half wrecked with no way to mend it.
+            self.buildings[bi].decay = 0.0;
+            let (colony, label) = (self.buildings[bi].colony, self.buildings[bi].label());
+            if let Some(ci) = self.colony_index(colony) {
+                let day = self.day;
+                self.colonies[ci].econ.log_event(format!("{label} spared"), day);
+                self.assign_homes(ci);
+            }
+        }
+        self.refresh_colonies();
+        self.buffer_dirty = true;
+        true
+    }
+
+    /// A site called off before it went up. What has been delivered is left
+    /// where it stood rather than vanishing with the plan.
+    fn cancel_site(&mut self, bi: usize) -> bool {
+        let at = self.access_cell(bi);
+        let back: Vec<(Res, f64)> = crate::civ::resources::RES_IDS
+            .iter()
+            .map(|&res| (res, self.buildings[bi].delivered[res as usize].floor()))
+            .filter(|&(_, n)| n >= 1.0)
+            .collect();
+        let (label, colony) = (self.buildings[bi].label(), self.buildings[bi].colony);
+        self.remove_building(bi);
+        for (res, n) in back {
+            self.add_pile(at.0, at.1, res, n);
+        }
+        if let Some(ci) = self.colony_index(colony) {
+            let day = self.day;
+            self.colonies[ci].econ.log_event(format!("{label} called off"), day);
+        }
+        self.ground_dirty = true;
+        true
+    }
+
+    /// The last of the work of taking something down: what it was built from,
+    /// minus what breaks in the taking, left on the ground where it stood.
+    pub fn finish_pull_down(&mut self, state: &State, bi: usize) {
+        let salvage = clamp01(state.civ.build.pull_down_salvage);
+        let at = self.access_cell(bi);
+        let rubble: Vec<(Res, f64)> = self.buildings[bi]
+            .cost
+            .iter()
+            .map(|&(res, n)| (res, (n * salvage).round()))
+            .filter(|&(_, n)| n >= 1.0)
+            .collect();
+        let (label, colony) = (self.buildings[bi].label(), self.buildings[bi].colony);
+        self.remove_building(bi);
+        for (res, n) in rubble {
+            self.add_pile(at.0, at.1, res, n);
+        }
+        if let Some(ci) = self.colony_index(colony) {
+            let day = self.day;
+            self.colonies[ci].econ.log_event(format!("{label} pulled down"), day);
+        }
+        self.ground_dirty = true;
     }
 
     pub fn remove_building(&mut self, bi: usize) {
@@ -1595,6 +1720,7 @@ impl Settlement {
         let homes: Vec<(usize, i32, i32)> = (0..self.buildings.len())
             .filter(|&i| {
                 self.buildings[i].built
+                    && !self.buildings[i].condemned
                     && self.buildings[i].colony == colony
                     && self.buildings[i].def.housing > 0
             })
@@ -2322,6 +2448,7 @@ impl Settlement {
         let mut openings: Vec<(usize, f64)> = (0..self.buildings.len())
             .filter(|&i| {
                 self.buildings[i].built
+                    && !self.buildings[i].condemned
                     && self.buildings[i].colony == colony
                     && self.buildings[i].def.slots > 0
                     && self.buildings[i].def.structure != Structure::Stall
@@ -2807,7 +2934,10 @@ impl Settlement {
         let mut fallen: Vec<i32> = Vec::new();
         for bi in 0..self.buildings.len() {
             let b = &self.buildings[bi];
-            if b.def.housing <= 0 || !b.built || b.upgrading {
+            // A condemned thing is coming down by hand: its decay is the work
+            // being done to it, and what is left of it is not the town's to
+            // salvage at a collapse rate.
+            if b.def.housing <= 0 || !b.built || b.upgrading || b.condemned {
                 continue;
             }
             // Somebody living here, rather than somebody on the deed: a house

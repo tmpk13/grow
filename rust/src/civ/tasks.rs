@@ -92,6 +92,12 @@ pub enum Task {
         building_id: i32,
         phase: Phase,
     },
+    /// Taking a condemned thing apart. The same walk and the same effort as
+    /// building one, spent the other way.
+    PullDown {
+        building_id: i32,
+        phase: Phase,
+    },
     Station {
         building_id: i32,
         phase: Phase,
@@ -125,6 +131,7 @@ impl Task {
             Task::Harvest { phase, .. }
             | Task::Mine { phase, .. }
             | Task::Build { phase, .. }
+            | Task::PullDown { phase, .. }
             | Task::Station { phase, .. }
             | Task::Water { phase, .. }
             | Task::Haul { phase, .. } => *phase == Phase::Working,
@@ -144,6 +151,7 @@ impl Task {
             Task::Deliver { .. } => "deliver",
             Task::Haul { .. } => "haul",
             Task::Build { .. } => "build",
+            Task::PullDown { .. } => "pull down",
             Task::Station { .. } => "station",
             Task::Water { .. } => "water",
             Task::Shop { .. } => "shopping",
@@ -167,6 +175,7 @@ impl Task {
         match self {
             Task::Sleep { building_id, .. }
             | Task::Build { building_id, .. }
+            | Task::PullDown { building_id, .. }
             | Task::Station { building_id, .. }
             | Task::Shop { building_id, .. } => *building_id == id,
             Task::Eat { to_id } | Task::Deliver { to_id } => *to_id == id,
@@ -516,7 +525,7 @@ pub fn abandon_task(sim: &mut Settlement, pi: usize) {
                 }
             }
         }
-        Task::Build { building_id, .. } => {
+        Task::Build { building_id, .. } | Task::PullDown { building_id, .. } => {
             if let Some(bi) = sim.building_index(building_id) {
                 sim.buildings[bi].builders = (sim.buildings[bi].builders - 1).max(0);
             }
@@ -1089,6 +1098,7 @@ pub fn start_deliver(sim: &mut Settlement, state: &State, pi: usize) {
 enum LaborOption {
     Pickup { pile_id: i32 },
     Build { building_id: i32 },
+    PullDown { building_id: i32 },
     HaulOut { res: Res, amount: f64, from_id: i32 },
     Haul { res: Res, amount: f64, to_id: i32, target: HaulTarget },
 }
@@ -1161,6 +1171,17 @@ pub fn start_labor(sim: &mut Settlement, state: &State, pi: usize) -> bool {
         if sim.site_ready(si) && site.builders < 3 {
             options.push((24.0 - d * 0.2, LaborOption::Build { building_id: site.id }));
         }
+    }
+
+    // Anything the town has condemned. Worth a little less than raising
+    // something, so a town with both going on finishes what it is putting up
+    // before it turns to what it is taking down.
+    for b in &sim.buildings {
+        if !b.built || !b.condemned || b.colony != colony || b.builders >= 3 {
+            continue;
+        }
+        let d = (b.col as f64 - px).hypot(b.row as f64 - py);
+        options.push((22.0 - d * 0.2, LaborOption::PullDown { building_id: b.id }));
     }
 
     for b in &sim.buildings {
@@ -1274,6 +1295,18 @@ fn take_labor_task(sim: &mut Settlement, pi: usize, best: LaborOption) -> bool {
             }
             sim.buildings[bi].builders += 1;
             sim.people[pi].task = Some(Task::Build { building_id, phase: Phase::Approach });
+            true
+        }
+        LaborOption::PullDown { building_id } => {
+            let bi = match sim.building_index(building_id) {
+                Some(bi) => bi,
+                None => return false,
+            };
+            if !path_to_building(sim, pi, bi) {
+                return false;
+            }
+            sim.buildings[bi].builders += 1;
+            sim.people[pi].task = Some(Task::PullDown { building_id, phase: Phase::Approach });
             true
         }
         LaborOption::HaulOut { res, amount, from_id } => {
@@ -1749,6 +1782,43 @@ pub fn run_task(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
                 }
                 sim.finish_building(state, bi);
                 sim.people[pi].clear_task();
+            }
+        }
+        Task::PullDown { building_id, phase } => {
+            let bi = match sim.building_index(building_id) {
+                // Called off while they were walking over: a thing let stand
+                // again is not one to go on pulling down.
+                Some(bi) if sim.buildings[bi].built && sim.buildings[bi].condemned => bi,
+                _ => {
+                    abandon_task(sim, pi);
+                    return;
+                }
+            };
+            if phase == Phase::Approach {
+                if walk(sim, state, pi, dt, 1.0) {
+                    sim.people[pi].task =
+                        Some(Task::PullDown { building_id, phase: Phase::Working });
+                }
+                return;
+            }
+            let rate = state.civ.work.build_rate
+                * sim.mods_of(ci).build
+                * state.civ.people.work_rate
+                * sim.people[pi].skill
+                * (0.7 + sim.people[pi].traits.diligence * 0.6);
+            // Taking a thing apart is measured against what putting it up
+            // cost, so a manor takes longer to clear than a hut and the same
+            // hands do both.
+            let effort = (sim.buildings[bi].work * state.civ.build.pull_down_share.max(0.05))
+                .max(1.0);
+            sim.buildings[bi].decay = (sim.buildings[bi].decay + rate * dt / effort).min(1.0);
+            sim.buildings[bi].active = sim.time;
+            do_work(sim, state, pi, rate * dt);
+            sim.buffer_dirty = true;
+            if sim.buildings[bi].decay >= 1.0 {
+                sim.buildings[bi].builders = (sim.buildings[bi].builders - 1).max(0);
+                sim.people[pi].clear_task();
+                sim.finish_pull_down(state, bi);
             }
         }
         Task::Station { building_id, phase, .. } => {

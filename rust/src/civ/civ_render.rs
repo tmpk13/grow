@@ -727,6 +727,16 @@ fn house_sprite(
     Rc::new(Sprite { w, h, px, ox: 0, oy: h })
 }
 
+/// What is left of anything that is not a house as it comes down: the same rule
+/// the walls of a house follow, since a wall, a counter and a lamp post are all
+/// wall from top to bottom. Nothing has a roof to lose first, so the whole
+/// sprite is read as the span.
+fn wear_down(px: &mut [u32], w: i32, h: i32, b: &Building) {
+    if b.decay > 0.0 {
+        ruin(px, w, h, 0, b.decay, b.seed as i32);
+    }
+}
+
 /// Door and windows, spaced along the wall rather than placed by hand, and lit
 /// from inside once it is dark.
 #[allow(clippy::too_many_arguments)]
@@ -871,6 +881,7 @@ fn wall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
         }
     }
 
+    wear_down(&mut px, w, h, b);
     Rc::new(Sprite { w, h, px, ox: 0, oy: h })
 }
 
@@ -904,6 +915,7 @@ fn stall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
     if progress < 1.0 {
         return Rc::new(Sprite { w, h, px, ox: 0, oy: h });
     }
+    wear_down(&mut px, w, h, b);
 
     // The awning, sloping toward the viewer, striped along its width.
     for y in 0..awning {
@@ -934,6 +946,7 @@ fn stall_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
         }
     }
 
+    wear_down(&mut px, w, h, b);
     Rc::new(Sprite { w, h, px, ox: 0, oy: h })
 }
 
@@ -984,6 +997,7 @@ fn lamp_sprite(state: &State, world: &World, b: &Building, night: bool) -> Rc<Sp
             }
         }
     }
+    wear_down(&mut px, w, h, b);
     Rc::new(Sprite { w, h, px, ox: 0, oy: h })
 }
 

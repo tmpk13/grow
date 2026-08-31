@@ -978,6 +978,12 @@ pub struct BuildConfig {
     pub crumble_days: f64,
     /// Share of what it was built from left lying in the rubble.
     pub crumble_salvage: f64,
+    /// Work to pull a standing thing down on purpose, against what it took to
+    /// put up. Taking a house apart is not the job raising one was.
+    pub pull_down_share: f64,
+    /// Share of what it was built from that comes back when it is taken apart
+    /// rather than left to fall in, which is the point of doing it by hand.
+    pub pull_down_salvage: f64,
 }
 
 impl Default for BuildConfig {
@@ -1019,6 +1025,8 @@ impl Default for BuildConfig {
             crumble_after: 4.0,
             crumble_days: 8.0,
             crumble_salvage: 0.25,
+            pull_down_share: 0.45,
+            pull_down_salvage: 0.6,
         }
     }
 }

@@ -3,6 +3,15 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) Anything the town has put up can be condemned from its Look inside
+  card, and the people take it apart themselves: the same walk and the same
+  effort as building, measured against what it cost to raise, with most of the
+  materials left on the ground where it stood. A condemned thing empties first
+  - beds, benches, deeds and counters - and is counted out of the town while it
+  comes down, so the planner starts on what replaces it straight away; letting
+  it stand again puts it right at the cost of the work spent. A site that has
+  not gone up is called off instead, and everything carried to it is left where
+  it stood.
 - (LLM) Nobody is cut in half by water any more. The generated settler has
   poses of its own for crossing water and for treading it - head and shoulders
   over a waterline, an arm out with the stroke, a bob while treading - and two

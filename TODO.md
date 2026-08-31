@@ -1,7 +1,5 @@
 What is left. What is done is in TODO_COMPLETE.md.
 
-- People need to be able to remove built things.
-
 - Experimental feature toggle for a user controlled person.
     - Should have a toggle for a onscreen joystick to move
     - Buttons at the bottom of the screen for 

@@ -3379,6 +3379,28 @@
     "mode_label": "Settlement",
     "tab": "build",
     "tab_label": "Build",
+    "group": "Pulling things down",
+    "label": "Work to pull down",
+    "hint": "against what it took to put up",
+    "anchor": "work-to-pull-down",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Pulling things down",
+    "label": "Salvage from pulling down",
+    "hint": "share of the materials that come back, which is more than falls out of a collapse",
+    "anchor": "salvage-from-pulling-down",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
     "group": "Walls and gates",
     "label": "Towns wall themselves",
     "anchor": "towns-wall-themselves",

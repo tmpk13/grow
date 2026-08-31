@@ -1085,6 +1085,32 @@ if (!inspectSweep) {
       problems.push('the building card says almost nothing');
     }
     await page.screenshot({ path: `${outDir}/11h-look-inside.png` });
+    // Condemning it: the card is where the order is given, and the state line
+    // is what says the town took it.
+    const order = card.locator('.btn.danger:text-is("Pull it down"), .btn:text-is("Call it off")');
+    if ((await order.count()) === 0) {
+      problems.push('the building card offers no way to have it taken down');
+    } else if ((await order.textContent()) === 'Pull it down') {
+      await order.click();
+      await page.waitForTimeout(700);
+      const state = await card.locator('.stat').first().textContent();
+      if (!/condemned/.test(state ?? '')) {
+        problems.push(`condemning a building left the card reading "${state}"`);
+      }
+      await page.screenshot({ path: `${outDir}/11h2-condemned.png` });
+      // And it can be called off again, which is what the button says now.
+      const spare = card.locator('.btn:text-is("Let it stand")');
+      if ((await spare.count()) === 0) {
+        problems.push('a condemned building cannot be spared');
+      } else {
+        await spare.click();
+        await page.waitForTimeout(700);
+        const back = await card.locator('.stat').first().textContent();
+        if (/condemned/.test(back ?? '')) {
+          problems.push('letting it stand left it condemned');
+        }
+      }
+    }
     await card.locator('.btn:text-is("Done looking")').click();
     await page.waitForTimeout(300);
     if (await card.isVisible()) {

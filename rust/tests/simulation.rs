@@ -610,6 +610,155 @@ fn a_motion_with_no_art_borrows_from_a_related_one() {
     assert!(sprites.any(), "the sheets are still there");
 }
 
+// ---- pulling things down -------------------------------------------------
+
+#[test]
+fn condemning_a_building_empties_it_and_leaves_it_standing() {
+    let (mut sim, state) = peopled(48, 24);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..2000 {
+        sim.step(&state, dt);
+    }
+    let at = sim
+        .buildings
+        .iter()
+        .position(|b| b.built && b.def.housing > 0)
+        .expect("a house should be up by now");
+    let id = sim.buildings[at].id;
+    let housing_before = sim.housing_capacity(sim.buildings[at].colony);
+
+    assert!(sim.condemn(id, true), "the order was not taken");
+    let b = &sim.buildings[at];
+    assert!(b.condemned && b.built, "it should still be standing, marked to come down");
+    assert!(b.residents.is_empty() && b.workers.is_empty() && b.owner == 0);
+    assert!(
+        sim.people.iter().all(|p| p.home != id && p.work != id && p.owns != id),
+        "somebody is still tied to a building that is coming down"
+    );
+    // Counted out of the town while it is still there, so what replaces it is
+    // planned before it is gone.
+    assert!(
+        sim.housing_capacity(sim.buildings[at].colony) < housing_before,
+        "a condemned house was still counted as beds"
+    );
+
+    // A day of a running town does not put anybody back in it.
+    for _ in 0..(state.civ.people.day_length * state.civ.sim.tick_hz) as usize {
+        sim.step(&state, dt);
+        if sim.building_index(id).is_none() {
+            return;
+        }
+        let b = &sim.buildings[sim.building_index(id).unwrap()];
+        assert!(
+            b.residents.is_empty() && b.workers.is_empty(),
+            "somebody was assigned to a condemned building"
+        );
+    }
+    // And it is coming apart while they work at it, rather than standing sound.
+    assert!(sim.buildings[sim.building_index(id).unwrap()].decay > 0.0);
+}
+
+#[test]
+fn the_town_pulls_down_what_it_has_condemned_and_keeps_the_materials() {
+    let (mut sim, state) = peopled(48, 24);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..2000 {
+        sim.step(&state, dt);
+    }
+    let at = sim.buildings.iter().position(|b| b.built).expect("something should be up");
+    let id = sim.buildings[at].id;
+    let (col, row) = (sim.buildings[at].col, sim.buildings[at].row);
+    let cost: f64 = sim.buildings[at].cost.iter().map(|&(_, n)| n).sum();
+    assert!(sim.condemn(id, true));
+
+    let mut down = false;
+    for _ in 0..(state.civ.people.day_length * state.civ.sim.tick_hz * 12.0) as usize {
+        sim.step(&state, dt);
+        if sim.building_index(id).is_none() {
+            down = true;
+            break;
+        }
+    }
+    assert!(down, "twelve days and nobody finished taking it down");
+    // What it was made of is on the ground where it stood, near enough to be
+    // the same spot: a pile is merged into whatever is already there.
+    let near: f64 = sim
+        .piles
+        .iter()
+        .filter(|p| (p.col - col).abs() <= 3 && (p.row - row).abs() <= 3)
+        .map(|p| p.n)
+        .sum();
+    let want = cost * state.civ.build.pull_down_salvage;
+    assert!(
+        near > 0.0 || want < 1.0,
+        "nothing was left on the ground where it stood, of {want:.0} salvage"
+    );
+    // The ground is free again.
+    assert!(sim.buildings.iter().all(|b| b.id != id));
+}
+
+#[test]
+fn calling_off_a_site_leaves_what_was_carried_to_it() {
+    let (mut sim, state) = peopled(48, 24);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    let mut site = None;
+    for _ in 0..4000 {
+        sim.step(&state, dt);
+        site = sim
+            .buildings
+            .iter()
+            .position(|b| !b.built && b.delivered.iter().any(|&n| n >= 1.0));
+        if site.is_some() {
+            break;
+        }
+    }
+    let at = match site {
+        Some(at) => at,
+        // Nothing was ever part delivered; there is nothing to check.
+        None => return,
+    };
+    let id = sim.buildings[at].id;
+    let (col, row) = (sim.buildings[at].col, sim.buildings[at].row);
+    let carried: f64 = sim.buildings[at].delivered.iter().map(|n| n.floor()).sum();
+
+    assert!(sim.condemn(id, true), "a site should be called off rather than condemned");
+    assert!(sim.building_index(id).is_none(), "the site is still on the map");
+    let near: f64 = sim
+        .piles
+        .iter()
+        .filter(|p| (p.col - col).abs() <= 3 && (p.row - row).abs() <= 3)
+        .map(|p| p.n)
+        .sum();
+    assert!(near >= carried.min(1.0), "what was carried to it went nowhere");
+}
+
+#[test]
+fn letting_a_condemned_thing_stand_again_calls_the_work_off() {
+    let (mut sim, state) = peopled(48, 24);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..2000 {
+        sim.step(&state, dt);
+    }
+    let at = sim.buildings.iter().position(|b| b.built).expect("something should be up");
+    let id = sim.buildings[at].id;
+    assert!(sim.condemn(id, true));
+    for _ in 0..400 {
+        sim.step(&state, dt);
+        if sim.building_index(id).is_none() {
+            return;
+        }
+    }
+    assert!(sim.condemn(id, false));
+    let bi = sim.building_index(id).expect("it should still be there");
+    assert!(!sim.buildings[bi].condemned);
+    // Whoever was taking it apart is off the job on the next tick rather than
+    // finishing it.
+    for _ in 0..200 {
+        sim.step(&state, dt);
+    }
+    assert!(sim.building_index(id).is_some(), "it came down after the order was called off");
+}
+
 #[test]
 fn a_settler_reports_the_motion_they_are_in() {
     let mut sim = Settlement::new(&State::new());

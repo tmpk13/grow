@@ -7,8 +7,8 @@ use crate::app::{App, Handle, Panel};
 use crate::civ::buildings::{scaled_cost, BuildConfig, Job, Structure, BUILDINGS, CATEGORIES};
 use crate::civ::resources::{format_cost, missing_from, Stock, RES_IDS};
 use crate::ui::{
-    app_bool, app_num, append, bar, button, clear, clear_scope, colony_picker, el, note, section, stat, NumOpts,
-    Scope,
+    app_bool, app_num, append, bar, button, clear, clear_scope, colony_picker, danger_button, el,
+    note, section, stat, NumOpts, Scope,
 };
 
 pub struct BuildPanel {
@@ -114,6 +114,22 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             |c, v| c.expedition_interval = v),
         build_num(h, "Cells between town centers", cfg.colony_spacing as f64, 8.0, 200.0, 1.0, None,
             |c, v| c.colony_spacing = v as i32),
+    ]));
+
+    append(root, section("Pulling things down", vec![
+        note("Look inside anything the town has put up and it can be condemned: the people \
+              take it apart themselves, at the same rate they build, and leave most of what it \
+              was made of on the ground. Nobody lives or works in a condemned thing while it \
+              comes down, so the planner starts on what replaces it straight away. Letting it \
+              stand again puts it right, at the cost of the work already spent on taking it \
+              apart. A site that has not gone up yet is called off instead, and everything \
+              delivered to it is left where it stood."),
+        build_num(h, "Work to pull down", cfg.pull_down_share, 0.05, 2.0, 0.05,
+            Some("against what it took to put up"), |c, v| c.pull_down_share = v),
+        build_num(h, "Salvage from pulling down", cfg.pull_down_salvage, 0.0, 1.0, 0.05,
+            Some("share of the materials that come back, which is more than falls out of a \
+                  collapse"),
+            |c, v| c.pull_down_salvage = v),
     ]));
 
     append(root, section("Walls and gates", vec![
@@ -259,6 +275,8 @@ impl BuildPanel {
             } else {
                 format!("under construction, {pct:.0}% raised")
             }
+        } else if b.condemned {
+            format!("condemned: {:.0}% pulled down", b.decay * 100.0)
         } else if b.decay > 0.0 {
             format!("standing, but falling in: {:.0}% gone", b.decay * 100.0)
         } else {
@@ -316,6 +334,35 @@ impl BuildPanel {
         if let Some(made) = stock_line(&b.out) {
             let _ = self.inside.append_child(&stat("On the bench", &made));
         }
+
+        // Pulling it down: an order to the town's own people rather than
+        // something that happens on the press, so the button says what it will
+        // set in motion and the work is theirs.
+        let (id, built, condemned) = (b.id, b.built, b.condemned);
+        let h3 = self.handle.clone();
+        let label = match (built, condemned) {
+            (false, _) => "Call it off",
+            (true, false) => "Pull it down",
+            (true, true) => "Let it stand",
+        };
+        let press: Element = if condemned {
+            button(label, Scope::List, move || {
+                let mut sh = h3.borrow_mut();
+                if let Some(sim) = sh.app.settlement.as_mut() {
+                    sim.condemn(id, false);
+                }
+                sh.app.redraw_panel = true;
+            })
+        } else {
+            danger_button(label, Scope::List, move || {
+                let mut sh = h3.borrow_mut();
+                if let Some(sim) = sh.app.settlement.as_mut() {
+                    sim.condemn(id, true);
+                }
+                sh.app.redraw_panel = true;
+            })
+        };
+        let _ = self.inside.append_child(&press);
 
         let h2 = self.handle.clone();
         let _ = self.inside.append_child(&button("Done looking", Scope::List, move || {

@@ -1279,9 +1279,9 @@ flowchart TD
 
 ## What comes down
 
-Two things on the map end by falling rather than by being taken away, and both
-are a state of the thing itself rather than a separate entity, so both are in
-the save for nothing.
+Three things on the map end by falling rather than by being taken away, and all
+of them are a state of the thing itself rather than a separate entity, so all
+of them are in the save for nothing.
 
 A cut plant with a stem in it keeps its place in the plant list with `felled`
 running from 0 to 1: the sim turns it about its foot instead of growing it, and
@@ -1295,6 +1295,17 @@ down. It reverses at the same rate, so somebody moving in puts it right. When
 it is gone the footprint is released and a share of what it was built from is
 left on the ground as piles.
 
+Anything the town has put up can be condemned from its Look inside card, and
+then it is the same `decay`, raised by hand: `Task::PullDown` is the build task
+with the sign flipped, at `pull_down_share` of the effort it took to raise, and
+it leaves `pull_down_salvage` of the materials rather than the smaller share a
+collapse does. A condemned thing gives up its beds, benches, deeds and counters
+at the order rather than at the end, so nothing is assigned to it while it
+comes down and the planner starts on its replacement straight away. Letting it
+stand again puts it right and loses the work. A site that has not gone up is
+called off rather than condemned: nothing to take apart, and what was delivered
+is left where it stood.
+
 ```mermaid
 flowchart TD
   cut["a plant is cut"] --> stem{"has a stem?"}
@@ -1306,6 +1317,11 @@ flowchart TD
   wait --> crumble["past crumble_after,<br/>decay 0 to 1"]
   crumble --> back["somebody moves in:<br/>put right at the same rate"]
   crumble --> fell["footprint released,<br/>rubble left as piles"]
+  order["condemned from its card"] --> empty_it["beds, benches, deeds<br/>and counters given up"]
+  empty_it --> hand["Task::PullDown:<br/>decay raised by hand"]
+  hand --> spare["let stand again:<br/>put right, work lost"]
+  hand --> fell
+  site["a site called off"] --> back_out["removed at the press,<br/>what was delivered left standing"]
 ```
 
 ## Settlement drawing
