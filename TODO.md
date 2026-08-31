@@ -14,6 +14,8 @@ What is left. What is done is in TODO_COMPLETE.md.
 - From an image can add zones of things (water, rock, grassy areas, no plant areas, tree areas, general plant areas).
     - Image is used as landscape, drag a box/outline of where the area is, can select by color threshold.
 
+- If people are too far from a settlement they will try to start a new one.
+
 
 # Do later
 
