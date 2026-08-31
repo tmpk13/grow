@@ -123,3 +123,5 @@ pkg/
 *.png
 !docs/**/*.png
 .DS_Store
+# cloudflare worker staging directory
+site/

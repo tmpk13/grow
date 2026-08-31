@@ -1,0 +1,16 @@
+{
+    // Static site. There is no fetch handler and no "main": a Worker with an
+    // assets directory and no script serves those files directly, so the
+    // placeholder handler is replaced rather than kept alongside the page.
+    //
+    // "name" has to match the Worker the deployment is wired to, or the
+    // deploy creates a second one under this name instead.
+    "name": "grow",
+    "compatibility_date": "2026-08-30",
+
+    // Only what the page loads. The build command assembles this directory;
+    // it holds index.html, styles.css and pkg/, and is not in the repository.
+    "assets": {
+        "directory": "./site"
+    }
+}
