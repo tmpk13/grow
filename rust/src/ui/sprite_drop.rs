@@ -1,4 +1,4 @@
-//! Dropping images onto a settler animation.
+//! Dropping images onto a person animation.
 //!
 //! One card per motion, each its own drop target. A single image is read as a
 //! strip of frames, several images are read as one frame each in the order
@@ -32,14 +32,14 @@ use crate::util::unpack_rgba;
 /// is a worse way to find out.
 const SIZE_WARN: usize = 1 << 20;
 
-/// The whole "Settler sprites" section: the switch, a card per motion, and what
+/// The whole "Person sprites" section: the switch, a card per motion, and what
 /// the sheets are costing.
 /// What a dropped image is for. The drop target, the file reading and the
 /// picker beside them are the same either way; only what the clip lands in
 /// differs.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Slot {
-    /// One of a settler's motions.
+    /// One of a person's motions.
     Motion(Motion),
     /// A thing people make, by its name in the catalog.
     Made(String),
@@ -49,20 +49,20 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
     let sprites = &app.state.civ.sprites;
     let mut rows = vec![
         note(
-            "Drop images on a motion to draw settlers with them instead of with the \
+            "Drop images on a motion to draw people with them instead of with the \
              generated body. One image is read as a strip of frames; several are read \
              as one frame each, in the order their names sort. A motion with nothing \
              on it borrows from a related one, so a single walk sheet is enough to \
-             replace the settler everywhere. A frame is drawn whole, exactly as it was \
+             replace the person everywhere. A frame is drawn whole, exactly as it was \
              drawn, so motions exported from one canvas line up however much room each \
              of them uses.",
         ),
         art_scale_row(app, h),
         app_bool(
             h,
-            "Draw settlers from dropped images",
+            "Draw people from dropped images",
             sprites.enabled,
-            Some("off keeps every sheet and goes back to the generated settler"),
+            Some("off keeps every sheet and goes back to the generated person"),
             |app, v| {
                 app.state.civ.sprites.enabled = v;
                 app.sprites_changed();
@@ -81,13 +81,13 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
             text
         }));
     }
-    section("Settler sprites", rows)
+    section("Person sprites", rows)
 }
 
 /// The one number that says how large every dropped picture comes out: the
 /// resolution the art was drawn at, against a map cell. It sits in both sprite
-/// sections because settlers and the things they build have to agree about it
-/// or a settler ends up towering over a house.
+/// sections because people and the things they build have to agree about it
+/// or a person ends up towering over a house.
 fn art_scale_row(app: &App, h: &Handle) -> Element {
     let cell = app.state.civ.world.cell_px;
     let per_cell = app.state.civ.art_px_per_cell;
@@ -420,7 +420,7 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
             motion,
             "Mirror the art",
             c.mirror,
-            Some("for a sheet drawn facing the other way than the settler walks"),
+            Some("for a sheet drawn facing the other way than the person walks"),
             |clip, v| clip.mirror = v,
         ));
         if let Some(sheet) = app.state.art.find(&c.sheet) {
@@ -456,7 +456,7 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
 
 /// Pointing a motion at a sheet drawn in the sprite editor, which is the other
 /// way art gets here. The sheet is copied into a clip rather than followed, so
-/// carrying on drawing does not change the settlers until it is sent again.
+/// carrying on drawing does not change the people until it is sent again.
 fn sheet_row(app: &App, h: &Handle, motion: Motion) -> Element {
     let options = app.state.art.options();
     if options.is_empty() {
@@ -676,7 +676,7 @@ fn load_files(h: &Handle, slot: Slot, files: FileList) {
 
 fn apply(h: &Handle, slot: Slot, frames: Vec<Frame>, strip: bool, source: &str) {
     let mut sh = h.borrow_mut();
-    // A settler's motion is an animation, so a single image is read as a strip
+    // A person's motion is an animation, so a single image is read as a strip
     // of equal frames. A thing people make stands still and is drawn from its
     // first frame, so guessing at columns there would only cut a wide picture
     // of a barn into pieces of one.
@@ -721,7 +721,7 @@ pub fn apply_made(app: &mut App, id: &str, clip: Clip) {
 }
 
 pub fn apply_clip(app: &mut App, motion: Motion, mut clip: Clip) {
-    app.record("settler art", false);
+    app.record("person art", false);
     match app.state.civ.sprites.clip(motion) {
         Some(old) => {
             clip.fps = old.fps;

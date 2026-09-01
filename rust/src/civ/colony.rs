@@ -55,7 +55,7 @@ pub struct Colony {
     pub parent: i32,
     pub seed: u32,
     pub banner: u32,
-    /// Counts down between attempts to send settlers out to found a new town.
+    /// Counts down between attempts to send people out to found a new town.
     pub expedition_timer: f64,
     /// Counts down between attempts to send a balloon up, when that experiment
     /// is switched on. A town that has never had one runs it down all the same,

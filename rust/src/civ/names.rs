@@ -1,4 +1,4 @@
-//! Procedural names. Settlers, their settlement and the caravans that visit are
+//! Procedural names. People, their settlement and the caravans that visit are
 //! all named from the same syllable tables so a run reads as one place.
 
 use crate::rng::Rng;

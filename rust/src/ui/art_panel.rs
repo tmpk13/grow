@@ -334,7 +334,7 @@ fn sheet_section(app: &App, h: &Handle) -> Element {
         let per_cell = app.state.civ.art_px_per_cell.max(1.0);
         rows.push(note(&format!(
             "The settlement draws art at {per_cell:.0} pixels to a cell, so this frame stands \
-             {:.1} by {:.1} cells there. A settler is about a cell and a half tall; a house is \
+             {:.1} by {:.1} cells there. A person is about a cell and a half tall; a house is \
              two or three cells across. Dropping a picture larger than the frame grows the \
              frame rather than shrinking the picture.",
             sheet.w as f64 / per_cell,
@@ -1151,15 +1151,15 @@ fn size_text(bytes: usize) -> String {
     }
 }
 
-/// Pointing a settler motion at this sheet, which is the whole reason the
+/// Pointing a person motion at this sheet, which is the whole reason the
 /// editor is in a tool about a settlement.
 fn use_section(app: &App, h: &Handle) -> Element {
     let sheet = selected(app);
     let ready = sheet.is_some_and(|s| s.any());
     let id = app.ui.selected_sheet.clone();
     let mut rows = vec![note(
-        "Sends this sheet to a settler motion as a clip. The clip keeps its own \
-         copy, so the settlers on the map do not change again until it is sent \
+        "Sends this sheet to a person motion as a clip. The clip keeps its own \
+         copy, so the people on the map do not change again until it is sent \
          a second time.",
     )];
     // A motion this sheet is already behind says so on its own button: the
@@ -1196,7 +1196,7 @@ fn use_section(app: &App, h: &Handle) -> Element {
         .collect();
     rows.push(btn_row(buttons));
 
-    // The same sheet, sent to a thing people make rather than to a settler.
+    // The same sheet, sent to a thing people make rather than to a person.
     // There are thirty odd of those, so they are picked from a list.
     let slots = crate::civ::sprites::made_slots();
     if !slots.is_empty() {
@@ -1228,14 +1228,14 @@ fn use_section(app: &App, h: &Handle) -> Element {
 
     if behind > 0 {
         rows.push(note(&format!(
-            "{behind} of these took this sheet before it was last drawn on. The settlers on the \
+            "{behind} of these took this sheet before it was last drawn on. The people on the \
              map are still showing what it looked like then."
         )));
     }
     if !ready {
         rows.push(note("Nothing is drawn on this sheet yet."));
     }
-    section("Use as settler art", rows)
+    section("Use as person art", rows)
 }
 
 // ---- drawing -------------------------------------------------------------

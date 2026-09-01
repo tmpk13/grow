@@ -1,4 +1,4 @@
-// Procedural names. Settlers, their settlement and the caravans that visit are
+// Procedural names. People, their settlement and the caravans that visit are
 // all named from the same syllable tables so a run reads as one place.
 
 const STARTS = ['b', 'br', 'd', 'f', 'g', 'gr', 'h', 'k', 'l', 'm', 'n', 'r', 's', 'st', 't', 'th', 'v', 'w'];

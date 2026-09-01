@@ -61,17 +61,17 @@ pub struct Stats {
     pub ticks: u64,
 }
 
-/// What foliage does where it covers a settler. Somebody walking behind a bush
+/// What foliage does where it covers a person. Somebody walking behind a bush
 /// is behind it, which is right and also makes them hard to follow; the other
-/// two let the bush stay a bush and the settler stay findable.
+/// two let the bush stay a bush and the person stay findable.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Foliage {
     /// A leaf is a leaf. What a plant looks like from in front.
     Solid,
-    /// Every other pixel of the covering foliage is left out, so the settler
+    /// Every other pixel of the covering foliage is left out, so the person
     /// shows through it in a screen pattern rather than as a ghost.
     Hatched,
-    /// The covering foliage is mixed over the settler at this much.
+    /// The covering foliage is mixed over the person at this much.
     Faded(f64),
 }
 
@@ -459,7 +459,7 @@ impl Sim {
 
     /// One plant onto a buffer with the world's dimensions, contact shadow
     /// first.
-    /// What foliage does where it covers a settler. The default is what a plant
+    /// What foliage does where it covers a person. The default is what a plant
     /// is: opaque, and whoever is behind it is behind it.
     /// `sway_px` is how far the crown leans right now: rows lean by the square
     /// of their height up the plant, so the foot stays planted. Zero draws the
@@ -513,8 +513,8 @@ impl Sim {
                     continue;
                 }
                 let dst = &mut buf[drow + wx as usize];
-                // The mark stays on whatever is drawn over a settler, so the
-                // same settler shows through however many leaves are in front.
+                // The mark stays on whatever is drawn over a person, so the
+                // same person shows through however many leaves are in front.
                 if over != Foliage::Solid && crate::util::is_person(*dst) {
                     match over {
                         Foliage::Solid => {}

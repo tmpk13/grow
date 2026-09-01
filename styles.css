@@ -157,7 +157,7 @@ body:not(.stage-only) .stage-escape {
   display: none;
 }
 
-/* Driving a settler: the stick and what they can be asked to do, over the map
+/* Driving a person: the stick and what they can be asked to do, over the map
    rather than in the panel, because it is played with rather than set. The bar
    itself lets presses through; only the controls in it take them. */
 .stage-hud {
@@ -685,7 +685,7 @@ input[type="color"] {
   display: block;
 }
 
-/* settler sprites */
+/* person sprites */
 
 .sprite-slot {
   border: var(--hairline) solid var(--line);
@@ -1042,7 +1042,7 @@ input[type="color"] {
   text-overflow: ellipsis;
 }
 
-/* A name in the register opens that settler's record. */
+/* A name in the register opens that person's record. */
 .roster-name.link {
   background: none;
   border: none;
@@ -1071,7 +1071,7 @@ input[type="color"] {
   text-align: right;
 }
 
-/* One settler's record: who they are, how they are and what has happened. */
+/* One person's record: who they are, how they are and what has happened. */
 .person-card {
   display: flex;
   flex-direction: column;
@@ -1146,7 +1146,7 @@ input[type="color"] {
   background: #8fb8c8;
 }
 
-/* Who a settler knows, strongest feeling first either way. */
+/* Who a person knows, strongest feeling first either way. */
 .bonds {
   display: flex;
   flex-direction: column;
@@ -1360,7 +1360,7 @@ body.painting #world-canvas {
   cursor: crosshair;
 }
 
-/* Picking settlers up off the map rather than dragging it. */
+/* Picking people up off the map rather than dragging it. */
 body.moving-people #world-canvas {
   cursor: grab;
 }
@@ -1490,7 +1490,7 @@ body.inspecting #world-canvas {
   background: #0c1017;
 }
 
-/* Choosing a sheet to send to a settler motion. */
+/* Choosing a sheet to send to a person motion. */
 .sprite-from {
   display: grid;
   grid-template-columns: 1fr auto;

@@ -311,7 +311,7 @@ const rateAfter = await page
 if (rateAfter !== rateBefore) {
   problems.push(`undo left the rate at ${rateAfter}, not ${rateBefore}`);
 }
-await page.click('.group:has-text("Use as settler art") .btn:text-is("Walking")');
+await page.click('.group:has-text("Use as person art") .btn:text-is("Walking")');
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${outDir}/08e-sheet.png` });
 
@@ -528,13 +528,13 @@ await page.screenshot({ path: `${outDir}/10h-experimental.png` });
 await page.click('#panel-body [data-find="try-the-unfinished-things"] .btn');
 await page.waitForTimeout(400);
 
-// The register: open a settler's record, resort the list, include the dead.
+// The register: open a person's record, resort the list, include the dead.
 // This is the one panel that rebuilds interactive rows on a timer, so it is
 // also the one that would leak a listener per row if the scopes were wrong.
 await page.click('.tab:text-is("People")');
 await page.waitForTimeout(600);
 // Paused first: the register rebuilds twice a second and its rows reorder as
-// settlers change what they are doing, so a click on a live list races the
+// people change what they are doing, so a click on a live list races the
 // redraw that replaces the row under it.
 const pause = async () => {
   if ((await page.locator('#btn-play').textContent()).trim() === 'Pause') {
@@ -551,7 +551,7 @@ await page.waitForTimeout(300);
 await page.locator('.roster-name.link').first().click();
 await page.waitForTimeout(700);
 if ((await page.locator('.person-card .stat').count()) === 0) {
-  problems.push('clicking a settler did not open their record');
+  problems.push('clicking a person did not open their record');
 }
 await page.screenshot({ path: `${outDir}/10b-person.png` });
 await page.click('.chip:text-is("Coin")');
@@ -745,7 +745,7 @@ if ((await page.locator('.made-slot .btn.danger').count()) !== 0) {
 await page.fill('.made-search input', '');
 await page.waitForTimeout(300);
 
-// Foliage over a settler: three ways, and the amount only shows for the one it
+// Foliage over a person: three ways, and the amount only shows for the one it
 // means anything for.
 await page.click('.tab[data-tab="land"]');
 await page.waitForTimeout(500);
@@ -801,8 +801,8 @@ await press('labels');
 await page.waitForTimeout(150);
 await closeView();
 
-// Moving people: with the switch on, a press on a settler picks them up and
-// the pointer carries them until it is let go. Where the settlers are on
+// Moving people: with the switch on, a press on a person picks them up and
+// the pointer carries them until it is let go. Where the people are on
 // screen is not knowable from out here, so the stage is swept from inside the
 // page until one comes up in hand.
 await pause();
@@ -840,7 +840,7 @@ const sweepStage = (want = 'holding', release = false) =>
     for (let x = r.left + 4; x < r.right - 4; x += 6) {
       send('pointerdown', x, y);
       if (note().includes(want)) {
-        // A settler picked up stays picked up until the drag that follows
+        // A person picked up stays picked up until the drag that follows
         // puts them down; one taken over is not held by the pointer at all.
         if (release) send('pointerup', x, y);
         return { x, y, who: note() };
@@ -850,7 +850,7 @@ const sweepStage = (want = 'holding', release = false) =>
   }
   return null;
   }, { want, release });
-// Settlers indoors are not on the map to be picked up, so a town that has
+// People indoors are not on the map to be picked up, so a town that has
 // gone to bed has nobody out there at all. The clock is run on between
 // sweeps until somebody is up.
 let sweep = null;
@@ -864,11 +864,11 @@ for (let attempt = 0; attempt < 10 && !sweep; attempt += 1) {
   sweep = await sweepStage();
 }
 if (!sweep) {
-  problems.push('no settler could be picked up anywhere on the stage');
+  problems.push('no person could be picked up anywhere on the stage');
 } else {
   console.log(`picked up: ${sweep.who}`);
   if (!(await page.evaluate(() => document.body.classList.contains('holding')))) {
-    problems.push('holding a settler did not show in the pointer');
+    problems.push('holding a person did not show in the pointer');
   }
   await page.screenshot({ path: `${outDir}/11b-holding.png` });
   const put = await page.evaluate(({ x, y }) => {
@@ -888,14 +888,14 @@ if (!sweep) {
     send('pointerup', x + 40, y + 24);
     return (document.getElementById('save-note').textContent || '').trim();
   }, sweep);
-  if (!put.startsWith('put ')) problems.push(`putting a settler down said "${put}"`);
+  if (!put.startsWith('put ')) problems.push(`putting a person down said "${put}"`);
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${outDir}/11c-put-down.png` });
 }
 await page.click('#move-people');
 await page.waitForTimeout(200);
 if (await page.evaluate(() => document.body.classList.contains('moving-people'))) {
-  problems.push('turning the move people switch off left the stage picking settlers up');
+  problems.push('turning the move people switch off left the stage picking people up');
 }
 
 // Cutting by hand: the switch is exclusive with moving people, a held press on
@@ -908,7 +908,7 @@ if (!(await page.evaluate(() => document.body.classList.contains('harvesting')))
   problems.push('the harvest switch did not change what a press on the stage does');
 }
 if (await page.evaluate(() => document.body.classList.contains('moving-people'))) {
-  problems.push('turning harvesting on left the stage picking settlers up as well');
+  problems.push('turning harvesting on left the stage picking people up as well');
 }
 if (
   (await page.evaluate(() => document.getElementById('move-people').getAttribute('aria-pressed'))) !==
@@ -1010,7 +1010,7 @@ if (await page.evaluate(() => document.body.classList.contains('harvesting'))) {
 }
 
 // Adding people: the third exclusive press switch. A press on the map sets a
-// new settler down there; the head count says whether anybody arrived.
+// new person down there; the head count says whether anybody arrived.
 const headCount = async () => {
   const status = await page.evaluate(() => document.getElementById('statusbar').textContent);
   const m = /people (\d+)/.exec(status);
@@ -1037,7 +1037,7 @@ if (headsAfter !== headsBefore + 1) {
 if (!(await page.evaluate(() => document.getElementById('save-note').textContent)).includes('wandered in')) {
   problems.push('nobody said who arrived');
 }
-console.log(`added a settler: ${(await page.evaluate(() => document.getElementById('save-note').textContent)).trim()}`);
+console.log(`added a person: ${(await page.evaluate(() => document.getElementById('save-note').textContent)).trim()}`);
 await page.click('#add-people');
 await page.waitForTimeout(200);
 if (await page.evaluate(() => document.body.classList.contains('adding-people'))) {
@@ -1046,7 +1046,7 @@ if (await page.evaluate(() => document.body.classList.contains('adding-people'))
 
 // Looking inside: the fourth exclusive switch. A press on a building lands
 // its card on the Build panel; where the buildings are on screen is not
-// knowable from out here, so the stage is swept the way the settler pick-up
+// knowable from out here, so the stage is swept the way the person pick-up
 // sweep does it.
 await page.click('#look-inside');
 await page.waitForTimeout(200);
@@ -1130,9 +1130,9 @@ if (!inspectSweep) {
 await page.click('#look-inside');
 await page.waitForTimeout(150);
 
-// Taking a settler over: the switch is only on the toolbar while the
+// Taking a person over: the switch is only on the toolbar while the
 // experiment behind it is on, and what it puts up is stage chrome rather than
-// a panel - a stick and the four things a settler can be asked to do.
+// a panel - a stick and the four things a person can be asked to do.
 await page.click('.tab[data-tab="experimental"]');
 await page.waitForTimeout(500);
 if ((await page.locator('#take-over').count()) !== 0) {
@@ -1284,7 +1284,7 @@ await page.click('.tab[data-tab="experimental"]');
 await page.waitForTimeout(400);
 await page.click('#panel-body [data-find="try-the-unfinished-things"] .btn');
 await page.waitForTimeout(500);
-await page.click('#panel-body [data-find="let-a-settler-be-taken-over"] .btn');
+await page.click('#panel-body [data-find="let-a-person-be-taken-over"] .btn');
 await page.waitForTimeout(600);
 if ((await page.locator('#take-over').count()) === 0) {
   problems.push('turning the experiment on did not put the take over switch up');
@@ -1294,13 +1294,13 @@ if ((await page.locator('#take-over').count()) === 0) {
   await page.waitForTimeout(200);
   const drove = await sweepStage(' is yours', true);
   if (!drove || !/ is yours/.test(drove.who)) {
-    problems.push(`no settler could be taken over: ${drove ? drove.who : 'nobody found'}`);
+    problems.push(`no person could be taken over: ${drove ? drove.who : 'nobody found'}`);
   } else {
     console.log(`took over: ${drove.who}`);
     await page.waitForTimeout(400);
     const hud = page.locator('#stage-hud');
     if (!(await hud.isVisible())) {
-      problems.push('taking a settler over put no chrome over the map');
+      problems.push('taking a person over put no chrome over the map');
     }
     if ((await hud.locator('.stick').count()) === 0) {
       problems.push('the stick is missing with the stick switch on');
@@ -1319,7 +1319,7 @@ if ((await page.locator('#take-over').count()) === 0) {
       problems.push('pressing a driving button said nothing at all');
     }
     // The keys steer: hold one down for a moment with the world running and
-    // the settler should have moved.
+    // the person should have moved.
     await resume();
     await page.keyboard.down('d');
     await page.waitForTimeout(700);
@@ -1336,7 +1336,7 @@ if ((await page.locator('#take-over').count()) === 0) {
   await page.waitForTimeout(150);
 }
 // Put the experiments back where they were.
-await page.click('#panel-body [data-find="let-a-settler-be-taken-over"] .btn');
+await page.click('#panel-body [data-find="let-a-person-be-taken-over"] .btn');
 await page.waitForTimeout(300);
 await page.click('#panel-body [data-find="try-the-unfinished-things"] .btn');
 await page.waitForTimeout(300);

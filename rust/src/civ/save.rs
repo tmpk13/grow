@@ -110,7 +110,7 @@ pub struct Snapshot {
 }
 
 /// The same shape as `Snapshot`, borrowed rather than owned, so writing a
-/// settlement down does not first copy every plant and every settler in it.
+/// settlement down does not first copy every plant and every person in it.
 /// Serde matches the two by field name.
 #[derive(Serialize)]
 struct SnapshotRef<'a> {

@@ -1,4 +1,4 @@
-// People panel: the parameters that decide how settlers move, work, eat and
+// People panel: the parameters that decide how people move, work, eat and
 // age, plus a live roster of who is doing what right now.
 
 import { boolField, clear, el, numberField, section } from './controls.js';
@@ -37,7 +37,7 @@ export function buildPeoplePanel(root, app) {
 
   root.appendChild(
     section('Founding party', [
-      numberField('Settlers', {
+      numberField('People', {
         value: civ.start.population,
         min: 1,
         max: 40,
@@ -116,7 +116,7 @@ export function buildPeoplePanel(root, app) {
 
   const roster = el('div', { class: 'roster' });
   const counts = el('div', { class: 'chips' });
-  root.appendChild(section('Settlers', [counts, roster]));
+  root.appendChild(section('People', [counts, roster]));
 
   const redraw = () => {
     const sim = app.civ;

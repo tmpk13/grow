@@ -1,4 +1,4 @@
-//! Settler animations built from dropped images.
+//! Person animations built from dropped images.
 //!
 //! A clip is one sheet of pixels read as a row of equal frames, plus how it is
 //! played. The sheet is kept whole rather than cut up, so changing the frame
@@ -11,7 +11,7 @@
 //!
 //! There is one clip per motion, and a motion with nothing dropped on it falls
 //! back to a related one, so a single walk sheet is enough to stand in for the
-//! generated settler everywhere.
+//! generated person everywhere.
 
 use serde::{Deserialize, Serialize};
 
@@ -76,7 +76,7 @@ pub fn art_zoom(cell_px: i32, px_per_cell: f64, scale: f64) -> f64 {
 /// pixels over the map, so an edge is either drawn or it is not.
 pub const ALPHA_CUT: u8 = 128;
 
-/// What a settler is doing, as far as the drawing is concerned. Everything the
+/// What a person is doing, as far as the drawing is concerned. Everything the
 /// simulation knows about a person folds down to one of these, and each one
 /// can be given its own images and its own frame count.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -251,11 +251,11 @@ pub struct Clip {
     /// Cells to lift the sprite off the ground, for art that carries its own
     /// footing.
     pub lift: f64,
-    /// Mirror the art when the settler faces left. Off for art drawn facing the
+    /// Mirror the art when the person faces left. Off for art drawn facing the
     /// viewer, which should not flip at all.
     pub flip: bool,
     /// Mirror the sheet itself, for art drawn facing the other way than the
-    /// settler it stands in for. Read on the way out rather than baked in, so
+    /// person it stands in for. Read on the way out rather than baked in, so
     /// it can be turned off again without dropping the images a second time.
     pub mirror: bool,
     /// What was dropped, so the panel can say what it is showing.
@@ -416,7 +416,7 @@ impl Clip {
     }
 
     /// Which frame is showing. `bob` counts six per cell walked, which is the
-    /// cadence the generated settler stepped on, so a stride clip asked for six
+    /// cadence the generated person stepped on, so a stride clip asked for six
     /// frames per second reads exactly as fast as the one it replaced.
     pub fn frame_index(&self, bob: f64, time: f64) -> i32 {
         let n = self.frame_count();
@@ -463,7 +463,7 @@ impl Clip {
     }
 
     /// The same size read in cells, which is what the panel says out loud: a
-    /// settler stands about a cell and a bit, a house is two or three across.
+    /// person stands about a cell and a bit, a house is two or three across.
     pub fn drawn_cells(&self, cell_px: i32, px_per_cell: f64) -> (f64, f64) {
         let (w, h) = self.drawn_size(cell_px, px_per_cell);
         let cell = cell_px.max(1) as f64;
@@ -524,11 +524,11 @@ pub fn guess_frames(w: i32, h: i32) -> i32 {
     (w / h).clamp(1, MAX_FRAMES)
 }
 
-/// Every clip a settler can be drawn with.
+/// Every clip a person can be drawn with.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct PeopleSprites {
-    /// Off draws the generated settler again without giving up the images.
+    /// Off draws the generated person again without giving up the images.
     pub enabled: bool,
     pub idle: Option<Clip>,
     pub walk: Option<Clip>,
@@ -608,7 +608,7 @@ impl PeopleSprites {
     /// The clip a motion is actually drawn with, and which slot it came from.
     /// Returns nothing when the images are switched off or when no clip in the
     /// fallback chain has any pixels, which is what sends the drawing back to
-    /// the generated settler.
+    /// the generated person.
     pub fn resolve(&self, motion: Motion) -> Option<(Motion, &Clip)> {
         if !self.enabled {
             return None;
@@ -629,7 +629,7 @@ impl PeopleSprites {
     }
 }
 
-/// What a settler is doing, folded down to the one thing the drawing asks.
+/// What a person is doing, folded down to the one thing the drawing asks.
 /// Sleeping wins over everything, then being in the water, then turning in for
 /// the night, then being on a path, and only somebody stood still and mid-task
 /// counts as working.
@@ -638,7 +638,7 @@ impl PeopleSprites {
 /// Art drawn for the water draws its own: a swimmer is a head and a wake, and
 /// cutting it would take the wake off along with the rest. Anything borrowed
 /// from dry land is a standing figure, and the cut is what puts it in the water
-/// rather than on it. Nothing at all is the generated settler, which has a
+/// rather than on it. Nothing at all is the generated person, which has a
 /// water pose of its own.
 pub fn cut_at_waterline(drawn: Option<Motion>) -> bool {
     matches!(drawn, Some(m) if !matches!(m, Motion::Swim | Motion::Float))
@@ -660,7 +660,7 @@ pub fn motion_of(p: &Person, swimming: bool, held: bool) -> Motion {
         return if p.path.is_empty() { Motion::Float } else { Motion::Swim };
     }
     // Turning in is its own thing, whether that is the walk to a bed or lying
-    // down where they stand: the settler has finished for the day either way,
+    // down where they stand: the person has finished for the day either way,
     // which a walk cycle does not say.
     if p.task.as_ref().is_some_and(|t| t.is_sleep()) {
         return Motion::ToBed;
@@ -817,7 +817,7 @@ pub fn made_entries() -> Vec<crate::find::Entry> {
     entries
 }
 
-/// Pictures for the things people make. A settler has a clip per motion; a
+/// Pictures for the things people make. A person has a clip per motion; a
 /// building has one picture, drawn at the size the generator would have drawn
 /// it, so art and generated things stand together on the same map.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -843,7 +843,7 @@ impl MadeSprites {
     /// The picture for a thing in a state, falling back to the one it is drawn
     /// in the rest of the time. A thing with a picture for After dark and none
     /// for anything else is drawn from it after dark and generated by day,
-    /// which is the same rule settler motions follow.
+    /// which is the same rule person motions follow.
     pub fn clip_in(&self, id: &str, state: &str) -> Option<&Clip> {
         if !self.enabled {
             return None;

@@ -1,7 +1,7 @@
-//! Taking over a settler.
+//! Taking over a person.
 //!
 //! One person at a time can be driven by hand rather than by the planner. They
-//! keep everything else about being a settler - they age, they get hungry, the
+//! keep everything else about being a person - they age, they get hungry, the
 //! dark still works on them - and give up only the deciding: nothing is chosen
 //! for them, and where they go is where they are pointed.
 //!
@@ -20,13 +20,13 @@ use crate::util::clamp01;
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ControlConfig {
-    /// Whether a settler can be taken over at all. With this off the switch is
+    /// Whether a person can be taken over at all. With this off the switch is
     /// not on the toolbar and nobody is being steered.
     pub on: bool,
     /// Draw a stick on the map to steer with. The keys work either way; the
     /// stick is for a screen with no keyboard behind it.
     pub joystick: bool,
-    /// How fast they go when driven, against a settler's own walking pace.
+    /// How fast they go when driven, against a person's own walking pace.
     pub speed: f64,
     /// How far the hand reaches for something to cut, pick up or step into, in
     /// cells.
@@ -80,8 +80,8 @@ impl Act {
     }
 }
 
-/// Hands a settler over to whoever is at the keyboard. Whatever they were
-/// doing is dropped: it was chosen for a settler who is no longer choosing.
+/// Hands a person over to whoever is at the keyboard. Whatever they were
+/// doing is dropped: it was chosen for a person who is no longer choosing.
 pub fn take_over(sim: &mut Settlement, id: u32) -> bool {
     let pi = match sim.people.index_of(id) {
         Some(pi) if sim.people[pi].alive => pi,
@@ -152,7 +152,7 @@ pub fn drive_tick(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
 }
 
 /// Moving along the stick. Water is crossed rather than walked round, at the
-/// same cost a settler pays for swimming, and a wall stops only the part of the
+/// same cost a person pays for swimming, and a wall stops only the part of the
 /// push that is into it: the rest slides along it, or a diagonal into a corner
 /// would be a dead stop.
 fn step(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
@@ -327,7 +327,7 @@ fn door(sim: &mut Settlement, state: &State, pi: usize) -> String {
 }
 
 /// A meal in hand, or out of the building they are standing in. Nothing is
-/// bought and nothing is walked to: this is the settler eating what is already
+/// bought and nothing is walked to: this is the person eating what is already
 /// there, which is what makes driving one around survivable.
 fn eat(sim: &mut Settlement, state: &State, pi: usize) -> String {
     let meal = state.civ.people.meal_size.max(0.1);

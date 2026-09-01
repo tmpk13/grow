@@ -42,7 +42,7 @@ export function buildLandPanel(root, app) {
         min: 1,
         max: 999999999,
         step: 1,
-        hint: 'terrain, deposits, settlers and everything they do',
+        hint: 'terrain, deposits, people and everything they do',
         onInput: (v) => {
           civ.seed = v | 0;
           app.requestSave();
@@ -87,7 +87,7 @@ export function buildLandPanel(root, app) {
       terrainNum('Wild growth', 'wildness', 0.2, 6, 0.1,
         'how lush the map is: scales seeding and how many plants the land carries'),
       terrainNum('Wilderness warmup (s)', 'warmup', 0, 3000, 30,
-        'growth simulated before the settlers arrive'),
+        'growth simulated before the people arrive'),
     ]),
   );
 

@@ -1,7 +1,7 @@
-//! The chrome for driving a settler: the stick and the row of buttons.
+//! The chrome for driving a person: the stick and the row of buttons.
 //!
 //! It lives over the map rather than in the panel, because it is played with
-//! rather than set: what somebody steering a settler needs is under their thumb
+//! rather than set: what somebody steering a person needs is under their thumb
 //! at the bottom of the screen, and the panel is off to the side and may be
 //! folded away entirely.
 //!
@@ -171,7 +171,7 @@ fn stick(h: &Handle) -> Element {
         .class("stick")
         .attr("id", "drive-stick")
         .attr("role", "application")
-        .attr("aria-label", "steer the settler")
+        .attr("aria-label", "steer the person")
         .child(&knob)
         .get();
 

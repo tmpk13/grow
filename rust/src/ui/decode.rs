@@ -2,7 +2,7 @@
 //!
 //! Decoding goes through the browser: a file becomes an object URL, an image
 //! element, a canvas and finally packed pixels, which is why none of this lives
-//! next to the buffers it ends up in. Both the settler motion slots and the
+//! next to the buffers it ends up in. Both the person motion slots and the
 //! sprite editor read images the same way, so both read them from here.
 
 use std::cell::{Cell, RefCell};

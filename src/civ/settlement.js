@@ -2,7 +2,7 @@
 //
 // It owns a plant world (the same growth sim the editor tunes), a procedural
 // terrain under it, and the people who live on top of both. Nothing is handed
-// to the settlers: every wall is built out of materials someone carried there,
+// to the people: every wall is built out of materials someone carried there,
 // and everything they carry was cut, dug or made somewhere on the map.
 //
 // The loop each tick is: grow the wilderness, let people act, run production,
@@ -143,7 +143,7 @@ export class Settlement {
     invalidateCivSprites();
   }
 
-  // Grows the wilderness before the settlers arrive, then drops the first
+  // Grows the wilderness before the people arrive, then drops the first
   // storehouse and the founding families next to it. Split out from reset so
   // the caller can show a note while it runs.
   bootstrap() {
@@ -180,7 +180,7 @@ export class Settlement {
       p.coin = Math.round(cfg.economy.startCoin / Math.max(1, start.population));
       this.people.push(p);
     }
-    logEvent(this.econ, `${this.people.length} settlers found ${this.name}`, 0);
+    logEvent(this.econ, `${this.people.length} people found ${this.name}`, 0);
     this.assignHomes();
     this.assignWorkplaces();
     this.ready = true;

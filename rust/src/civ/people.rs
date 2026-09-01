@@ -1,11 +1,11 @@
-//! Settlers.
+//! People.
 //!
 //! A person is a record plus two mechanical pieces that do not need the rest of
 //! the world: needs that drift over time, and movement along a path of cells.
 //! Every decision about what to do next is made by the settlement, which is the
 //! only thing that can see jobs, buildings and stock.
 //!
-//! The record half is deliberately fat. A settler carries their parentage, the
+//! The record half is deliberately fat. A person carries their parentage, the
 //! colony they were born in, a personality that biases what they are good at
 //! and how they spend, a skill per trade, the house they own and the log of
 //! what happened to them. None of it is needed to make the sim run; all of it
@@ -143,7 +143,7 @@ impl Traits {
 }
 
 /// One line of a person's history. Kept short and capped, because every
-/// settler who ever lived keeps theirs.
+/// person who ever lived keeps theirs.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LifeEvent {
     pub day: i32,
@@ -165,9 +165,9 @@ pub struct PeopleConfig {
     /// mood, and the decision it feeds is taken once a day.
     pub fear_gain: f64,
     /// How fast it eases in daylight, indoors, or under a lamp. Slower still,
-    /// so a settler who is out most nights stays wary through the days.
+    /// so a person who is out most nights stays wary through the days.
     pub fear_ease: f64,
-    /// Fear at which a settler with the coin for it pays for a lamp outside
+    /// Fear at which a person with the coin for it pays for a lamp outside
     /// their own house.
     pub fear_to_light: f64,
     pub work_start: f64,
@@ -195,12 +195,12 @@ pub struct PeopleConfig {
     pub swim_cost: f64,
     /// How fast somebody moves while in the water, against their walking speed.
     pub swim_speed: f64,
-    /// Share of a paid wage a settler keeps rather than handing back to the
+    /// Share of a paid wage a person keeps rather than handing back to the
     /// colony. Personal coin is what buys a house upgrade.
     pub savings_share: f64,
-    /// Coin a settler will part with for a night at an inn.
+    /// Coin a person will part with for a night at an inn.
     pub inn_price: f64,
-    /// Age at which a settler starts looking for a spouse.
+    /// Age at which a person starts looking for a spouse.
     pub marry_age: f64,
     /// Anything with a stem in it is walked round rather than through. Off is
     /// the way it used to be, with people passing through trunks.
@@ -265,7 +265,7 @@ pub struct Person {
     pub name: String,
     pub given: String,
     pub family: String,
-    /// Which colony this settler belongs to right now. Changes when they join
+    /// Which colony this person belongs to right now. Changes when they join
     /// an expedition or move for work.
     pub colony: i32,
     pub born_in: i32,
@@ -286,7 +286,7 @@ pub struct Person {
     /// against once it has been spent on a house.
     pub peak_coin: f64,
     pub home: i32,
-    /// The building this settler holds the deed to, which is not always the
+    /// The building this person holds the deed to, which is not always the
     /// one they sleep in: a household shares the owner's roof.
     pub owns: i32,
     pub work: i32,
@@ -298,11 +298,11 @@ pub struct Person {
     pub profession: Profession,
     pub carry: Carry,
     /// Seconds spent a long way from their own town, counted while they are
-    /// out there and reset the moment they are near it again. A settler who
+    /// out there and reset the moment they are near it again. A person who
     /// has given up on going home rather than one on a long errand.
     #[serde(default)]
     pub stray_time: f64,
-    /// How much the dark has come to worry this settler, from not at all to
+    /// How much the dark has come to worry this person, from not at all to
     /// enough to spend money on. It grows on nights spent walking home unlit
     /// and eases in daylight, indoors, and under a lamp.
     pub fear: f64,
@@ -326,14 +326,14 @@ pub struct Person {
     pub literacy: f64,
     pub title: Option<String>,
     pub events: Vec<LifeEvent>,
-    /// The stall this settler keeps, or 0. A stall is bought and worked by one
+    /// The stall this person keeps, or 0. A stall is bought and worked by one
     /// person for their own account, which is why it is not the same thing as
     /// the workplace the colony assigns them.
     pub stall: i32,
-    /// Stops a settler browsing the stalls on every single decision.
+    /// Stops a person browsing the stalls on every single decision.
     pub shop_cooldown: f64,
-    /// Everyone this settler has met, and what they have come to think of
-    /// them. Capped: what matters about a long lived settler is the two dozen
+    /// Everyone this person has met, and what they have come to think of
+    /// them. Capped: what matters about a long lived person is the two dozen
     /// people they actually know.
     pub bonds: Vec<Bond>,
     pub friends: u32,
@@ -443,14 +443,14 @@ impl Person {
         self.path_at = 0;
     }
 
-    /// A settler steps out before doing anything that happens outdoors, so the
+    /// A person steps out before doing anything that happens outdoors, so the
     /// indoor flag never survives a change of plan.
     pub fn step_outside(&mut self) {
         self.inside = 0;
     }
 
     /// One line in this person's history. The log is capped: what matters for a
-    /// long lived settler is the last dozen things that happened to them.
+    /// long lived person is the last dozen things that happened to them.
     pub fn log(&mut self, day: i32, text: impl Into<String>) {
         self.events.push(LifeEvent { day, text: text.into() });
         if self.events.len() > 12 {
@@ -526,7 +526,7 @@ impl Person {
         self.skills[prof.index()] as f64
     }
 
-    /// Practice pays into the trade being practiced, and a diligent settler
+    /// Practice pays into the trade being practiced, and a diligent person
     /// learns faster. Skill is what separates a veteran crafter from a laborer
     /// standing at the same bench.
     pub fn practice(&mut self, prof: Profession, dt: f64) {

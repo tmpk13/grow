@@ -44,7 +44,7 @@ pub struct State {
     pub app: String,
     pub seed: u32,
     pub materials: Materials,
-    /// Sprite sheets drawn in the tool, which settler motions can be pointed
+    /// Sprite sheets drawn in the tool, which person motions can be pointed
     /// at instead of at a dropped image.
     pub art: ArtLibrary,
     pub shading: Shading,
@@ -73,7 +73,7 @@ impl Default for State {
     }
 }
 
-/// Settler art used to be sized by a height in cells; it carries its own size
+/// Person art used to be sized by a height in cells; it carries its own size
 /// now. A project written before that says what height each clip was drawn at,
 /// which becomes the scale that keeps it exactly that size. Pictures of made
 /// things have nothing to keep: they were stretched to whatever box the

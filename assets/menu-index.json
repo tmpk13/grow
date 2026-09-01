@@ -1413,7 +1413,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Standing",
     "anchor": "standing",
     "kind": "button"
@@ -1423,7 +1423,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Walking",
     "anchor": "walking",
     "kind": "button"
@@ -1433,7 +1433,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Carrying",
     "anchor": "carrying",
     "kind": "button"
@@ -1443,7 +1443,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Working",
     "anchor": "working",
     "kind": "button"
@@ -1453,7 +1453,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Going to sleep",
     "anchor": "going-to-sleep",
     "kind": "button"
@@ -1463,7 +1463,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Sleeping",
     "anchor": "sleeping",
     "kind": "button"
@@ -1473,7 +1473,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Swimming",
     "anchor": "swimming",
     "kind": "button"
@@ -1483,7 +1483,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Still in water",
     "anchor": "still-in-water",
     "kind": "button"
@@ -1493,7 +1493,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Picked up",
     "anchor": "picked-up",
     "kind": "button"
@@ -1503,7 +1503,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Or a made thing",
     "anchor": "or-a-made-thing",
     "kind": "field"
@@ -1513,7 +1513,7 @@
     "mode_label": "Sprite editor",
     "tab": "sheet",
     "tab_label": "Sheet",
-    "group": "Use as settler art",
+    "group": "Use as person art",
     "label": "Use for that",
     "anchor": "use-for-that",
     "kind": "button"
@@ -1524,8 +1524,8 @@
     "tab": "sheet",
     "tab_label": "Sheet",
     "group": "Download",
-    "label": "Settler",
-    "anchor": "settler",
+    "label": "Person",
+    "anchor": "person",
     "kind": "button"
   },
   {
@@ -1757,7 +1757,7 @@
     "tab_label": "Land",
     "group": "Map",
     "label": "Seed",
-    "hint": "terrain, deposits, settlers and everything they do",
+    "hint": "terrain, deposits, people and everything they do",
     "anchor": "seed",
     "kind": "field"
   },
@@ -1922,7 +1922,7 @@
     "tab_label": "Land",
     "group": "Terrain",
     "label": "Wilderness warmup (s)",
-    "hint": "growth simulated before the settlers arrive",
+    "hint": "growth simulated before the people arrive",
     "anchor": "wilderness-warmup-s",
     "kind": "field"
   },
@@ -2342,9 +2342,9 @@
     "tab": "people",
     "tab_label": "People",
     "group": "Founding party",
-    "label": "Settlers",
+    "label": "People",
     "hint": "applied on the next restart",
-    "anchor": "settlers",
+    "anchor": "people",
     "kind": "field"
   },
   {
@@ -2425,7 +2425,7 @@
     "mode_label": "Settlement",
     "tab": "people",
     "tab_label": "People",
-    "group": "Settler sprites",
+    "group": "Person sprites",
     "label": "Art pixels per cell",
     "hint": "art pixels to one map cell; a cell is 8 px on the map, so art drawn at 8 px per cell comes out at 1.00 of its own size",
     "anchor": "art-pixels-per-cell",
@@ -2436,10 +2436,10 @@
     "mode_label": "Settlement",
     "tab": "people",
     "tab_label": "People",
-    "group": "Settler sprites",
-    "label": "Draw settlers from dropped images",
-    "hint": "off keeps every sheet and goes back to the generated settler",
-    "anchor": "draw-settlers-from-dropped-images",
+    "group": "Person sprites",
+    "label": "Draw people from dropped images",
+    "hint": "off keeps every sheet and goes back to the generated person",
+    "anchor": "draw-people-from-dropped-images",
     "kind": "field"
   },
   {
@@ -2447,7 +2447,7 @@
     "mode_label": "Settlement",
     "tab": "people",
     "tab_label": "People",
-    "group": "Settler sprites",
+    "group": "Person sprites",
     "label": "From editor",
     "anchor": "from-editor",
     "kind": "field"
@@ -2457,7 +2457,7 @@
     "mode_label": "Settlement",
     "tab": "people",
     "tab_label": "People",
-    "group": "Settler sprites",
+    "group": "Person sprites",
     "label": "Use sheet",
     "anchor": "use-sheet",
     "kind": "button"
@@ -2767,8 +2767,8 @@
     "tab": "people",
     "tab_label": "People",
     "group": "Company",
-    "label": "Settlers keep track of each other",
-    "anchor": "settlers-keep-track-of-each-other",
+    "label": "People keep track of each other",
+    "anchor": "people-keep-track-of-each-other",
     "kind": "field"
   },
   {
@@ -2949,7 +2949,7 @@
     "tab_label": "People",
     "group": "The dark",
     "label": "Fear per second in the dark",
-    "hint": "a memory of nights rather than a mood; less again for a hardy settler",
+    "hint": "a memory of nights rather than a mood; less again for a hardy person",
     "anchor": "fear-per-second-in-the-dark",
     "kind": "field"
   },
@@ -3326,8 +3326,8 @@
     "tab": "build",
     "tab_label": "Build",
     "group": "Homes and towns",
-    "label": "Settlers upgrade their own homes",
-    "anchor": "settlers-upgrade-their-own-homes",
+    "label": "People upgrade their own homes",
+    "anchor": "people-upgrade-their-own-homes",
     "kind": "field"
   },
   {
@@ -3400,9 +3400,9 @@
     "tab": "build",
     "tab_label": "Build",
     "group": "Homes and towns",
-    "label": "Settlers in a party",
+    "label": "People in a party",
     "hint": "families follow them",
-    "anchor": "settlers-in-a-party",
+    "anchor": "people-in-a-party",
     "kind": "field"
   },
   {
@@ -3464,7 +3464,7 @@
     "tab_label": "Build",
     "group": "Homes and towns",
     "label": "Out there before giving up (s)",
-    "hint": "settlement seconds; a settler walks about two and a half cells of it, so this is short by design",
+    "hint": "settlement seconds; a person walks about two and a half cells of it, so this is short by design",
     "anchor": "out-there-before-giving-up-s",
     "kind": "field"
   },
@@ -3550,8 +3550,8 @@
     "tab": "build",
     "tab_label": "Build",
     "group": "Stalls",
-    "label": "Settlers open stalls",
-    "anchor": "settlers-open-stalls",
+    "label": "People open stalls",
+    "anchor": "people-open-stalls",
     "kind": "field"
   },
   {

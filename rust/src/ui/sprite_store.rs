@@ -1,7 +1,7 @@
 //! Sheets kept outside the project.
 //!
 //! A project is one thing somebody is working on and can be replaced wholesale
-//! by New, Import or a reset. Art outlives that: a settler drawn once is worth
+//! by New, Import or a reset. Art outlives that: a person drawn once is worth
 //! keeping across every project it might turn up in, and losing it to a button
 //! meant to clear a stuck page is not a trade anybody would make.
 //!

@@ -2,12 +2,12 @@
 //!
 //! It owns a plant world (the same growth sim the editor tunes), a procedural
 //! terrain under it, and the people who live on top of both. Nothing is handed
-//! to the settlers: every wall is built out of materials someone carried there,
+//! to the people: every wall is built out of materials someone carried there,
 //! and everything they carry was cut, dug or made somewhere on the map.
 //!
 //! One map, several towns. A colony keeps its own store, treasury and research;
 //! buildings and people carry the id of the town they belong to. When a colony
-//! outgrows its ground it sends settlers out to found another one, and the two
+//! outgrows its ground it sends people out to found another one, and the two
 //! trade by road and by river from then on.
 //!
 //! The loop each tick is: grow the wilderness, let people act, run production,
@@ -189,7 +189,7 @@ pub struct Pile {
     pub claimed_by: u32,
     pub seed: u32,
     /// Cut by hand rather than dropped by somebody working. A load that was
-    /// asked for outranks the work a settler would have chosen for themselves.
+    /// asked for outranks the work a person would have chosen for themselves.
     #[serde(default)]
     pub by_hand: bool,
 }
@@ -380,7 +380,7 @@ pub struct Settlement {
     /// Cells a standing plant is in the way in. Rebuilt with the coarse plant
     /// index rather than on every growth step: it is read by the pathfinder,
     /// which cannot afford to ask the plant list, and a second stale is a
-    /// settler taking one step round a tree that has just come down.
+    /// person taking one step round a tree that has just come down.
     pub plant_block: Vec<u8>,
     pub paths: PathGrid,
     pub water_paths: PathGrid,
@@ -396,7 +396,7 @@ pub struct Settlement {
     pub next_colony_id: i32,
     /// Which colony the panels are reporting on.
     pub focus: usize,
-    /// The settler currently held off the map by a pointer, or 0. Somebody
+    /// The person currently held off the map by a pointer, or 0. Somebody
     /// held is skipped by the tick entirely: they keep aging and getting
     /// hungry, but they do not walk, work or take on anything new until they
     /// are put down again.
@@ -411,7 +411,7 @@ pub struct Settlement {
     /// from the seed. Not saved as such: a save that carries painted ground
     /// says so by having any.
     pub terrain_painted: bool,
-    /// The settler somebody has taken over, or nobody. They plan nothing for
+    /// The person somebody has taken over, or nobody. They plan nothing for
     /// themselves while it is set. Not saved, the same as being held: a
     /// settlement picked up again is one nobody has hold of.
     pub driven: u32,
@@ -453,7 +453,7 @@ pub struct Settlement {
     pub ground_step: i32,
     pub buffer_dirty: bool,
     pub warmup_done: f64,
-    /// Settlement time at which the last living settler died, or None while
+    /// Settlement time at which the last living person died, or None while
     /// somebody is still going. What the automatic restart counts from.
     pub extinct_at: Option<f64>,
     pub ready: bool,
@@ -629,7 +629,7 @@ impl Settlement {
     ///
     /// The new land goes on the right and along the bottom, so every column and
     /// row that was already there keeps its number and everything standing on
-    /// one - buildings, settlers, plants, loads on the ground - stays where it
+    /// one - buildings, people, plants, loads on the ground - stays where it
     /// was. What has to be redone is everything indexed by the width of the
     /// map: each grid is laid out again at the new stride with the old rows
     /// copied across, and every plant claims its cells again in the resized
@@ -732,7 +732,7 @@ impl Settlement {
         true
     }
 
-    /// Grows the wilderness before the settlers arrive, then drops the first
+    /// Grows the wilderness before the people arrive, then drops the first
     /// storehouse and the founding families next to it. Split out from reset so
     /// the caller can show a note while it runs.
     pub fn bootstrap(&mut self, state: &State) {
@@ -797,7 +797,7 @@ impl Settlement {
             p.log(0, format!("landed at {}", self.colonies[ci].name));
             self.people.insert(p);
         }
-        let founding = format!("{} settlers found {}", self.people.count(), self.colonies[ci].name);
+        let founding = format!("{} people found {}", self.people.count(), self.colonies[ci].name);
         self.colonies[ci].econ.log_event(founding, 0);
         self.refresh_colonies();
         self.match_couples(state, ci);
@@ -834,7 +834,7 @@ impl Settlement {
             .unwrap_or_else(|| "nowhere".to_string())
     }
 
-    /// The colony a settler belongs to, as an index. Everybody has one; a
+    /// The colony a person belongs to, as an index. Everybody has one; a
     /// person whose colony has been wound up falls back to the first.
     pub fn colony_of(&self, pi: usize) -> usize {
         self.colony_index(self.people[pi].colony).unwrap_or(0)
@@ -949,9 +949,9 @@ impl Settlement {
         None
     }
 
-    // ---- settlers in hand ------------------------------------------------
+    // ---- people in hand ------------------------------------------------
 
-    /// The settler nearest a point on the ground plane, or nothing if none is
+    /// The person nearest a point on the ground plane, or nothing if none is
     /// within reach of it. Somebody indoors or aboard a boat is not on the map
     /// to be picked up, whatever their recorded position says.
     pub fn person_near(&self, x: f64, y: f64, reach: f64) -> Option<u32> {
@@ -960,7 +960,7 @@ impl Settlement {
             if p.indoors() || p.aboard != 0 {
                 continue;
             }
-            // A settler is drawn standing up out of the cell their feet are
+            // A person is drawn standing up out of the cell their feet are
             // in, so a point above them is still on them while the same
             // distance below them is only ground.
             let dy = if y < p.y { (p.y - y) * 0.5 } else { y - p.y };
@@ -976,7 +976,7 @@ impl Settlement {
         best.map(|(_, id)| id)
     }
 
-    /// Picks a settler up off the map. Whatever they were doing is given up
+    /// Picks a person up off the map. Whatever they were doing is given up
     /// the way it would be by any other change of plan, so nothing is left
     /// reserved for a job nobody is coming to do.
     pub fn hold_person(&mut self, id: u32) -> bool {
@@ -993,7 +993,7 @@ impl Settlement {
     }
 
     /// Moves whoever is being held. Nothing about the position is checked here:
-    /// a settler in hand is off the map, and only where they are put down has
+    /// a person in hand is off the map, and only where they are put down has
     /// to be somewhere they can be.
     pub fn move_held(&mut self, x: f64, y: f64) {
         let pi = match self.people.index_of(self.held) {
@@ -1015,7 +1015,7 @@ impl Settlement {
         p.y = y;
     }
 
-    /// Puts the held settler down, and says which cell they landed in. Water
+    /// Puts the held person down, and says which cell they landed in. Water
     /// counts as somewhere to land - they swim out of it - but a roof or a
     /// cliff sends them to the nearest cell they can stand in instead.
     pub fn drop_held(&mut self) -> Option<(i32, i32)> {
@@ -1646,7 +1646,7 @@ impl Settlement {
 
     // ---- homes -----------------------------------------------------------
 
-    /// A settler steps inside. The door is where they are shown to be, and the
+    /// A person steps inside. The door is where they are shown to be, and the
     /// window lights follow the count.
     pub fn enter_building(&mut self, pi: usize, bi: usize) {
         let id = self.buildings[bi].id;
@@ -1684,7 +1684,7 @@ impl Settlement {
     /// upgrade somebody's decision later, and it is why a town of huts ends up
     /// with a named owner per hut rather than with a municipal housing stock.
     ///
-    /// Nobody takes a second deed: a settler sleeping elsewhere because their
+    /// Nobody takes a second deed: a person sleeping elsewhere because their
     /// own house is scaffolding still owns that house.
     fn claim_deed(&mut self, bi: usize, pi: usize) {
         if self.buildings[bi].owner != 0
@@ -1707,7 +1707,7 @@ impl Settlement {
     /// is no longer in it, and the next household pass re-links them to a
     /// building in a colony they walked away from.
     /// Gives up a stall. The counter stays where it is with nobody behind it,
-    /// which is what lets the next settler with the coin take it over rather
+    /// which is what lets the next person with the coin take it over rather
     /// than pay for another one.
     fn release_stall(&mut self, pi: usize) {
         let stall = self.people[pi].stall;
@@ -1859,7 +1859,7 @@ impl Settlement {
         }
     }
 
-    /// A settler with the coin for the next rung of house has it rebuilt over
+    /// A person with the coin for the next rung of house has it rebuilt over
     /// their own footprint. The coin goes to the colony treasury, which is what
     /// then pays the laborers who carry the brick.
     fn upgrade_homes(&mut self, state: &State, ci: usize) {
@@ -1911,7 +1911,7 @@ impl Settlement {
                 Some(pi) if self.people[pi].alive => pi,
                 _ => continue,
             };
-            // A thrifty settler commits sooner; a spendthrift waits until the
+            // A thrifty person commits sooner; a spendthrift waits until the
             // coin is embarrassing.
             let price = def.upgrade_coin * (1.45 - self.people[pi].traits.thrift * 0.55)
                 * state.civ.build.upgrade_scale;
@@ -1937,7 +1937,7 @@ impl Settlement {
         }
     }
 
-    /// A settler who has come to dread the dark, and has the coin for it, pays
+    /// A person who has come to dread the dark, and has the coin for it, pays
     /// for a lamp post outside their own house.
     ///
     /// The cost is the same for everybody, which is the whole point: it is the
@@ -1966,7 +1966,7 @@ impl Settlement {
             .filter(|&pi| {
                 let p = &self.people[pi];
                 // Whoever sleeps under the roof, not only whoever holds the
-                // deed: the settlers the dark actually gets to are the ones
+                // deed: the people the dark actually gets to are the ones
                 // walking home to somebody else's house.
                 p.colony == colony && p.home != 0 && p.fear >= want && p.coin >= price
             })
@@ -2131,7 +2131,7 @@ impl Settlement {
     /// Somebody opens a stall, or takes over one that has been standing empty.
     ///
     /// This has the same shape as a house rebuild and for the same reason: it
-    /// is one settler's decision and one settler's coin. The price goes into
+    /// is one person's decision and one person's coin. The price goes into
     /// the treasury, which is what then pays the laborers who carry the timber
     /// out to the site. Nobody is ever assigned to keep a stall - the person
     /// who paid for it stands behind it.
@@ -2171,7 +2171,7 @@ impl Settlement {
         }
 
         // Whoever has the coin and the temperament. Trade is a sociable
-        // business, and a thrifty settler would rather keep the coin than
+        // business, and a thrifty person would rather keep the coin than
         // spend it on a counter.
         let mut best: Option<(usize, f64)> = None;
         for pi in self.people.live_indices() {
@@ -2226,9 +2226,9 @@ impl Settlement {
             .log_event(format!("{name} is opening a stall"), day);
     }
 
-    /// The counter this settler would rather buy from: near, stocked, and kept
+    /// The counter this person would rather buy from: near, stocked, and kept
     /// by somebody they have taken to. `want` narrows it to one ware, which is
-    /// what a hungry settler asks for.
+    /// what a hungry person asks for.
     pub fn stall_near(&self, pi: usize, want: Option<Res>) -> Option<usize> {
         let colony = self.people[pi].colony;
         let person_id = self.people[pi].id;
@@ -3153,10 +3153,10 @@ impl Settlement {
             p.log(day, format!("settled {name}"));
         }
         self.refresh_colonies();
-        let settlers = self.colony_population(new_id);
+        let people = self.colony_population(new_id);
         self.colonies[new_ci]
             .econ
-            .log_event(format!("{settlers} too far from home found {name}"), day);
+            .log_event(format!("{people} too far from home found {name}"), day);
         self.assign_homes(new_ci);
         self.assign_workplaces(state, new_ci);
         if let Some(ci) = parent {
@@ -3168,7 +3168,7 @@ impl Settlement {
     /// How long somebody has been a long way from their own town, counted
     /// while they are out there and dropped the moment they are near it again.
     ///
-    /// Seconds rather than days, and few of them: a settler walks two and a
+    /// Seconds rather than days, and few of them: a person walks two and a
     /// half cells a second, so anybody who means to go home is back inside the
     /// distance in well under a minute. A patience measured in days would only
     /// ever be spent walking.
@@ -3440,7 +3440,7 @@ impl Settlement {
     }
 
     /// Marriages, once a day. Two unattached adults of a colony who are not
-    /// close kin pair off; a sociable settler does it sooner.
+    /// close kin pair off; a sociable person does it sooner.
     fn match_couples(&mut self, state: &State, ci: usize) {
         let colony = self.colonies[ci].id;
         let cfg = &state.civ.people;
@@ -3781,11 +3781,11 @@ impl Settlement {
             }
         }
         self.refresh_colonies();
-        let settlers = self.colony_population(new_id);
+        let people = self.colony_population(new_id);
         let from = self.colonies[ci].name.clone();
         self.colonies[new_ci]
             .econ
-            .log_event(format!("{settlers} settlers from {from} found {name}"), day);
+            .log_event(format!("{people} people from {from} found {name}"), day);
         self.colonies[ci]
             .econ
             .log_event(format!("an expedition left to found {name}"), day);
@@ -4430,7 +4430,7 @@ impl Settlement {
         }
     }
 
-    /// The richest settlers, for the roster and for deciding who is worth a
+    /// The richest people, for the roster and for deciding who is worth a
     /// tower.
     pub fn wealthiest(&self, n: usize) -> Vec<usize> {
         let mut all: Vec<usize> = self.people.live_indices();
@@ -4513,7 +4513,7 @@ pub fn profession_for(def: &BuildingDef) -> Profession {
     }
 }
 
-/// A settler's standing in their colony, which is what the roster sorts by and
+/// A person's standing in their colony, which is what the roster sorts by and
 /// what decides whether a tower is worth anybody's while.
 pub fn standing(sim: &Settlement, pi: usize) -> f64 {
     let p = &sim.people[pi];

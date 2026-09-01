@@ -1,4 +1,4 @@
-//! What a settler does with the next second of their life.
+//! What a person does with the next second of their life.
 //!
 //! Every task is a small state machine with a phase and a target: walk there,
 //! work, carry the result somewhere. Nothing here reads a global; the
@@ -8,7 +8,7 @@
 //! The one rule that shapes all of it: material only moves because a person
 //! carried it. A wall goes up because somebody walked wood to the site.
 //!
-//! A settler belongs to a colony, and every question about stock, wages and
+//! A person belongs to a colony, and every question about stock, wages and
 //! what is worth doing is asked of that colony rather than of the map. Two
 //! towns on one map therefore make different decisions on the same tick.
 
@@ -112,8 +112,8 @@ pub enum Task {
         full: bool,
         phase: Phase,
     },
-    /// Buying something over a counter, with this settler's own coin, from
-    /// another settler.
+    /// Buying something over a counter, with this person's own coin, from
+    /// another person.
     Shop {
         building_id: i32,
         /// The one ware they walked over for, or none: a browser buys
@@ -123,7 +123,7 @@ pub enum Task {
 }
 
 impl Task {
-    /// True while the settler is doing the work rather than walking to it.
+    /// True while the person is doing the work rather than walking to it.
     /// Only the tasks that have somewhere to stand and something to do there
     /// answer yes; an errand is over the moment the walk ends.
     pub fn working(&self) -> bool {
@@ -163,7 +163,7 @@ impl Task {
     }
 
     /// A meal bought at a stall is still a meal, so the hunger loop has to
-    /// count it or a settler on their way to the counter is sent to the store
+    /// count it or a person on their way to the counter is sent to the store
     /// on the very next tick.
     pub fn is_eat(&self) -> bool {
         matches!(self, Task::Eat { .. })
@@ -265,7 +265,7 @@ fn tick_fear(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
         !sim.lit_at(c, r)
     };
     let p = &mut sim.people[pi];
-    // A hardy settler takes longer to be worn down: the same night is not the
+    // A hardy person takes longer to be worn down: the same night is not the
     // same night to everybody.
     let nerve = 1.0 - p.traits.hardiness * 0.6;
     p.fear = clamp01(if exposed {
@@ -314,7 +314,7 @@ pub fn update_person(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
 
     // Somebody being steered plans nothing for themselves: no work is chosen,
     // no bed is walked to, and hunger is theirs to answer. Everything above
-    // this line still happens to them, which is the point of it being a settler
+    // this line still happens to them, which is the point of it being a person
     // rather than a piece being moved about.
     if sim.driven != 0 && sim.driven == sim.people[pi].id {
         crate::civ::control::drive_tick(sim, state, pi, dt);
@@ -552,7 +552,7 @@ pub fn abandon_task(sim: &mut Settlement, pi: usize) {
     sim.people[pi].clear_task();
 }
 
-/// Tries every store of the settler's own colony, nearest first: an
+/// Tries every store of the person's own colony, nearest first: an
 /// unreachable one is not a reason to go hungry while another has food.
 pub fn start_eat(sim: &mut Settlement, pi: usize) -> bool {
     let ci = sim.colony_of(pi);
@@ -683,7 +683,7 @@ pub fn choose_task(sim: &mut Settlement, state: &State, pi: usize) {
             .as_ref()
             .is_some_and(|job| job.produces().iter().any(|&(r, _)| r == Res::Food))
     });
-    // A load cut by hand was asked for, and outranks whatever this settler
+    // A load cut by hand was asked for, and outranks whatever this person
     // would have picked for themselves - their own trade included.
     if start_gleaning(sim, state, pi, food_short) {
         return;
@@ -758,15 +758,15 @@ pub fn choose_task(sim: &mut Settlement, state: &State, pi: usize) {
     start_wander(sim, pi);
 }
 
-/// A settler with coin to spare and nothing to do goes and looks at what is on
-/// the counters. This is the only thing that moves coin between two settlers
+/// A person with coin to spare and nothing to do goes and looks at what is on
+/// the counters. This is the only thing that moves coin between two people
 /// without the treasury in the middle.
 pub fn start_browse(sim: &mut Settlement, state: &State, pi: usize) -> bool {
     if !state.civ.build.stalls || sim.people[pi].shop_cooldown > 0.0 || !sim.people[pi].adult() {
         return false;
     }
     // Spare coin only. Nobody spends the price of a roof on a bolt of cloth,
-    // and a thrifty settler holds out longer than a spendthrift.
+    // and a thrifty person holds out longer than a spendthrift.
     let p = &sim.people[pi];
     let threshold = 8.0 + p.traits.thrift * 40.0;
     if p.coin < threshold {
@@ -869,7 +869,7 @@ fn fetch_reach(state: &State, by_hand: bool) -> f64 {
 
 /// Fetching what the pointer cut. This is the whole of what the hand tool does
 /// to the town's plans: it puts a load on the ground and marks it as asked for,
-/// and the next settler to make a decision goes and gets it.
+/// and the next person to make a decision goes and gets it.
 fn start_gleaning(sim: &mut Settlement, state: &State, pi: usize, food_short: bool) -> bool {
     let ci = sim.colony_of(pi);
     let person_id = sim.people[pi].id;
@@ -941,7 +941,7 @@ fn start_harvest(
     take_plant(sim, pi, plant_id, &job)
 }
 
-/// Claims a plant and walks over to it. Shared by the settler who chose it for
+/// Claims a plant and walks over to it. Shared by the person who chose it for
 /// themselves and by the hand that pointed at it.
 fn take_plant(sim: &mut Settlement, pi: usize, plant_id: i32, job: &HarvestJob) -> bool {
     let index = match sim.plant_sim.plant_index(plant_id) {
@@ -1264,7 +1264,7 @@ pub fn start_labor(sim: &mut Settlement, state: &State, pi: usize) -> bool {
             _ => {}
         }
         // One sum before twelve tests: on a map with hundreds of buildings
-        // this scan runs per idle settler per decision, and almost every bench
+        // this scan runs per idle person per decision, and almost every bench
         // it looks at is empty.
         if b.out_load() > 0.0 {
             for res in crate::civ::resources::RES_IDS {
@@ -2041,7 +2041,7 @@ pub fn run_task(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
             let (res, unit) = match choice {
                 Some(c) => c,
                 None => {
-                    // A wasted walk. The cooldown is what stops a settler with
+                    // A wasted walk. The cooldown is what stops a person with
                     // no coin pacing back to the same empty counter forever.
                     sim.people[pi].shop_cooldown = state.civ.people.day_length * 0.25;
                     sim.people[pi].clear_task();
@@ -2072,7 +2072,7 @@ pub fn run_task(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
                 sim.people[pi].eat(units);
             } else {
                 // Something bought for its own sake, which is the only use a
-                // settler has for coin beyond a roof and a meal.
+                // person has for coin beyond a roof and a meal.
                 sim.people[pi].happiness = clamp01(sim.people[pi].happiness + 0.08);
                 let day = sim.day;
                 let what = res.label().to_lowercase();

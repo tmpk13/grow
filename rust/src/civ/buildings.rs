@@ -71,7 +71,7 @@ pub enum Structure {
     Wall,
     /// The way through a wall. Once it is standing, people walk over it.
     Gate,
-    /// A counter under an awning, kept by one settler for their own account.
+    /// A counter under an awning, kept by one person for their own account.
     Stall,
     /// A post with a light on it. Nothing happens at one; it is there to be
     /// seen by.
@@ -207,7 +207,7 @@ pub struct BuildingDef {
     pub health: f64,
     pub smoke: i32,
     pub base: bool,
-    /// The next rung of a home. A settler who owns this and has the coin for it
+    /// The next rung of a home. A person who owns this and has the coin for it
     /// commissions the upgrade themselves; the planner never does.
     pub upgrade_to: Option<&'static str>,
     /// Personal coin the owner has to put up to commission that upgrade. It is
@@ -216,7 +216,7 @@ pub struct BuildingDef {
     pub grain: Grain,
     /// People who belong here stand inside it rather than in front of it.
     pub indoor: bool,
-    /// Beds for hire, for settlers with no house of their own.
+    /// Beds for hire, for people with no house of their own.
     pub rooms: i32,
     pub is_inn: bool,
     /// Boats moor here, and it has to be built within reach of water.
@@ -224,12 +224,12 @@ pub struct BuildingDef {
     /// How much owning this lifts the owner's standing in the colony.
     pub prestige: f64,
     /// Whether the build planner may choose this on its own. A tower is raised
-    /// by one rich settler, never by the town.
+    /// by one rich person, never by the town.
     pub planned: bool,
     /// What a stall keeper may put on the counter, in the order they try to
     /// buy it. Empty for everything that is not a stall.
     pub sells: &'static [Res],
-    /// Personal coin a settler puts up to open one of these for themselves.
+    /// Personal coin a person puts up to open one of these for themselves.
     /// It is paid into the treasury, which is what then funds the materials.
     pub keeper_coin: f64,
     /// How far a lamp throws its light, in cells. Nothing else lights the map,
@@ -351,7 +351,7 @@ pub static BUILDINGS: &[BuildingDef] = &[
         comfort: 1.4,
         indoor: true,
         prestige: 1.5,
-        // Nobody plans a tower. One settler who has made more coin than they
+        // Nobody plans a tower. One person who has made more coin than they
         // can spend has one raised over their own manor, and the rest of the
         // town gets a landmark out of it.
         planned: false,
@@ -735,7 +735,7 @@ pub static BUILDINGS: &[BuildingDef] = &[
         sells: &[Res::Food, Res::Cloth, Res::Tool],
         keeper_coin: 40.0,
         prestige: 0.15,
-        // A stall is one settler's idea, not the town's. Nobody plans one and
+        // A stall is one person's idea, not the town's. Nobody plans one and
         // nobody is assigned to keep one: somebody buys it and stands in it.
         planned: false,
         note: Some("A counter and an awning. Its keeper buys stock out of the store \
@@ -911,7 +911,7 @@ pub struct BuildConfig {
     /// Housing headroom kept ahead of the population, in people.
     pub housing_slack: i32,
     pub per_type: PerType,
-    /// Whether a settler with the coin for it may have their own house rebuilt
+    /// Whether a person with the coin for it may have their own house rebuilt
     /// one rung larger.
     pub home_upgrades: bool,
     /// Multiplier on the coin an owner has to put up for that.
@@ -922,13 +922,13 @@ pub struct BuildConfig {
     /// out of the housing stock, so a town that starts them all at once stops
     /// having children and then starves.
     pub max_home_rebuilds: i32,
-    /// Whether a settler who has come to dread the dark pays for a lamp post
+    /// Whether a person who has come to dread the dark pays for a lamp post
     /// outside their own house. Off leaves the town to plan them.
     pub lamps_by_fear: bool,
     /// Coin an owner puts up for one. The same for everybody, which is what
     /// makes it the rich who light their street first.
     pub lamp_coin: f64,
-    /// Whether a crowded colony sends settlers out to found another.
+    /// Whether a crowded colony sends people out to found another.
     pub expeditions: bool,
     pub max_colonies: i32,
     /// Simulated seconds between one colony's attempts to send a party out.
@@ -956,9 +956,9 @@ pub struct BuildConfig {
     /// Pieces of wall a town may have going up at once. Counted separately
     /// from `max_sites`, or a ring would stop the town building anything else.
     pub wall_sites: i32,
-    /// Whether settlers with the coin for it open stalls of their own.
+    /// Whether people with the coin for it open stalls of their own.
     pub stalls: bool,
-    /// Multiplier on the coin a settler puts up to open one.
+    /// Multiplier on the coin a person puts up to open one.
     pub stall_price_scale: f64,
     /// What a keeper adds to the town price when they sell over the counter.
     pub stall_margin: f64,
@@ -990,7 +990,7 @@ pub struct BuildConfig {
     /// How far from their town's center counts as a long way, in cells.
     pub stray_distance: f64,
     /// Seconds out there before they stop walking home and start a town.
-    /// Short, because it is measured against a walk: a settler covers the
+    /// Short, because it is measured against a walk: a person covers the
     /// width of a small map in under a minute, so a patience in days would
     /// only ever be spent walking back.
     pub stray_wait: f64,

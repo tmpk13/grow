@@ -184,9 +184,9 @@ pub fn update_prices(econ: &mut Economy, cfg: &EconomyConfig, stock: &Stock, pop
 /// Wages are paid as work happens. An empty treasury does not stop the work, it
 /// just leaves the wage unpaid, which shows up as unhappiness.
 ///
-/// Only `savings` of a wage stays in the settler's purse; the rest is spent
+/// Only `savings` of a wage stays in the person's purse; the rest is spent
 /// back into the town the same day and returns to the treasury. That share is
-/// the whole reason some settlers end up with enough coin to rebuild their
+/// the whole reason some people end up with enough coin to rebuild their
 /// house and most do not.
 pub fn pay_wage(
     econ: &mut Economy,

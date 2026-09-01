@@ -26,7 +26,7 @@ const fail = (msg) => {
   errors++;
 };
 
-console.log(`${sim.name}: ${sim.people.length} settlers, ${sim.plantSim.plants.length} plants`);
+console.log(`${sim.name}: ${sim.people.length} people, ${sim.plantSim.plants.length} plants`);
 console.log('day  pop  built  tech  food  wood  plank  brick  metal  tool  coin  piles');
 for (let day = 0; day < days; day++) {
   for (let i = 0; i < stepsPerDay; i++) {
@@ -92,7 +92,7 @@ for (const b of sim.buildings) {
 for (const plant of sim.plantSim.plants) {
   if (sim.blocked[sim.idx(plant.col, plant.row)]) fail(`plant ${plant.id} grows on blocked ground`);
   if (plant.claimedBy && !sim.people.some((p) => p.id === plant.claimedBy)) {
-    fail(`plant ${plant.id} is claimed by a settler who is gone`);
+    fail(`plant ${plant.id} is claimed by a person who is gone`);
   }
 }
 
@@ -106,7 +106,7 @@ for (const id of RES_IDS) {
 for (const pile of sim.piles) {
   if (pile.n <= 0) fail('a pile with nothing in it is still on the map');
   if (pile.claimedBy && !sim.people.some((p) => p.id === pile.claimedBy)) {
-    fail('a pile is claimed by a settler who is gone');
+    fail('a pile is claimed by a person who is gone');
   }
 }
 for (const p of sim.people) {

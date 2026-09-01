@@ -6,7 +6,7 @@
 //! Nothing here is authored, so changing a cell size or repainting a material
 //! box changes the whole town.
 //!
-//! The one exception is a settler somebody has dropped images on. A clip stands
+//! The one exception is a person somebody has dropped images on. A clip stands
 //! in for the generated body for as long as it is there and for exactly the
 //! motion it was dropped on; everything else about the frame is unchanged.
 //!
@@ -54,7 +54,7 @@ pub enum Detail {
 
 impl Detail {
     /// Chosen from the camera zoom against the threshold in the view config.
-    /// At the default threshold a settler is still a person at 1x and a smudge
+    /// At the default threshold somebody is still a person at 1x and a smudge
     /// at a quarter of that.
     pub fn for_zoom(zoom: f64, threshold: f64) -> Detail {
         let t = threshold.max(0.05);
@@ -99,7 +99,7 @@ pub struct Sprite {
 ///
 /// Every value the drawing would vary is in here, which is what makes a hit
 /// safe to reuse. It is a plain key rather than a formatted string because the
-/// lookup happens once per building and once per settler per frame, and a
+/// lookup happens once per building and once per person per frame, and a
 /// string would mean an allocation for each of them.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SpriteKey {
@@ -135,7 +135,7 @@ pub enum SpriteKey {
         rev: u32,
     },
     /// A frame of a dropped clip, scaled for the current cell size. Nothing
-    /// about the settler is in the key: every person on the same motion and
+    /// about the person is in the key: every person on the same motion and
     /// frame is drawn from the same pixels, so one entry serves the whole town.
     PersonClip {
         motion: u8,
@@ -161,7 +161,7 @@ pub enum SpriteKey {
     },
 }
 
-/// How the generated settler is standing. A clip has a motion for every one of
+/// How the generated person is standing. A clip has a motion for every one of
 /// them; the generator has these, because most motions come out as the same two
 /// frames of a walk and the ones that cannot are the ones that leave the
 /// ground or go under water.
@@ -1051,7 +1051,7 @@ fn draw_wares(world: &World, buf: &mut [u32], b: &Building, sx: i32, sy: i32) {
 
 // ---- people --------------------------------------------------------------
 
-/// The generated settler in parts: the colors and the proportions, so a pose
+/// The generated person in parts: the colors and the proportions, so a pose
 /// that is not the walk cycle can be built out of the same body rather than out
 /// of a second copy of it.
 struct Body {
@@ -1118,10 +1118,10 @@ impl Body {
     /// In the water: what is above the surface, and the surface closing over
     /// the rest. This is its own shape rather than a standing figure with the
     /// bottom taken off, which is what somebody in the water used to be, and
-    /// which read as a settler cut in half.
+    /// which read as a person cut in half.
     ///
     /// The sprite stands on the waterline, so what is drawn is above the row
-    /// the settler is in rather than sunk into the ground below it.
+    /// the person is in rather than sunk into the ground below it.
     fn in_water(&self, facing: i32, still: bool) -> Sprite {
         let (w, ww, x0) = (self.w, self.ww, self.x0);
         // Treading rides a row higher every other frame, which is the only
@@ -1180,7 +1180,7 @@ impl Body {
 
 /// Three pixels wide and a head: enough to read a walk cycle, a facing and
 /// whether somebody is carrying something. Colors are hashed from the person id
-/// so a settler looks the same for their whole life.
+/// so a person looks the same for their whole life.
 pub fn person_sprite(
     cache: &mut SpriteCache,
     world: &World,
@@ -1243,7 +1243,7 @@ pub fn person_sprite(
 ///
 /// The frame is drawn whole, padding included: every motion exported from one
 /// canvas then lines up, whatever each of them has room for, and a swing that
-/// reaches further than a walk does not make the settler a different size.
+/// reaches further than a walk does not make the person a different size.
 ///
 /// The sprite is cached against the clip revision rather than against the
 /// pixels, which is what makes a hit cheap: the whole settlement shares one
@@ -1291,7 +1291,7 @@ pub fn person_clip_sprite(
     sprite
 }
 
-/// The shirt, which is the one color that stands for a settler at any zoom.
+/// The shirt, which is the one color that stands for a person at any zoom.
 pub fn person_color(p: &Person) -> u32 {
     hsl(hash2(p.seed as i32, 7, 23) * 360.0, 0.35, 0.42)
 }
@@ -1474,7 +1474,7 @@ pub fn balloon_sprite(
 
 // ---- compositing ---------------------------------------------------------
 
-/// How much of a settler is under the water, as a fraction of their height.
+/// How much of a person is under the water, as a fraction of their height.
 /// Only what was drawn for dry land is cut by it.
 const WADE_DEPTH: f64 = 0.45;
 
@@ -1486,7 +1486,7 @@ fn hold_lift(world: &World) -> i32 {
 
 /// The same as `blit`, with the bottom `sunk` of the sprite left undrawn. What
 /// is under the water is not drawn at all rather than tinted: the water is
-/// already painted there, and a settler half in it reads better as a shape
+/// already painted there, and a person half in it reads better as a shape
 /// cut off at the surface than as a shape showing through it.
 fn blit_above(
     buf: &mut [u32],
@@ -1521,7 +1521,7 @@ fn blit_above(
     }
 }
 
-/// `mark` stamps what is drawn as a settler, so foliage laid over it later can
+/// `mark` stamps what is drawn as a person, so foliage laid over it later can
 /// tell it from the ground.
 fn blit(buf: &mut [u32], world: &World, sprite: &Sprite, sx: i32, sy: i32, mark: bool) {
     let x0 = sx - sprite.ox;
@@ -1621,7 +1621,7 @@ fn draw_carry(
     };
     let slot = format!("carry-{}", res.id());
     // A load in hand is a couple of pixels when it is generated; a picture of
-    // one comes out at whatever it was drawn at, held beside the settler at the
+    // one comes out at whatever it was drawn at, held beside the person at the
     // height their hand is.
     if let Some(clip) = state.civ.made.clip(&slot) {
         let (w, h) = clip.drawn_size(world.cell_px, state.civ.art_px_per_cell);
@@ -1775,11 +1775,11 @@ pub(crate) enum Item {
 /// How far into the map something stands, as sixteenths of a cell, which is
 /// what everything on the ground is sorted by.
 ///
-/// Whole rows are not enough. A settler and a bush in the same row tie on the
+/// Whole rows are not enough. A person and a bush in the same row tie on the
 /// row and are then separated by what kind of thing they are, which put every
-/// settler in front of every plant they were standing among - so somebody
+/// person in front of every plant they were standing among - so somebody
 /// walking behind a bush walked over it. A plant stands in the middle of its
-/// cell and a settler anywhere in theirs, and at a sixteenth of a cell that
+/// cell and a person anywhere in theirs, and at a sixteenth of a cell that
 /// difference is what decides which is in front.
 pub fn depth_key(cells: f64) -> i32 {
     (cells * 16.0).round() as i32
@@ -2097,7 +2097,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                             // Treading water and hanging from a hand are the
                             // two poses nothing else moves: the bob and the
                             // swinging feet come off the clock, offset per
-                            // settler so a river full of people does not rise
+                            // person so a river full of people does not rise
                             // and fall as one.
                             Pose::Float | Pose::Held => {
                                 ((time * 1.5) as i64 + (p.seed % 2) as i64).rem_euclid(2) as i32
@@ -2171,7 +2171,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
     sim.buffer_dirty = false;
 }
 
-/// A settler at a distance. Two pixels of their shirt at coarse detail, one at
+/// A person at a distance. Two pixels of their shirt at coarse detail, one at
 /// the furthest, which is enough to see a crowd move.
 fn draw_person_dot(buf: &mut [u32], world: &World, p: &Person, sx: i32, sy: i32, detail: Detail) {
     let color = person_color(p);

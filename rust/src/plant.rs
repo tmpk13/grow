@@ -356,7 +356,7 @@ pub struct Plant {
     alive_tips: i32,
     pub bounds: Bounds,
     pub dirty: bool,
-    /// Settler currently on their way to cut this plant down.
+    /// Person currently on their way to cut this plant down.
     pub claimed_by: u32,
     /// How far through coming down this plant is, from 0 while it stands to 1
     /// when it is off the map. A cut plant is not taken away where it stood:

@@ -29,7 +29,7 @@ flowchart LR
 ## Module map
 
 The project has three modes over one state: the plant lab authors species and
-materials, the sprite editor draws the sheets settlers can be drawn from, and
+materials, the sprite editor draws the sheets people can be drawn from, and
 the settlement runs a world made of all of it.
 
 ```mermaid
@@ -62,7 +62,7 @@ flowchart TD
     ecop["ui/economy_panel.rs"]
     tchp["ui/tech_panel.rs"]
     expp["ui/experimental_panel.rs<br/>one switch, and what is under it"]
-    sdrop["ui/sprite_drop.rs<br/>drop zones: settler motions and made things"]
+    sdrop["ui/sprite_drop.rs<br/>drop zones: person motions and made things"]
     zpaint["ui/zone_paint.rs<br/>a picture over the map: ground and zones"]
     hud["ui/drive.rs<br/>the stick and the buttons, over the map"]
   end
@@ -84,13 +84,13 @@ flowchart TD
   subgraph civ [Settlement, no browser]
     sett["civ/settlement.rs<br/>map, buildings, towns"]
     colony["civ/colony.rs<br/>one town's books"]
-    tasks["civ/tasks.rs<br/>what a settler does next"]
+    tasks["civ/tasks.rs<br/>what a person does next"]
     planner["civ/planner.rs<br/>what to build and where"]
     terrain["civ/terrain.rs<br/>noise, rivers, deposits"]
     people["civ/people.rs<br/>record, needs, movement"]
-    pdb["civ/people_db.rs<br/>the register of settlers"]
+    pdb["civ/people_db.rs<br/>the register of people"]
     social["civ/social.rs<br/>who has met whom, and what they made of it"]
-    csprites["civ/sprites.rs<br/>clips per settler motion and per made thing's state"]
+    csprites["civ/sprites.rs<br/>clips per person motion and per made thing's state"]
     cclouds["civ/clouds.rs<br/>one seamless tile of weather"]
     boats["civ/boats.rs<br/>hulls, cargoes, voyages"]
     ball["civ/balloons.rs<br/>canopies aloft, and what they are worth"]
@@ -104,13 +104,13 @@ flowchart TD
     csave["civ/save.rs<br/>a running settlement, written down"]
     hand["civ/harvest.rs<br/>cutting by hand, and what it teaches"]
     place["civ/place.rs<br/>what a press puts down"]
-    ctl["civ/control.rs<br/>a settler steered by hand"]
+    ctl["civ/control.rs<br/>a person steered by hand"]
     scene["civ/scenery.rs<br/>what stands behind the map"]
     phz["civ/phases.rs<br/>where a tick's time goes, when asked"]
   end
 
   render["render.rs<br/>camera, overlays, previews"]
-  civrender["civ/civ_render.rs<br/>terrain, buildings, settlers"]
+  civrender["civ/civ_render.rs<br/>terrain, buildings, people"]
 
   main --> state
   main --> sim
@@ -486,7 +486,7 @@ classDiagram
   Boat --> Colony : sails for
 ```
 
-## The register of settlers
+## The register of people
 
 Everyone who has ever lived keeps a slot. Slots are stable, so an index handed
 to a task this tick still means the same person next tick, and looking somebody
@@ -516,7 +516,7 @@ The project and the running settlement are saved separately, under two keys.
 The project is a document: parameters, materials, species, sprite sheets, and
 it is what Export writes to a file. The settlement is the state of a thing
 being watched, an order of magnitude larger than everything else put together,
-and nobody wants a hundred settlers inside a file they mailed to somebody.
+and nobody wants a hundred people inside a file they mailed to somebody.
 
 What is written down is only what could not be worked out again. Everything
 that is a function of the seed, the configuration and the things that *are*
@@ -535,7 +535,7 @@ flowchart LR
     terr["terrain: noise, rivers, deposits<br/>Terrain::new(seed, config)"]
     grids["blocked, build grid, gates<br/>from terrain plus footprints"]
     occ["layer occupancy<br/>from the cells each plant claims"]
-    px["plant sprites, ground, background,<br/>settler sprites, the picture"]
+    px["plant sprites, ground, background,<br/>person sprites, the picture"]
     idx["the id lookups and the plant index"]
   end
   kept --> restore["civ/save.rs restore"]
@@ -797,7 +797,7 @@ sequenceDiagram
   C->>P: step(dt) - the wilderness grows
   C->>C: rebuild the plant index on its own timer
   C->>C: plan() and plan_walls() per town every plan_interval
-  loop every living settler
+  loop every living person
     C->>T: update_person(dt)
     T->>T: age, hunger, energy, health
     T->>T: eat / sleep / work, in that order
@@ -814,7 +814,7 @@ sequenceDiagram
   L->>C: composite(view) - the visible band only
 ```
 
-## What a settler does
+## What a person does
 
 Every task is walk, work, carry. Nothing enters the store that a person did not
 carry there.
@@ -845,7 +845,7 @@ stateDiagram-v2
   Wander --> Choosing
 ```
 
-Sleeping is where a settler goes indoors, which is also the only place the map
+Sleeping is where a person goes indoors, which is also the only place the map
 loses sight of somebody:
 
 ```mermaid
@@ -869,7 +869,7 @@ somebody spending their own coin.
 
 ```mermaid
 flowchart TD
-  own["a settler owns a house"] --> coin{"has the coin<br/>for the next rung?"}
+  own["a person owns a house"] --> coin{"has the coin<br/>for the next rung?"}
   coin -- yes --> up["their house is rebuilt one rung larger"]
   dark["walking home after dark<br/>with no lamp in sight"] --> fear["fear builds, slowly"]
   day["daylight, a roof, a lit street"] --> ease["fear eases, slower"]
@@ -882,14 +882,14 @@ flowchart TD
 Fear is deliberately slow at both ends. The decision it feeds is taken once a
 day in `day_tick`, so anything that resets between one dawn and the next could
 never reach it. And the buyer is whoever *sleeps* under the roof rather than
-whoever holds its deed: the settlers the dark gets to are the ones walking home
+whoever holds its deed: the people the dark gets to are the ones walking home
 to somebody else's house, and with the deed holder as the only candidate no
 lamp was ever built.
 
 The price is the same for everybody, which is the point of it. Fear says who
 wants a lamp; coin says who can have one.
 
-## Picking a settler up
+## Picking a person up
 
 The stage is one canvas and a press on it can mean four things. The mode
 decides one of them and two exclusive switches decide the others: a press draws
@@ -914,7 +914,7 @@ flowchart TD
   put --> plan["no task, no path:<br/>they plan again from<br/>where they are standing"]
 ```
 
-Where somebody can be picked up from is not where they are standing. A settler's
+Where somebody can be picked up from is not where they are standing. A person's
 position is their feet and the sprite is drawn standing up out of that cell, so
 `person_near` halves the distance it measures upward: the reach is an oval
 leaning up the screen, which is the shape of what is being pointed at. Somebody
@@ -933,11 +933,11 @@ Three things make this safe to do to a running simulation.
   that already exists for anybody at sea. They still age and still get hungry,
   since being carried about is no way out of either, but they do not walk, work
   or take anything on. It sits on the settlement rather than on the person
-  because only one settler is ever in hand and because a saved `Person` should
+  because only one person is ever in hand and because a saved `Person` should
   not carry a piece of pointer state.
 * **They land somewhere they can be.** Water counts - they swim out of it - and
   anything else they cannot stand in sends them to the nearest cell they can,
-  which is the same `free_spot_near` a settler with no bed walks to.
+  which is the same `free_spot_near` a person with no bed walks to.
 
 Somebody can die of old age in your hand; holding is dropped rather than
 dragging a body about. The switch itself lives in `app.ui` rather than in the
@@ -963,7 +963,7 @@ flowchart TD
   done -->|yes| reap["cut: ground cover cut back,<br/>anything else taken away"]
   reap --> piles["what it was worth,<br/>left where it stood, marked as asked for"]
   reap --> lore["the species is remembered"]
-  piles --> fetch["the next settler to decide<br/>fetches it before their own work"]
+  piles --> fetch["the next person to decide<br/>fetches it before their own work"]
   lore --> want["gatherers walk further for<br/>that species and take it smaller"]
 ```
 
@@ -981,7 +981,7 @@ Four things are worth saying about the shape of it.
   its way somewhere leaves nothing behind.
 * **What it leaves is an ordinary pile with a flag on it.** `Pile.by_hand` is
   the whole of the coupling to the rest of the settlement. `choose_task` looks
-  for one before it looks at the settler's own trade, and `start_labor` scores
+  for one before it looks at the person's own trade, and `start_labor` scores
   one twelve points above an ordinary load and lets somebody walk sixty cells
   for it instead of forty. The one thing that outranks it is a town running out
   of food, which fetches food and nothing else whatever was asked for.
@@ -1004,7 +1004,7 @@ regardless of what the stride does with them.
 
 ## The ladder of homes
 
-A settler who has saved enough has their own house pulled down and rebuilt one
+A person who has saved enough has their own house pulled down and rebuilt one
 rung larger. Nobody plans this and no town decides it: it is one person's coin
 and one person's decision, and the tower at the end of it is the mark of a
 fortune rather than of a plan.
@@ -1035,7 +1035,7 @@ sequenceDiagram
 ```
 
 Wages only move once a town has a market, so a village of huts stays a village
-of huts until it has one. What a settler keeps of a wage rather than spending it
+of huts until it has one. What a person keeps of a wage rather than spending it
 back into the town the same day is the single number that decides how fast
 anybody gets rich.
 
@@ -1128,12 +1128,12 @@ and says why nothing was put there.
 | Switch | A press means |
 | --- | --- |
 | none | move the map |
-| Move people | pick a settler up and carry them |
+| Move people | pick a person up and carry them |
 | Harvest | cut what is growing, held down |
-| Add people | set a new settler down |
+| Add people | set a new person down |
 | Look inside | show a building's card on the Build panel |
 | Place | put down what the placing menu is holding |
-| Take over | steer that settler by hand (experiment) |
+| Take over | steer that person by hand (experiment) |
 
 ## Experiments
 
@@ -1151,10 +1151,10 @@ faster. A balloon is a position on the ground plane plus a height, so it is
 drawn in the same projection as everything else and simply painted after the
 sorted draw list, being in the sky.
 
-The second is taking a settler over. `Settlement::driven` names one person and
+The second is taking a person over. `Settlement::driven` names one person and
 `drive` is a direction in cells; `update_person` hands that person to
 `control::drive_tick` at exactly the point where it hands a held person nothing
-at all, so a driven settler stops planning and nothing else about them changes.
+at all, so a driven person stops planning and nothing else about them changes.
 They age, tire and starve like anybody else, which is what the four buttons
 under the map are for: cut what is in reach, pick a load up or put it down,
 step in or out of a doorway, and eat what they have. Steering is a direction
@@ -1184,10 +1184,10 @@ than `stray_distance` from their own town's center stops going home and founds
 one where they stand, with whoever else is out there beside them. They arrive
 with what they know - knowledge travels with the people who have it - and
 nothing else. This is what happens to anybody set down across the map, carried
-there, or walked there by hand, and it is the reason a settler put down in the
-far corner is no longer a settler on a very long walk.
+there, or walked there by hand, and it is the reason a person put down in the
+far corner is no longer a person on a very long walk.
 
-The patience is in seconds because the distances are small in time: a settler
+The patience is in seconds because the distances are small in time: a person
 walks 2.4 cells a second, so anybody who means to go home is back inside the
 distance in well under a minute, and a patience in days would only ever be
 spent walking. The count is kept per person and dropped the moment they are
@@ -1196,8 +1196,8 @@ than inside it, and only on a tick where somebody has actually given up.
 
 ## Counters
 
-A stall is one settler's business. Nobody plans one and nobody is assigned to
-keep one: a settler with coin to spare buys the counter themselves, and the
+A stall is one person's business. Nobody plans one and nobody is assigned to
+keep one: a person with coin to spare buys the counter themselves, and the
 person who paid for it is the person who stands behind it.
 
 ```mermaid
@@ -1221,19 +1221,19 @@ sequenceDiagram
 ```
 
 This is the only thing in the settlement that moves coin from one person to
-another without the treasury in the middle, and it is the only use a settler
+another without the treasury in the middle, and it is the only use a person
 has for coin besides a roof and a meal. The margin is what a practised trader
 gets away with, so keeping a stall is a trade somebody gets better at.
 
 Only what the town has spare is ever bought for a counter: a keeper who cleared
 the granary in a famine would be selling the town its own last meal back to it.
 A counter whose keeper dies stays standing with nobody behind it, which is what
-lets the next settler with the coin take it on rather than pay for another one.
+lets the next person with the coin take it on rather than pay for another one.
 
 ## What people make of each other
 
-Everyone a settler has stood near for long enough keeps a slot in that
-settler's memory: when they met, how often since, and what the two of them have
+Everyone a person has stood near for long enough keeps a slot in that
+person's memory: when they met, how often since, and what the two of them have
 come to think of one another. Both sides get their own record, written at the
 same moment.
 
@@ -1318,7 +1318,7 @@ flowchart LR
   stone --> builds
   tool --> builds
   cloth --> builds
-  food --> people["settlers eat, and are born"]
+  food --> people["people eat, and are born"]
   food --> inn["inn: a supper with the room"]
   plank --> hull["dock: hulls"]
   wood --> hull
@@ -1463,7 +1463,7 @@ flowchart TD
 ## Settlement drawing
 
 Nothing about a building is stored as art: it is generated from its own numbers
-and the sampling boxes, and cached by the values it was built from. A settler is
+and the sampling boxes, and cached by the values it was built from. A person is
 the same until somebody drops images on the people panel, at which point the
 generator steps aside for the art.
 
@@ -1544,7 +1544,7 @@ the same way: most particular first, falling back to the general.
 
 ```mermaid
 flowchart TD
-  subgraph settlers [A settler]
+  subgraph people [A person]
     motion["what they are doing:<br/>in hand, asleep, in water,<br/>walking, carrying, working"] --> chain["Motion::chain<br/>swim to tread to walk to stand"]
     chain --> clip["the first clip that has art"]
     clip --> wet{"in water, and the art<br/>came from a dry slot?"}
@@ -1567,7 +1567,7 @@ A site is the one place the fallback does not apply: a half built thing never
 borrows the finished picture, because one image cannot say how far a wall has
 got.
 
-The generated settler has four poses rather than one: the walk cycle, a swimmer
+The generated person has four poses rather than one: the walk cycle, a swimmer
 (head and shoulders over a waterline, an arm out with the stroke), somebody
 treading water (arms out either side, riding a row higher every other frame),
 and somebody held in a hand (arms up, feet swinging, lifted off the ground). A
@@ -1585,7 +1585,7 @@ map's business rather than the art's.
 ## The sprite editor
 
 The sprite editor is a mode of its own, beside the plant lab and the settlement,
-and a settler motion can be pointed at a sheet drawn in it instead of at a
+and a person motion can be pointed at a sheet drawn in it instead of at a
 dropped image. A sheet is a frame size, a stack of layers, and one cel per layer
 per frame; drawing lands on a single cel, and what anything else reads is the
 flattened frame.
@@ -1621,7 +1621,7 @@ flowchart TD
   flat --> ed["the editor canvas<br/>plus the frame before it, faint"]
   flat --> prev["the preview, playing at the sheet's rate"]
   flat --> strip["every frame side by side"]
-  strip --> clip["a settler clip, copied<br/>rather than followed"]
+  strip --> clip["a person clip, copied<br/>rather than followed"]
   cels --> rle["saved run length encoded:<br/>count and color per run,<br/>because sprite art is mostly empty"]
 ```
 
@@ -1632,7 +1632,7 @@ each supplies as a surface. A surface also says what the pick tool reads, which
 for a stack of layers is what is on show rather than the layer being drawn on,
 and how to record what an edit is about to change.
 
-Images reach a sheet the same way they reach a settler motion, through
+Images reach a sheet the same way they reach a person motion, through
 `ui/decode.rs`: a file becomes an object URL, an image element, a canvas and
 packed pixels. A drop on the editor lands on the selected layer, scaled down to
 fit the frame and centered, one image per frame from the frame being drawn.
@@ -1666,7 +1666,7 @@ flowchart TD
 Recording happens in the eight panel helpers in `ui/mod.rs`, which every panel
 builds its fields from, so every parameter in the tool is covered at once.
 The controls that bypass them - a stroke, an image drop, a nudge, a layer's name
-and visibility, the clip fields on a settler motion - record for themselves. The
+and visibility, the clip fields on a person motion - record for themselves. The
 three preview knobs in the shading panel deliberately do not: they change the
 panel rather than the project, and a step that restores nothing is worse than no
 step at all.
@@ -1674,9 +1674,9 @@ step at all.
 The stacks are bounded by depth and by the pixels they hold, because a project
 carrying sheets near their caps is megabytes on its own.
 
-## Settler animations
+## Person animations
 
-A settler can be drawn from images instead of from the generator. Every motion
+A person can be drawn from images instead of from the generator. Every motion
 the simulation can put somebody in has its own slot, its own frame count and its
 own playback, so a walk and a sleep are not forced to share a cadence.
 
@@ -1700,16 +1700,16 @@ Padding is the thing that used to make two sheets asked for the same height come
 out different sizes, and cropping to the art is what fixes it: a figure drawn a
 third of the way up a large canvas is the same figure as one drawn tight, and
 the clip is now sized by the figure either way. A clip can also be mirrored on
-the way out, for art drawn facing the other way than the settler walks; that is
+the way out, for art drawn facing the other way than the person walks; that is
 separate from mirroring when facing left, which is about the direction of
 travel rather than about the sheet.
 
-What a settler is doing folds down to one motion, and a motion with an empty
+What a person is doing folds down to one motion, and a motion with an empty
 slot borrows from a related one, so a single walk sheet stands in everywhere.
 
 ```mermaid
 flowchart TD
-  p["a settler"] --> m{"what are they doing?"}
+  p["a person"] --> m{"what are they doing?"}
   m -->|sleeping| sl["sleep"]
   m -->|in the water| sw["swim"]
   m -->|on a path, loaded| ca["carry"]
@@ -1721,7 +1721,7 @@ flowchart TD
   wa -.->|nothing dropped| id
   wo -.->|nothing dropped| id
   sl -.->|nothing dropped| id
-  id -.->|nothing dropped| gen["the generated settler"]
+  id -.->|nothing dropped| gen["the generated person"]
 ```
 
 A swimmer is blitted with the bottom of the sprite left undrawn, so they are in
@@ -1729,7 +1729,7 @@ the water rather than on it, whatever art the motion resolves to.
 
 Which frame shows is either the clock or the ground, per clip. A walk tied to
 the clock slides or runs on the spot; a walk tied to the ground covered never
-does, because the same counter that made the generated settler take a step is
+does, because the same counter that made the generated person take a step is
 what advances it. Sprites are cached per motion, frame, facing and cell size
 rather than per person: the whole town shares one entry, and a change to any
 clip drops the cache.
@@ -1824,7 +1824,7 @@ flowchart LR
   good --> b["tally_types:<br/>per building type, how many stand<br/>and how many benches are empty"]
 ```
 
-`has_market`, asked per working settler per tick, was a walk of every building
+`has_market`, asked per working person per tick, was a walk of every building
 in the world. `plan_next` asked three such questions for each of twenty-five
 building types, twice a simulated second per colony. Both are now one pass whose
 result everything else reads.

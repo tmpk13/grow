@@ -420,9 +420,9 @@ pub fn file_name(name: &str, extension: &str) -> String {
     format!("{out}.{extension}")
 }
 
-// ---- settlers under foliage ----------------------------------------------
+// ---- people under foliage ----------------------------------------------
 
-/// Alpha the composite buffer uses to mark a pixel as part of a settler, so
+/// Alpha the composite buffer uses to mark a pixel as part of a person, so
 /// foliage drawn in front of one can be told from foliage drawn over ground.
 ///
 /// It rides in the alpha byte, one step down from opaque. Nothing on the map is

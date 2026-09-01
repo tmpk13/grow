@@ -113,14 +113,14 @@ pub struct UiState {
     pub onion: bool,
     pub playing: bool,
     pub play_time: f64,
-    /// The stage picks settlers up rather than dragging the map. Kept here
+    /// The stage picks people up rather than dragging the map. Kept here
     /// rather than in the project: it is how somebody is using the map right
     /// now, not something about the map.
     pub move_people: bool,
     /// The stage cuts what is growing rather than dragging the map. The other
     /// half of the same idea, and never on at the same time as it.
     pub harvest: bool,
-    /// The stage sets a new settler down where it is pressed. The third of the
+    /// The stage sets a new person down where it is pressed. The third of the
     /// exclusive press switches: never on with either of the other two.
     pub add_people: bool,
     /// The stage looks inside a pressed building rather than dragging the map.
@@ -140,7 +140,7 @@ pub struct UiState {
     /// What that press would put down: a building, a plant or a load, and
     /// which. How somebody is using the map, so it is not saved with it.
     pub hand: crate::civ::place::Hand,
-    /// The stage hands the pressed settler over to be steered by hand. The
+    /// The stage hands the pressed person over to be steered by hand. The
     /// sixth exclusive press switch, and the one that is only on the toolbar
     /// while the experiment behind it is on.
     pub take_over: bool,
@@ -224,7 +224,7 @@ pub struct App {
     pub civ_stepped: bool,
     pub fps: f64,
     /// When the status line was last rewritten. Reading it costs a walk over
-    /// every settler and building, which is not worth doing once a frame for a
+    /// every person and building, which is not worth doing once a frame for a
     /// line of text nobody can read changing that fast.
     pub status_at: f64,
     pub accumulator: f64,
@@ -429,7 +429,7 @@ impl App {
         self.viewport.fit(&self.sim.world);
     }
 
-    /// A settler clip changed. The pixels every cached sprite was scaled from
+    /// A person clip changed. The pixels every cached sprite was scaled from
     /// are gone, so the cache is dropped and the revision moves on; the
     /// settlement recomposites every frame, so nothing else has to be asked.
     pub fn sprites_changed(&mut self) {
@@ -441,7 +441,7 @@ impl App {
     }
 
     /// A sheet in the sprite editor changed. Only the panel reads sheets
-    /// directly; a settler drawn from one is drawn from the clip that was built
+    /// directly; a person drawn from one is drawn from the clip that was built
     /// out of it, which is left alone until it is rebuilt on purpose.
     pub fn art_changed(&mut self) {
         self.redraw_panel = true;
@@ -455,7 +455,7 @@ impl App {
         self.request_save();
     }
 
-    /// Rebuilds the map and the settlers on it. The heavy part runs on the next
+    /// Rebuilds the map and the people on it. The heavy part runs on the next
     /// frame so the note has a chance to paint.
     pub fn civ_restart(&mut self) {
         self.set_note("growing the wilderness...");
@@ -650,7 +650,7 @@ const CHECKER_DARK: u32 = crate::util::pack_rgba(20, 25, 32, 255);
 const ZOOM_MAX_SPRITE: f64 = 48.0;
 
 /// The dashes of the selection outline. Bright enough to find over any art,
-/// and not a color a plant or a settler is ever drawn in.
+/// and not a color a plant or a person is ever drawn in.
 const MARQUEE_COLOR: u32 = crate::util::pack_rgba(255, 255, 255, 255);
 
 /// How often the status line is rewritten. Fast enough to read as live, slow
@@ -718,7 +718,7 @@ pub fn load_local() -> Option<State> {
 
 /// The running settlement, kept under a key of its own. It is not part of the
 /// project: a file exported to disk has no business carrying a hundred
-/// settlers in it, and the settlement is an order of magnitude larger than
+/// people in it, and the settlement is an order of magnitude larger than
 /// everything else put together.
 const CIV_STORAGE_KEY: &str = "grow.settlement.v1";
 
@@ -1152,7 +1152,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
     }));
 
     if sh.app.mode == Mode::Settlement {
-        controls.push(ui::button("New settlers", Scope::Toolbar, {
+        controls.push(ui::button("New people", Scope::Toolbar, {
             let h2 = h.clone();
             move || {
                 let mut sh = h2.borrow_mut();
@@ -1220,7 +1220,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
     // What the stage draws over the map is in the view menu in the side panel;
     // what the stage does with a press belongs here, next to the map.
     if sh.app.mode == Mode::Settlement {
-        // Picking settlers up is a way of using the stage rather than a
+        // Picking people up is a way of using the stage rather than a
         // setting of the project, so it is not saved with one.
         let h2 = h.clone();
         let move_people = ui::toggle_button(
@@ -1235,7 +1235,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
                 }
                 sync_grab_cursor(&sh.app);
                 let note = if on {
-                    "drag a settler to put them somewhere else - ctrl or middle drag moves the map"
+                    "drag a person to put them somewhere else - ctrl or middle drag moves the map"
                 } else {
                     "the stage moves the map again"
                 };
@@ -1245,7 +1245,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
         let _ = move_people.set_attribute("id", "move-people");
         let _ = move_people.set_attribute(
             "title",
-            "drag settlers about; ctrl or the middle button still moves the map",
+            "drag people about; ctrl or the middle button still moves the map",
         );
         controls.push(move_people);
 
@@ -1292,7 +1292,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
                 }
                 sync_grab_cursor(&sh.app);
                 let note = if on {
-                    "press on the map to set a new settler down there - ctrl or middle drag moves \
+                    "press on the map to set a new person down there - ctrl or middle drag moves \
                      the map"
                 } else {
                     "the stage moves the map again"
@@ -1302,7 +1302,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
         let _ = add_people.set_attribute("id", "add-people");
         let _ = add_people.set_attribute(
             "title",
-            "each press sets a new settler down where it lands; they join the nearest town",
+            "each press sets a new person down where it lands; they join the nearest town",
         );
         controls.push(add_people);
 
@@ -1362,7 +1362,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
         controls.push(place);
 
         // The sixth, and the only one that is not always there: taking a
-        // settler over is an experiment, so the switch comes and goes with the
+        // person over is an experiment, so the switch comes and goes with the
         // block it is under.
         let experiments = sh.app.state.civ.experiments;
         if experiments.on && experiments.control.on {
@@ -1379,7 +1379,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
                     }
                     sync_grab_cursor(&sh.app);
                     let note = if on {
-                        "press a settler to steer them yourself - ctrl or middle drag moves the map"
+                        "press a person to steer them yourself - ctrl or middle drag moves the map"
                     } else {
                         "the stage moves the map again"
                     };
@@ -1389,7 +1389,7 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
             let _ = take.set_attribute("id", "take-over");
             let _ = take.set_attribute(
                 "title",
-                "press a settler to drive them with the keys or the stick; they plan nothing \
+                "press a person to drive them with the keys or the stick; they plan nothing \
                  for themselves until they are let go",
             );
             controls.push(take);
@@ -1553,7 +1553,7 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
     // than dragged. The sprite editor shares this canvas with the camera, so
     // the stroke is driven here rather than by `paint::attach`.
     let stroke: Rc<RefCell<Option<(i32, i32)>>> = Rc::new(RefCell::new(None));
-    // The settler currently in hand, or 0. Held here beside the stroke for the
+    // The person currently in hand, or 0. Held here beside the stroke for the
     // same reason: the stage is shared with the camera, so what a press means
     // is decided in one place.
     let grab: Rc<Cell<u32>> = Rc::new(Cell::new(0));
@@ -1609,7 +1609,7 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             if adds(&sh.app, pe) {
                 // Only the press itself sets somebody down: a drag with the
                 // switch on moves the map rather than sowing a trail of
-                // settlers, and a press off the map falls through to the same.
+                // people, and a press off the map falls through to the same.
                 if spawn_person(&mut sh.app, pe.client_x() as f64, pe.client_y() as f64) {
                     return;
                 }
@@ -1797,12 +1797,12 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
     }
 }
 
-/// How far from a press a settler will still be picked up, in cells. A settler
+/// How far from a press a person will still be picked up, in cells. A person
 /// is about a cell across, so this is wide enough to catch one aimed at and
 /// narrow enough to leave the one beside them alone.
 const GRAB_REACH: f64 = 1.6;
 
-/// Whether this press picks a settler up rather than dragging the map. Only in
+/// Whether this press picks a person up rather than dragging the map. Only in
 /// the settlement, only with the switch on, and only for a plain press: the
 /// middle button and a held control key drag the map, the same way they do in
 /// the sprite editor.
@@ -1827,7 +1827,7 @@ fn cuts(app: &App, pe: &web_sys::PointerEvent) -> bool {
         && pe.buttons() & 4 == 0
 }
 
-/// Whether this press sets a new settler down rather than dragging the map.
+/// Whether this press sets a new person down rather than dragging the map.
 /// The same rules again: the switch, the settlement, and a plain press.
 fn adds(app: &App, pe: &web_sys::PointerEvent) -> bool {
     app.mode == Mode::Settlement
@@ -1969,7 +1969,7 @@ pub fn repaint_scenery(app: &mut App) {
     app.request_save();
 }
 
-/// Whether this press takes a settler over rather than dragging the map. The
+/// Whether this press takes a person over rather than dragging the map. The
 /// experiment has to be on as well as the switch: everything under that switch
 /// comes and goes with it.
 fn takes_over(app: &App, pe: &web_sys::PointerEvent) -> bool {
@@ -1983,7 +1983,7 @@ fn takes_over(app: &App, pe: &web_sys::PointerEvent) -> bool {
         && pe.buttons() & 4 == 0
 }
 
-/// Hands the pressed settler over to whoever is at the keyboard. A press on
+/// Hands the pressed person over to whoever is at the keyboard. A press on
 /// nobody finds nothing and gives the press back to the camera.
 fn take_over_press(app: &mut App, client_x: f64, client_y: f64) -> bool {
     let world = match app.settlement.as_ref() {
@@ -2057,7 +2057,7 @@ fn inspect_press(sh: &mut Shell, h: &Handle, client_x: f64, client_y: f64) -> bo
     true
 }
 
-/// Sets a new settler down under the pointer, and says who arrived. A press
+/// Sets a new person down under the pointer, and says who arrived. A press
 /// that misses the map spawns nobody and says so by returning false, which
 /// hands the press back to the camera.
 fn spawn_person(app: &mut App, client_x: f64, client_y: f64) -> bool {
@@ -2100,7 +2100,7 @@ fn start_grab(app: &mut App, client_x: f64, client_y: f64) -> Option<u32> {
     Some(id)
 }
 
-/// Carries the held settler along with the pointer.
+/// Carries the held person along with the pointer.
 fn drag_held(app: &mut App, client_x: f64, client_y: f64) {
     let world = match app.settlement.as_ref() {
         Some(sim) => sim.world().clone(),
@@ -2131,7 +2131,7 @@ fn end_grab(h: &Handle, grab: &Rc<Cell<u32>>) {
     }
 }
 
-/// What the stage says a press will do: an open hand where settlers can be
+/// What the stage says a press will do: an open hand where people can be
 /// picked up, a closed one while one is in hand, and crossed lines where what
 /// is growing can be cut.
 fn sync_grab_cursor(app: &App) {

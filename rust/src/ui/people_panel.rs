@@ -1,7 +1,7 @@
-//! People panel: the parameters that decide how settlers move, work, eat and
+//! People panel: the parameters that decide how people move, work, eat and
 //! age, and the register of everyone who has lived here.
 //!
-//! The roster is a view onto the settler database rather than a summary of it:
+//! The roster is a view onto the person database rather than a summary of it:
 //! pick a name and the panel shows that person's parentage, household, trades,
 //! purse and the log of what has happened to them.
 
@@ -56,7 +56,7 @@ const START_SUPPLIES: [Res; 4] = [Res::Wood, Res::Food, Res::Fiber, Res::Stone];
 pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let mut founding = vec![app_num(
         h,
-        "Settlers",
+        "People",
         app.state.civ.start.population as f64,
         NumOpts { min: 1.0, max: 40.0, step: 1.0 },
         Some("applied on the next restart"),
@@ -185,11 +185,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
 
     let s = app.state.civ.social;
     append(root, section("Company", vec![
-        note("Everyone a settler has stood near for long enough keeps a slot in their \
+        note("Everyone a person has stood near for long enough keeps a slot in their \
               memory. What the two of them make of each other follows from how alike \
               they are, plus a draw that belongs to the pair, and it decides who they \
               marry, whose counter they buy from, and how content they are."),
-        app_bool(h, "Settlers keep track of each other", s.enabled, None,
+        app_bool(h, "People keep track of each other", s.enabled, None,
             |app, v| { app.state.civ.social.enabled = v; app.request_save(); }),
         social_num(h, "Meeting pass (s)", s.interval, 0.25, 20.0, 0.25,
             Some("simulated seconds between passes over who is standing near whom"), |c, v| c.interval = v),
@@ -211,7 +211,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     ]));
 
     append(root, section("Money and lodging", vec![
-        note("Wages are only paid once a town has a market. What a settler keeps of one is what \
+        note("Wages are only paid once a town has a market. What a person keeps of one is what \
               eventually buys a bigger house; the rest is spent back into the town the same day."),
         people_num(h, "Kept from a wage", p.savings_share, 0.0, 1.0, 0.05,
             Some("the rest returns to the treasury"), |c, v| c.savings_share = v),
@@ -231,11 +231,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
 
     append(root, section("The dark", vec![
         note("Walking home with no lamp in sight wears on somebody. Daylight, a roof and a lit \
-              street all settle it again. A settler frightened enough, and with the coin for it, \
+              street all settle it again. A person frightened enough, and with the coin for it, \
               pays for a lamp post outside their own house - the cost is the same for everybody, \
               so it is the rich who light their street first."),
         people_num(h, "Fear per second in the dark", p.fear_gain, 0.0, 0.05, 0.001,
-            Some("a memory of nights rather than a mood; less again for a hardy settler"),
+            Some("a memory of nights rather than a mood; less again for a hardy person"),
             |c, v| c.fear_gain = v),
         people_num(h, "Fear eased per second", p.fear_ease, 0.0, 0.02, 0.0005,
             Some("in daylight, indoors, or under a lamp"), |c, v| c.fear_ease = v),
@@ -351,7 +351,7 @@ fn work_num(
     })
 }
 
-/// What a settler is doing right now, in one phrase.
+/// What a person is doing right now, in one phrase.
 fn doing(civ: &Settlement, pi: usize) -> String {
     let p = &civ.people[pi];
     if p.aboard != 0 {

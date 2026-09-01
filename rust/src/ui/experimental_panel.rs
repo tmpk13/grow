@@ -52,19 +52,19 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         append(
             root,
             section(
-                "Take over a settler",
+                "Take over a person",
                 vec![
                     note(
                         "With this on, a Take over switch joins the row above the map. Press a \
-                         settler with it and they are yours: the arrow keys or W A S D walk them, \
+                         person with it and they are yours: the arrow keys or W A S D walk them, \
                          a stick on the map does the same with a thumb, and the buttons under it \
                          are the four things they can be asked to do - cut what is in front of \
                          them, pick a load up or put it down, step in or out of a doorway, and \
                          eat what they have. They plan nothing for themselves until they are let \
-                         go, and everything else about being a settler still happens to them: \
+                         go, and everything else about being a person still happens to them: \
                          they age, they tire, and they starve if nobody feeds them.",
                     ),
-                    app_bool(h, "Let a settler be taken over", c.on, None, |app, v| {
+                    app_bool(h, "Let a person be taken over", c.on, None, |app, v| {
                         app.state.civ.experiments.control.on = v;
                         if !v {
                             app.ui.take_over = false;
@@ -84,7 +84,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                             app.request_save();
                         }),
                     control_num(h, "Walking pace", c.speed, 0.1, 4.0, 0.05,
-                        Some("against a settler's own"), |c, v| c.speed = v),
+                        Some("against a person's own"), |c, v| c.speed = v),
                     control_num(h, "Reach (cells)", c.reach, 0.5, 8.0, 0.1,
                         Some("how far a hand goes for something to cut, pick up or step into"),
                         |c, v| c.reach = v),

@@ -1,4 +1,4 @@
-//! The register of settlers.
+//! The register of people.
 //!
 //! Every person who has ever lived in the world keeps a slot here for as long
 //! as anyone might ask about them, which is what makes parentage, marriages
@@ -58,7 +58,7 @@ impl PeopleDb {
         self.buried = 0;
     }
 
-    /// The id the next settler will be given. Ids are never reused, so a stale
+    /// The id the next person will be given. Ids are never reused, so a stale
     /// reference resolves to nothing rather than to a stranger.
     pub fn claim_id(&mut self) -> u32 {
         let id = self.next_id;
@@ -66,7 +66,7 @@ impl PeopleDb {
         id
     }
 
-    /// Files a new settler and returns their slot.
+    /// Files a new person and returns their slot.
     pub fn insert(&mut self, person: Person) -> usize {
         let index = self.all.len();
         self.by_id.insert(person.id, index);
@@ -99,7 +99,7 @@ impl PeopleDb {
     /// Drops a slot out of the living list. The record stays where it is.
     ///
     /// This is the authority on whether somebody has been buried, not the
-    /// `alive` flag: a task sets that flag the moment it decides a settler has
+    /// `alive` flag: a task sets that flag the moment it decides a person has
     /// died, and the burial happens afterwards. Returning false is what stops
     /// the same death being counted, logged and inherited from on every tick
     /// for the rest of the run.
@@ -118,7 +118,7 @@ impl PeopleDb {
         self.buried
     }
 
-    /// Living settlers.
+    /// Living people.
     pub fn count(&self) -> usize {
         self.live.len()
     }
@@ -145,7 +145,7 @@ impl PeopleDb {
         self.live.iter().map(move |&i| (i, &self.all[i]))
     }
 
-    /// Runs a change over every living settler. Written as a callback rather
+    /// Runs a change over every living person. Written as a callback rather
     /// than a mutable iterator so the live list stays borrowed by nothing.
     pub fn for_each_live(&mut self, mut f: impl FnMut(&mut Person)) {
         for k in 0..self.live.len() {

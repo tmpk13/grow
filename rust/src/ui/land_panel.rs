@@ -107,7 +107,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         civ_num(h, "Sky height (px)", civ.world.sky_px as f64, NumOpts { min: 20.0, max: 400.0, step: 2.0 }, None,
             |app, v| app.state.civ.world.sky_px = v as i32),
         app_num(h, "Seed", civ.seed as f64, NumOpts { min: 1.0, max: 999_999_999.0, step: 1.0 },
-            Some("terrain, deposits, settlers and everything they do"),
+            Some("terrain, deposits, people and everything they do"),
             |app, v| { app.state.civ.seed = v as u32; app.request_save(); }),
         el("h4").text("Grow it instead").get(),
         note("Adds land to the right and along the bottom, so every column and row that is \
@@ -170,7 +170,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("how lush the map is: scales seeding and how many plants the land carries"),
             |t, v| t.wildness = v),
         terrain_num(h, "Wilderness warmup (s)", t.warmup, 0.0, 3000.0, 30.0,
-            Some("growth simulated before the settlers arrive"), |t, v| t.warmup = v),
+            Some("growth simulated before the people arrive"), |t, v| t.warmup = v),
     ];
     append(root, section("Terrain", terrain));
 
@@ -315,7 +315,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             "How much foliage is left",
             app.state.civ.view.foliage_alpha,
             NumOpts { min: 0.1, max: 1.0, step: 0.05 },
-            Some("1 is solid, and anything below it lets the settler through"),
+            Some("1 is solid, and anything below it lets the person through"),
             |app, v| {
                 app.state.civ.view.foliage_alpha = v;
                 app.civ_repaint();

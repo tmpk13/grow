@@ -294,7 +294,7 @@ impl Sheet {
     }
 
     /// True once anything has been drawn anywhere. An empty sheet is not worth
-    /// pointing a settler at.
+    /// pointing a person at.
     pub fn any(&self) -> bool {
         self.layers
             .iter()
@@ -764,10 +764,10 @@ impl ArtLibrary {
     }
 }
 
-/// The sheet a new project opens on: a settler sized figure, drawn once so the
+/// The sheet a new project opens on: a person sized figure, drawn once so the
 /// editor has something in it to take apart.
 fn starter_sheet() -> Sheet {
-    let mut sheet = Sheet::new("art-1", "Settler", 12, 16);
+    let mut sheet = Sheet::new("art-1", "Person", 12, 16);
     let skin = hsl_to_packed(28.0, 0.42, 0.66);
     let shirt = hsl_to_packed(206.0, 0.34, 0.44);
     let legs = hsl_to_packed(28.0, 0.24, 0.3);

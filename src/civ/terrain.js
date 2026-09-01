@@ -26,7 +26,7 @@ export function defaultTerrainConfig() {
     rockLevel: 0.68,
     moistScale: 22,
     fertility: 0.6,
-    // Wild growth simulated before the settlers arrive, in simulated seconds.
+    // Wild growth simulated before the people arrive, in simulated seconds.
     warmup: 420,
     // How lush the map is: scales seeding rate and how many plants of each
     // species the land carries. Wild food and timber both follow this.

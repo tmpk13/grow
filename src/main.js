@@ -273,7 +273,7 @@ function buildToolbar() {
     button('Step', () => activeSim().step(1 / cfg.tickHz)),
   ];
   if (mode === 'settlement') {
-    controls.push(button('New settlers', () => app.civRestart()));
+    controls.push(button('New people', () => app.civRestart()));
     controls.push(
       button('New land', () => {
         state.civ.seed = (Math.random() * 1e9) | 0;

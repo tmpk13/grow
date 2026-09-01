@@ -253,7 +253,7 @@ function paintOpenings(sim, ctx) {
 
 // Three pixels wide and a head: enough to read a walk cycle, a facing and
 // whether somebody is carrying something. Colors are hashed from the person id
-// so a settler looks the same for their whole life.
+// so a person looks the same for their whole life.
 export function personSprite(sim, p, frame) {
   const world = sim.world;
   const bodyH = Math.max(4, Math.round(world.cellPx * 0.85));

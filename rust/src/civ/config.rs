@@ -174,11 +174,11 @@ pub struct ViewConfig {
     /// turning off on their own: a ring of palisade is a hundred of them.
     pub label_walls: bool,
     pub label_towns: bool,
-    /// What foliage does where it covers a settler: `solid`, `hatched` or
+    /// What foliage does where it covers a person: `solid`, `hatched` or
     /// `faded`. Solid is what a plant is; the other two keep somebody walking
     /// through a wood findable.
     pub foliage: String,
-    /// How much of the foliage is left when it is faded over a settler.
+    /// How much of the foliage is left when it is faded over a person.
     pub foliage_alpha: f64,
     pub smoke: bool,
     /// The wind in the trees: standing plants lean from the tips, each with
@@ -238,7 +238,7 @@ pub const LABEL_KINDS: [(Option<Category>, &str); 7] = [
     (None, "Town names"),
 ];
 
-/// The three ways foliage can cover a settler, and what to call them.
+/// The three ways foliage can cover a person, and what to call them.
 pub const FOLIAGE_MODES: [(&str, &str); 3] = [
     ("solid", "Solid"),
     ("hatched", "Hatched"),
@@ -246,7 +246,7 @@ pub const FOLIAGE_MODES: [(&str, &str); 3] = [
 ];
 
 impl ViewConfig {
-    /// How a plant should be drawn where it lands on a settler.
+    /// How a plant should be drawn where it lands on a person.
     pub fn foliage_over_people(&self) -> crate::sim::Foliage {
         match self.foliage.as_str() {
             "hatched" => crate::sim::Foliage::Hatched,
@@ -344,7 +344,7 @@ impl Default for ViewConfig {
 pub struct Experiments {
     pub on: bool,
     pub balloons: BalloonConfig,
-    /// Taking over a settler and steering them by hand.
+    /// Taking over a person and steering them by hand.
     pub control: crate::civ::control::ControlConfig,
 }
 
@@ -365,7 +365,7 @@ pub struct CivConfig {
     pub sim: SimSettings,
     pub view: ViewConfig,
     pub experiments: Experiments,
-    /// Images dropped on the people panel to draw settlers with, one clip per
+    /// Images dropped on the people panel to draw people with, one clip per
     /// motion. Empty means everyone is drawn from the generator instead.
     pub sprites: PeopleSprites,
     /// Pictures for the things people make: buildings, walls, boats and loads
@@ -378,11 +378,11 @@ pub struct CivConfig {
     pub scenery: Vec<crate::civ::scenery::Scene>,
     /// Art pixels to one map cell: the one number that says how large every
     /// dropped picture comes out. Art authored at this resolution is drawn at
-    /// its own size, so a settler drawn twelve pixels tall stands a cell and a
+    /// its own size, so a person drawn twelve pixels tall stands a cell and a
     /// half against a house drawn twenty, and all of it scales together when
     /// the cell width changes.
     pub art_px_per_cell: f64,
-    /// How many dead settlers stay on file. The register keeps a slot per
+    /// How many dead people stay on file. The register keeps a slot per
     /// person ever born; this is where a very long run stops growing.
     pub people_archive: usize,
 }

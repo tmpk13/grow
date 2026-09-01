@@ -43,7 +43,7 @@ const MAX_WORK: f64 = 4.0;
 /// said they want that one; a camp is only guessing.
 const MIN_MASS_SHARE: f64 = 0.5;
 
-/// A claim no settler can hold, put on a plant the moment it is cut so that
+/// A claim no person can hold, put on a plant the moment it is cut so that
 /// nobody sets off for it in the second before the index is next rebuilt.
 pub const CUT_CLAIM: u32 = u32::MAX;
 
@@ -333,7 +333,7 @@ impl Settlement {
 
     /// What is left of a plant that has been harvested: ground cover is cut
     /// back and grows again, anything that stands up goes over, and the rest is
-    /// taken away where it stood. Shared by the settler who did it as a day's
+    /// taken away where it stood. Shared by the person who did it as a day's
     /// work and by the hand that did it directly.
     pub fn take_plant(&mut self, index: usize, cut_back: bool, regrow: f64) {
         if cut_back {
@@ -366,7 +366,7 @@ impl Settlement {
     }
 
     /// A load left by the hand. The same pile everything else drops, marked as
-    /// asked for, which is what puts it in front of the work a settler would
+    /// asked for, which is what puts it in front of the work a person would
     /// otherwise have chosen.
     pub fn add_hand_pile(&mut self, col: i32, row: i32, res: Res, n: f64) {
         if let Some(index) = self.add_pile(col, row, res, n) {

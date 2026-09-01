@@ -88,10 +88,10 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     append(root, section("What to favor", favor));
 
     append(root, section("Homes and towns", vec![
-        note("A settler who has saved enough coin has their own house rebuilt one rung larger: \
+        note("A person who has saved enough coin has their own house rebuilt one rung larger: \
               hut, house, manor, and finally a tower. The coin goes to the treasury, which is what \
               pays the laborers who carry the brick. Nobody plans a tower."),
-        app_bool(h, "Settlers upgrade their own homes", cfg.home_upgrades, None,
+        app_bool(h, "People upgrade their own homes", cfg.home_upgrades, None,
             |app, v| { app.state.civ.build.home_upgrades = v; app.request_save(); }),
         build_num(h, "Upgrade price scale", cfg.upgrade_scale, 0.1, 6.0, 0.1,
             Some("multiplies the coin an owner has to put up"), |c, v| c.upgrade_scale = v),
@@ -108,7 +108,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             |c, v| c.max_colonies = v as i32),
         build_num(h, "Population before sparing anyone", cfg.expedition_population as f64, 4.0, 200.0, 1.0,
             None, |c, v| c.expedition_population = v as i32),
-        build_num(h, "Settlers in a party", cfg.expedition_party as f64, 1.0, 20.0, 1.0,
+        build_num(h, "People in a party", cfg.expedition_party as f64, 1.0, 20.0, 1.0,
             Some("families follow them"), |c, v| c.expedition_party = v as i32),
         build_num(h, "Supplies carried out", cfg.expedition_supplies, 0.0, 400.0, 5.0,
             Some("of each founding resource"), |c, v| c.expedition_supplies = v),
@@ -125,7 +125,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         build_num(h, "Far from home (cells)", cfg.stray_distance, 10.0, 300.0, 1.0,
             Some("from their own town's center"), |c, v| c.stray_distance = v),
         build_num(h, "Out there before giving up (s)", cfg.stray_wait, 1.0, 600.0, 1.0,
-            Some("settlement seconds; a settler walks about two and a half cells of it, so \
+            Some("settlement seconds; a person walks about two and a half cells of it, so \
                   this is short by design"),
             |c, v| c.stray_wait = v),
     ]));
@@ -167,11 +167,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     ]));
 
     append(root, section("Stalls", vec![
-        note("A settler with coin to spare buys a counter of their own, stocks it out of \
+        note("A person with coin to spare buys a counter of their own, stocks it out of \
               the town store at the town's price, and sells over it at a margin they \
               keep. It is the only thing in the settlement that moves coin from one \
               person to another without the treasury in the middle."),
-        app_bool(h, "Settlers open stalls", cfg.stalls, None,
+        app_bool(h, "People open stalls", cfg.stalls, None,
             |app, v| { app.state.civ.build.stalls = v; app.request_save(); }),
         build_num(h, "Stall price scale", cfg.stall_price_scale, 0.1, 6.0, 0.1,
             Some("multiplies the coin a keeper has to put up"), |c, v| c.stall_price_scale = v),
@@ -733,7 +733,7 @@ impl Panel for BuildPanel {
                     meta.push(
                         match def.structure {
                             Structure::Wall | Structure::Gate => "raised on the town's ring",
-                            Structure::Stall => "opened by a settler with the coin for it",
+                            Structure::Stall => "opened by a person with the coin for it",
                             _ => "only ever raised by its owner",
                         }
                         .to_string(),

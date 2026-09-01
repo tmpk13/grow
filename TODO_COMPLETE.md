@@ -16,7 +16,7 @@ README.
   gives up on walking back and founds one where they stand, with anyone else
   out there beside them. They bring what they know and nothing else: no stores
   and no storehouse, because nobody planned it. The patience is measured in
-  seconds rather than days, since a settler covers the width of a small map in
+  seconds rather than days, since a person covers the width of a small map in
   under a minute and anything longer would only ever be spent walking home.
 - (LLM) Zones and ground drawn from a picture: drop one on the Land panel and
   it is laid over the whole map corner to corner, press it to take the color
@@ -34,12 +34,12 @@ README.
   town would have placed it, so it is built, harvested and hauled by the same
   rules; a press that cannot put it there says why rather than moving the map
   out from under the aim.
-- (LLM) A settler can be taken over, under the experiments switch: a Take over
+- (LLM) A person can be taken over, under the experiments switch: a Take over
   press hands them to the keys or to a stick on the map, and the row under it
   is the four things they can be asked to do - cut what is in front of them,
   pick a load up or put it down, step in or out of a doorway, eat what they
   have. They plan nothing for themselves until they are let go, and everything
-  else about being a settler still happens to them, so a driven settler starves
+  else about being a person still happens to them, so a driven person starves
   if nobody feeds them. Water is swum rather than walked round, and a wall stops
   only the part of the push that is into it.
 - (LLM) Anything the town has put up can be condemned from its Look inside
@@ -51,7 +51,7 @@ README.
   it stand again puts it right at the cost of the work spent. A site that has
   not gone up is called off instead, and everything carried to it is left where
   it stood.
-- (LLM) Nobody is cut in half by water any more. The generated settler has
+- (LLM) Nobody is cut in half by water any more. The generated person has
   poses of its own for crossing water and for treading it - head and shoulders
   over a waterline, an arm out with the stroke, a bob while treading - and two
   new slots, Still in water and Picked up, take art for them. Only a pose
@@ -77,7 +77,7 @@ README.
   bench, and who is under the roof this moment, which the map itself cannot
   show. The card stays until dismissed, and open ground still moves the map.
 - (LLM) An Add people switch beside Move people and Harvest, exclusive with
-  both: each press sets a new settler down where it lands. They arrive grown
+  both: each press sets a new person down where it lands. They arrive grown
   with a founder's purse, join the nearest town still standing, land the way a
   put-down does - water included, and a blocked cell hands them the nearest
   one somebody can stand in - and plan for themselves from there. The arrival
@@ -111,7 +111,7 @@ README.
   folds are window preferences, so they survive both the constant panel
   rebuilds and a reload. Menu search unfolds whatever it lands in.
 - (LLM) A row of chips says what it is: a small head over the towns, the
-  trades, the register order, a settler's temperament, the sheets and the
+  trades, the register order, a person's temperament, the sheets and the
   research effects.
 - (LLM) An optimization pass over the settlement tick, byte-identical to the
   pixel: a 200 day run in half the time, a phase timing harness kept for the
@@ -165,7 +165,7 @@ README.
   comes down, with a bar per plant that fills while the pointer is on it and
   runs back out if it is let go of too soon. What a cut is worth is left where
   the plant stood and marked as asked for, which puts it in front of the work a
-  settler would otherwise have chosen - a town short of food excepted. Every cut
+  person would otherwise have chosen - a town short of food excepted. Every cut
   is remembered against its species, and the gatherers walk further for a
   species that has been cut for them and take it smaller than they would have
   bothered with; what has been taught is listed in the Tech panel. Everything
@@ -201,8 +201,8 @@ README.
   ranking the menus use over an index and a meaning table of their own, behind
   an Every slot switch.
 - Lamps are raised by people rather than by plans. Walking home after dark with
-  no lamp in sight wears on a settler and daylight, a roof and a lit street
-  settle it again; a settler frightened enough, and with the coin for it, pays
+  no lamp in sight wears on a person and daylight, a roof and a lit street
+  settle it again; a person frightened enough, and with the coin for it, pays
   for a lamp outside where they sleep. The price is the same for everybody, so
   it is the well off who light their street, and the fear the lamp was raised
   against comes down for everybody who passes under it.
@@ -220,9 +220,9 @@ README.
   out on the stage. The nudges and Clear act on what is inside it rather than
   on the whole cel, and what leaves the rectangle is dropped, so a selection is
   a window on the cel rather than something that smears across it.
-- Foliage over a settler can be solid (what a plant is), hatched, or mixed over
+- Foliage over a person can be solid (what a plant is), hatched, or mixed over
   them by a settable amount, so somebody walking through a wood stays findable.
-  The settler is marked in the alpha byte of the composite buffer rather than in
+  The person is marked in the alpha byte of the composite buffer rather than in
   a mask beside it.
 - Downloads from the sprite editor: the frame showing on its own, or every
   ticked sheet in one zip, a folder per sheet and a file per frame beside the
@@ -271,7 +271,7 @@ README.
   with a Meaning switch that also matches on what a setting is for. The index
   is harvested out of the running page, and the meaning table is built ahead of
   time by an embedding model that stays a build tool.
-- (LLM) Move people: a switch above the map turns a press on a settler into
+- (LLM) Move people: a switch above the map turns a press on a person into
   picking them up. The pointer carries them, letting go puts them down on the
   nearest ground they can stand in, what they were doing is given up the way any
   change of plan gives it up, and the tick leaves them out while they are held.
@@ -279,7 +279,7 @@ README.
   dark by drawing over the night tint rather than cutting holes in it.
 - (LLM) The fullscreen escape hatch fades out when nothing has moved for a
   couple of seconds.
-- (LLM) Settlers with no bed walk back to town before lying down, and turning in
+- (LLM) People with no bed walk back to town before lying down, and turning in
   is its own motion beside sleeping.
 - (LLM) People can swim. Water is passable at a price, so a river is crossed
   only when walking round it would be much further; a swimmer is slower, wears
@@ -308,5 +308,5 @@ README.
 - (LLM) The color wheel losing its disc: it kept an `ImageData`, which in wasm
   is a view onto memory that had since been reused.
 - (LLM) Tree shadows reaching into the sky.
-- (LLM) Settlers drawing over plants they were standing behind.
+- (LLM) People drawing over plants they were standing behind.
 - (LLM) Town names showing whatever the Labels switch said.

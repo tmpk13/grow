@@ -154,7 +154,7 @@ pub struct TerrainConfig {
     pub rock_level: f64,
     pub moist_scale: f64,
     pub fertility: f64,
-    /// Wild growth simulated before the settlers arrive, in simulated seconds.
+    /// Wild growth simulated before the people arrive, in simulated seconds.
     pub warmup: f64,
     /// How lush the map is: scales seeding rate and how many plants of each
     /// species the land carries. Wild food and timber both follow this.

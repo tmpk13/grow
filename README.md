@@ -6,14 +6,14 @@ Two halves of one project, in two modes.
 per material, a shared shading curve, per species growth and spread parameters,
 and a grid based world to test them in.
 
-**Settlement** drops five settlers into a procedurally generated map grown from
+**Settlement** drops five people into a procedurally generated map grown from
 those same species, and simulates what happens next: they forage, fell trees,
 quarry stone, carry every plank to every building site, raise houses and
 workshops, marry, have children, trade, and work their way up a technology tree.
-Rivers run across the map; boats run along them between towns; a settler who has
+Rivers run across the map; boats run along them between towns; a person who has
 saved enough has their own hut pulled down and rebuilt as a house, then a manor,
 then a tower. A town big enough rings itself with a wall and cuts the gates
-where the paths already run. A settler with coin to spare opens a stall and
+where the paths already run. A person with coin to spare opens a stall and
 sells over the counter to their neighbors. Everybody keeps track of everybody
 they have met, and what they make of them decides who they marry, whose counter
 they buy from and how content they are. Every number behind it is a parameter
@@ -140,7 +140,7 @@ row that tall plants grow into.
 
 ## Sprite editor
 
-A pixel editor for animations, and the other way to draw a settler. The sheet is
+A pixel editor for animations, and the other way to draw a person. The sheet is
 drawn on the stage rather than in the panel: left button draws, right erases,
 middle button or a held ctrl drags, wheel or pinch zooms.
 
@@ -160,7 +160,7 @@ middle button or a held ctrl drags, wheel or pinch zooms.
   reference can go on a layer of its own and be drawn over on the one above.
 * **Nudge** shifts the art by a pixel: the selected layer in the selected frame,
   or the whole sheet with the switch beside the buttons.
-* **Use as settler art** sends the sheet to one of the five settler motions. It
+* **Use as person art** sends the sheet to one of the five person motions. It
   is copied rather than followed, so the town does not change under you while
   you keep drawing. The motion's card in the settlement's People panel says
   which sheet it came from and offers to take that sheet again, which is how a
@@ -252,7 +252,7 @@ tall and narrow. Height is not a grid cost, only the footprint is. The
 
 Entering the mode for the first time grows a wilderness (a few hundred
 simulated seconds of the plant sim), cuts the rivers, scatters deposits, picks a
-spot and puts five settlers next to a storehouse.
+spot and puts five people next to a storehouse.
 
 One map holds several towns. A colony is a set of books over the shared map: its
 own store, treasury, prices and research. When a town gets crowded and has the
@@ -297,7 +297,7 @@ rather than cutting a channel through somebody's town.
 ### People
 
 The register of everyone who has ever lived here, and the parameters behind
-them. Pick a name and the panel opens that settler's record: their town, their
+them. Pick a name and the panel opens that person's record: their town, their
 parents, who they married and their children, the house they hold the deed to,
 what they are doing right now, their purse, their personality, the trades they
 have picked up and the log of what has happened to them. Sort the list by age,
@@ -306,18 +306,18 @@ coin, standing or name, and include the dead to read back through the families.
 Below it: walking speed, carry capacity, work rate, the share of adults kept
 free to haul and build, the length of a day and the hours worked in it, hunger
 and rest and healing, how fast people age, when they become adults and marry,
-how long they live, how often couples have children, what a settler keeps of a
+how long they live, how often couples have children, what a person keeps of a
 wage, what a night at an inn costs, and the work rates for harvesting, mining,
 building, crafting and farming.
 
-Every settler is born with a personality that is fixed for life and inherited,
+Every person is born with a personality that is fixed for life and inherited,
 loosely, from their parents. Diligence sets how fast they work and learn, thrift
 how much of a wage they keep and how soon they rebuild their house, curiosity
 what they are worth at a desk, hardiness their resistance to sickness and
 hunger, sociability whether they marry, and wanderlust whether they leave with
 an expedition.
 
-**Company.** Everyone a settler has stood near for long enough keeps a slot in
+**Company.** Everyone a person has stood near for long enough keeps a slot in
 their memory, and the record shows the strongest of them: married, kin, friend,
 rival or simply known, with how warmly on each. What two people make of each
 other follows from how alike their temperaments are, plus a draw that belongs to
@@ -328,7 +328,7 @@ make room for a stranger; everybody else is, once the memory is full.
 Affinity decides who somebody marries from among the matches of a like age,
 whose stall they walk to, and how content they are - friends nearby against
 rivals. The section under the register sets how often the sim looks at who is
-near whom, how close counts, how many people a settler carries, how fast a bond
+near whom, how close counts, how many people a person carries, how fast a bond
 warms, and where the friendship and feud lines sit.
 
 **Pictures for made things.** Buildings, walls, gates, stalls, boats and the
@@ -341,7 +341,7 @@ only ever itself. Drop images on a slot, or send a sheet to one from the sprite
 editor with **Use for that**.
 
 A thing with a picture for one state only is drawn from it in that state and
-generated the rest of the time, the way a settler motion with nothing on it
+generated the rest of the time, the way a person motion with nothing on it
 borrows from a related one. A building still going up is the exception in the
 other direction: it never falls back to the finished picture, because one image
 cannot say how far a wall has got.
@@ -357,24 +357,24 @@ and its own meaning table: with nothing typed only what has a picture is
 listed, **Every slot** shows the rest, and **Meaning** finds the lamp post from
 "lantern" and the inn from "tavern".
 
-**Foliage over people.** A settler walking behind a bush is behind it, which is
+**Foliage over people.** A person walking behind a bush is behind it, which is
 right and also makes them hard to follow through a wood. **Foliage over people**
 in the Land panel's View section offers two other readings: *hatched* leaves
-every other pixel of the covering foliage out, so the settler shows through in
+every other pixel of the covering foliage out, so the person shows through in
 a screen pattern; *see through* mixes the foliage over them by a settable
 amount. The mark rides in the alpha byte of the composite buffer rather than in
 a mask beside it, so it costs nothing on a map that is already megabytes of
 pixels.
 
 **Taking a sheet again.** A clip keeps its own copy of the art, so a sheet
-drawn on after a motion took it does not change the settlers on the map. Both
-ends now say so: the motion's card in the People panel reads *from Settler,
+drawn on after a motion took it does not change the people on the map. Both
+ends now say so: the motion's card in the People panel reads *from Person,
 which has been drawn on since - take it again to catch up*, and the sprite
 editor's own buttons read **Standing - taken** or **Standing - out of date**.
 The sheet is fingerprinted when it is taken and compared with what it is now,
 so drawing something and undoing it back leaves the clip current.
 
-**Settler sprites.** Settlers are drawn from a generated body by default: three
+**Person sprites.** People are drawn from a generated body by default: three
 pixels wide, a head, and a two frame walk. Drop images on the panel to replace
 it. There is a slot per motion - standing, walking, carrying, working, sleeping
 - and each keeps its own art, its own number of frames and its own playback.
@@ -395,12 +395,12 @@ the rate.
 
 The rate is either frames per second or frames per cell walked. Tie a walk to
 steps and it never slides and never runs on the spot, because the same counter
-that made the generated settler take a step advances it; leave a sleep or an
+that made the generated person take a step advances it; leave a sleep or an
 idle on the clock, where standing still should still breathe.
 
 A slot with nothing dropped on it borrows from a related one - carrying falls
 back to walking, working and sleeping to standing - so one walk sheet is enough
-to replace the settler everywhere. A slot with nothing behind it at all falls
+to replace the person everywhere. A slot with nothing behind it at all falls
 back to the generated body, and so does everything when the switch at the top of
 the section is off, which hides the art without giving it up.
 
@@ -438,7 +438,7 @@ it, what is on it and what they are asking.
 ### Economy
 
 One town's store with every resource, its target stock, its price and its flow
-per day; the treasury, what is in settlers' purses, net worth and storage used;
+per day; the treasury, what is in people' purses, net worth and storage used;
 a plot of population, food, coin and buildings over the run; and the parameters
 behind prices, wages, boats and caravans.
 
@@ -504,7 +504,7 @@ air right now and where.
   hunger.
 * **Houses are owned by people, not by towns.** The first adult under an
   unowned roof takes the deed and keeps it for life; it passes to the oldest
-  adult still under that roof when they die. A settler with enough saved coin
+  adult still under that roof when they die. A person with enough saved coin
   has their own house pulled down and rebuilt one rung larger - hut, house,
   manor, tower - paying the price into the treasury, which is what then pays the
   laborers who carry the brick. Nobody plans a tower.
@@ -513,7 +513,7 @@ air right now and where.
   somebody on a doorstep. Anyone without one takes a room at an inn if there is
   one free and they have the coin, and sleeps rough if not - which is what makes
   an inn worth building during a run of house rebuilds.
-* **Towns grow out of towns.** A crowded, well stocked colony sends settlers out
+* **Towns grow out of towns.** A crowded, well stocked colony sends people out
   to found another, carrying supplies, a share of the treasury and everything
   the parent had learned. From then on they research separately and run short of
   different things.
@@ -529,10 +529,10 @@ air right now and where.
   there are none - and a finished gate is walkable, which is what then frees the
   stretches beside it to be closed.
 * **A stall is one person's business.** Nobody plans one and nobody is assigned
-  to keep one. A settler with coin to spare pays for the counter, stocks it out
+  to keep one. A person with coin to spare pays for the counter, stocks it out
   of the town store at the town's price with their own coin, and sells over it
   at a margin they keep - larger the more practised they are. It is the only
-  thing that moves coin from one settler to another with the treasury nowhere in
+  thing that moves coin from one person to another with the treasury nowhere in
   it, and the only use anybody has for coin besides a roof and a meal. Only what
   the town has spare is ever bought for a counter.
 * **Lamp posts.** A post with a light on the head, which burns after dark and
@@ -562,8 +562,8 @@ air right now and where.
   would be much further, and a swimmer moves at a fraction of walking speed and
   wears no path behind them. Both numbers are in the People panel. Somebody in
   the water is drawn cut off at the surface.
-* **Settlers can be picked up.** Turn on **Move people** above the map and a
-  press on a settler lifts them off it: the pointer carries them, and letting go
+* **People can be picked up.** Turn on **Move people** above the map and a
+  press on a person lifts them off it: the pointer carries them, and letting go
   puts them down where they were dropped, or on the nearest ground they can
   stand in if that was a roof or a cliff. Whatever they were doing is given up
   properly, so nothing is left reserved for a delivery nobody is coming to make,
@@ -573,7 +573,7 @@ air right now and where.
   on something growing starts cutting it: hold, or drag across a patch, and a
   bar over each plant fills as the work goes in. Let go too soon and the bar
   runs back out and leaves nothing. What a finished cut is worth is left lying
-  where the plant stood, exactly as an overfull load would be, and a settler
+  where the plant stood, exactly as an overfull load would be, and a person
   fetches it before they go and find work of their own - a hungry town excepted,
   which fetches food first whatever was asked for. Everything that could be cut
   pulses faintly while the switch is on, and whatever is under the pointer
@@ -584,7 +584,7 @@ air right now and where.
   bothered with, so clearing a stand of one plant by hand turns the whole town
   toward it. What has been taught is listed under Learned by hand in the Tech
   panel.
-* **Everybody knows somebody.** Standing near each other is how settlers meet,
+* **Everybody knows somebody.** Standing near each other is how people meet,
   and what they make of each other follows from how alike they are. It decides
   who they marry - among people of a like age, never across a generation - whose
   counter they walk to, and how content they are.
@@ -594,7 +594,7 @@ air right now and where.
 Play/pause (space), single step (`.`), fit (`f`), a speed multiplier up to 200x
 on a logarithmic slider, wheel or pinch to zoom, drag to pan, plus grid and
 occupancy overlays. In the settlement, Move people turns a press on the map into
-picking a settler up rather than dragging the view, and Harvest turns it into
+picking a person up rather than dragging the view, and Harvest turns it into
 cutting what is growing. The status bar
 shows tick count, simulation time, plant counts per species, the redraw queue
 and frame rate; in the settlement it shows the day and hour, the towns, the
@@ -626,7 +626,7 @@ State auto saves to localStorage; **Export** writes a JSON project and
 
 A project holds every parameter, including all of the settlement's, but not a
 running settlement. That is kept apart, under its own key in localStorage,
-because it is not a document: it is a hundred settlers, their houses, their
+because it is not a document: it is a hundred people, their houses, their
 histories and the wilderness they are cutting down, and a project file sent to
 somebody else has no business carrying them. It is written down every twenty
 seconds while it runs, and again when the page is closed or the tab is hidden,
@@ -654,16 +654,16 @@ is deleted from the sprite editor's Sheet tab.
 
 A town used to raise lamp posts the way it raised anything else: the planner
 decided it wanted one. It does not any more. Walking home after dark with no
-lamp in sight wears on a settler - slowly, and less on a hardy one - and
+lamp in sight wears on a person - slowly, and less on a hardy one - and
 daylight, a roof and a lit street all settle it again. What is left is a memory
 of nights rather than a mood, and it is what makes somebody would rather spend
 their coin on a lamp post outside where they sleep than keep it.
 
-The price is the same for everybody, which is the point: the settlers most
+The price is the same for everybody, which is the point: the people most
 afraid of the dark are the ones sleeping rough, and the ones who can act on it
-are the ones with money. A lamp goes up because a well off settler has had
+are the ones with money. A lamp goes up because a well off person has had
 enough of the walk home, and the fear it was raised against comes down with it
-for everybody who passes under it. The Register shows how calm each settler is,
+for everybody who passes under it. The Register shows how calm each person is,
 and the smoke run reports the town's fear of the dark beside its lamps.
 
 Turning **Start over if everyone dies** and the rest of the settlement's
@@ -822,9 +822,9 @@ building does not agree it employs, no deed the owner does not agree they hold,
 no counter its keeper does not agree they keep, no plant growing where a
 building stands, no negative or over reserved stock, no boat aground, nobody
 belonging to a town that does not exist, nobody walked off the map, nobody
-walled out of their own town, and no settler remembering more people than they
+walled out of their own town, and no person remembering more people than they
 can. It reports the towns, the rivers, the fleet, the ladder of homes, the
-walls, the counters, the friendships and who is currently the richest settler
+walls, the counters, the friendships and who is currently the richest person
 alive.
 
 `GROW_SEED`, `GROW_COLS` and `GROW_ROWS` override the world it runs on. A
@@ -834,10 +834,10 @@ not reading a single number.
 
 `uicheck.js` loads the page in headless Chromium, exercises all three modes and
 every tab, paints into a sampling box, draws on a sheet on the stage and stacks
-a layer on it, steps and plays the frames and sends the sheet to a settler
+a layer on it, steps and plays the frames and sends the sheet to a person
 motion, undoes and redoes both a layer and a panel field, resizes the world,
 queues a building, changes a setting the world is built from and takes each of
-the three ways out of leaving it unapplied, picks a settler up off the map and
+the three ways out of leaving it unapplied, picks a person up off the map and
 puts them down again,
 searches the menus for a setting and follows the result to it, folds the menu
 away and back, goes fullscreen and leaves it again, checks the text scale

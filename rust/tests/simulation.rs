@@ -245,7 +245,7 @@ fn a_town_outlives_its_founders() {
     );
     assert!(
         married >= SEEDS.len(),
-        "only {married} settlers ever married across {} towns",
+        "only {married} people ever married across {} towns",
         SEEDS.len()
     );
 }
@@ -276,7 +276,7 @@ fn the_dead_are_buried_once() {
         "the death count and the register disagree"
     );
     for p in sim.people.iter() {
-        assert!(p.alive, "the register handed out a dead settler");
+        assert!(p.alive, "the register handed out a dead person");
     }
 }
 
@@ -354,12 +354,12 @@ fn a_ring_never_shuts_the_town_in() {
     }
 }
 
-/// Everyone a settler has met keeps a slot, and the register of them stays
+/// Everyone a person has met keeps a slot, and the register of them stays
 /// sane: nobody is their own acquaintance, nobody is filed twice, and the
 /// memory cap is a cap on the people somebody merely met rather than on their
 /// family.
 #[test]
-fn settlers_remember_the_people_they_meet() {
+fn people_remember_the_others_they_meet() {
     let mut state = State::new();
     state.civ.world.cols = 44;
     state.civ.world.rows = 22;
@@ -408,11 +408,11 @@ fn settlers_remember_the_people_they_meet() {
     }
 }
 
-/// A stall is the one thing that moves coin from one settler to another with
+/// A stall is the one thing that moves coin from one person to another with
 /// nothing in between: the buyer's purse pays the keeper's, and the town's
 /// treasury never sees it.
 #[test]
-fn a_stall_moves_coin_from_one_settler_to_another() {
+fn a_stall_moves_coin_from_one_person_to_another() {
     use grow::civ::resources::Res;
 
     let mut state = State::new();
@@ -512,7 +512,7 @@ fn a_stepped_frame_matches_a_whole_one_on_the_rows_it_keeps() {
     }
 }
 
-// ---- settler sprites -----------------------------------------------------
+// ---- person sprites -----------------------------------------------------
 
 fn strip(frames: i32, fw: i32, fh: i32) -> Clip {
     // Every frame is filled with its own index, so a slice that reads the
@@ -659,7 +659,7 @@ fn somebody_left_a_long_way_from_home_founds_a_town_of_their_own() {
     let town = sim.colonies.last().expect("the new town");
     assert!(
         sim.people.get(id).is_some_and(|p| p.colony == town.id),
-        "the town was founded without the settler who founded it"
+        "the town was founded without the person who founded it"
     );
     // It is far enough from the old one to be its own place.
     let d = ((town.center.0 - home.0) as f64).hypot((town.center.1 - home.1) as f64);
@@ -870,10 +870,10 @@ fn what_is_placed_by_hand_is_what_the_town_would_have_placed() {
     assert!(put(&mut sim, &state, &hand, -3, -3).is_err());
 }
 
-// ---- taking a settler over -----------------------------------------------
+// ---- taking a person over -----------------------------------------------
 
 #[test]
-fn a_settler_taken_over_goes_where_they_are_pushed_and_plans_nothing() {
+fn a_person_taken_over_goes_where_they_are_pushed_and_plans_nothing() {
     use grow::civ::control;
     let (mut sim, mut state) = peopled(48, 24);
     state.civ.experiments.on = true;
@@ -889,7 +889,7 @@ fn a_settler_taken_over_goes_where_they_are_pushed_and_plans_nothing() {
     assert!(sim.people[pi].task.is_none(), "the task they were on was not dropped");
 
     // Pushed in some direction they can go, they go. Which one is the map's
-    // business: a settler can be stood against a wall.
+    // business: a person can be stood against a wall.
     let mut walked = 0.0f64;
     for push in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
         let pi = sim.people.index_of(id).expect("still there");
@@ -902,7 +902,7 @@ fn a_settler_taken_over_goes_where_they_are_pushed_and_plans_nothing() {
         walked = walked.max((sim.people[pi].x - x0).hypot(sim.people[pi].y - y0));
         assert!(
             sim.people[pi].task.is_none(),
-            "work was chosen for a settler who is being steered"
+            "work was chosen for a person who is being steered"
         );
     }
     assert!(walked > 0.5, "pushing them anywhere moved them {walked:.2} cells");
@@ -972,7 +972,7 @@ fn the_hand_can_pick_a_load_up_and_put_it_down_again() {
 }
 
 #[test]
-fn a_settler_being_driven_can_be_fed_from_their_own_hands() {
+fn a_person_being_driven_can_be_fed_from_their_own_hands() {
     use grow::civ::control::{act, take_over, Act};
     use grow::civ::resources::Res;
     let (mut sim, mut state) = peopled(48, 24);
@@ -1163,12 +1163,12 @@ fn letting_a_condemned_thing_stand_again_calls_the_work_off() {
 }
 
 #[test]
-fn a_settler_reports_the_motion_they_are_in() {
+fn a_person_reports_the_motion_they_are_in() {
     let mut sim = Settlement::new(&State::new());
     sim.bootstrap(&State::new());
     let state = State::new();
     let dt = 1.0 / state.civ.sim.tick_hz;
-    // A whole day of a working town should show every settler in a motion that
+    // A whole day of a working town should show every person in a motion that
     // matches what the record says they are doing.
     let mut swam = false;
     for _ in 0..(state.civ.people.day_length * state.civ.sim.tick_hz) as usize {
@@ -1190,7 +1190,7 @@ fn a_settler_reports_the_motion_they_are_in() {
                 Motion::Swim => assert!(*wet && !p.sleeping && !p.path.is_empty()),
                 Motion::Float => assert!(*wet && !p.sleeping && p.path.is_empty()),
                 // Nobody is in hand: the simulation never puts anybody there.
-                Motion::Held => panic!("a settler was in hand with nobody holding them"),
+                Motion::Held => panic!("a person was in hand with nobody holding them"),
                 Motion::ToBed => assert!(
                     !p.sleeping && p.task.as_ref().is_some_and(|t| t.is_sleep()),
                     "turning in without a bed to turn in to"
@@ -1213,7 +1213,7 @@ fn a_settler_reports_the_motion_they_are_in() {
 #[test]
 fn what_is_drawn_in_the_water_is_only_cut_when_it_was_drawn_for_dry_land() {
     use grow::civ::sprites::cut_at_waterline;
-    // The generated settler has a pose for the water, and so does anything
+    // The generated person has a pose for the water, and so does anything
     // dropped on the two water slots: those draw their own waterline and are
     // left whole. A walk borrowed for the water is a standing figure, and the
     // cut is what puts it in the water rather than on it.
@@ -1231,7 +1231,7 @@ fn the_water_and_hand_poses_are_not_the_walking_body_cut_down() {
     let mut sim = Settlement::new(&State::new());
     sim.bootstrap(&State::new());
     let world = sim.world().clone();
-    let (_, p) = sim.people.iter_indexed().next().expect("a settler");
+    let (_, p) = sim.people.iter_indexed().next().expect("a person");
 
     let mut cache = SpriteCache::default();
     let land = person_sprite(&mut cache, &world, p, 0, Pose::Land);
@@ -1546,8 +1546,8 @@ fn growing_the_map_leaves_everything_standing_where_it_was() {
         assert_eq!((sim.buildings[bi].col, sim.buildings[bi].row), (col, row));
     }
     for (id, x, y) in people {
-        let p = sim.people.get(id).expect("a settler went missing");
-        assert_eq!((p.x, p.y), (x, y), "a settler moved when the map grew");
+        let p = sim.people.get(id).expect("a person went missing");
+        assert_eq!((p.x, p.y), (x, y), "a person moved when the map grew");
     }
     for (id, col, row) in plants {
         let i = sim.plant_sim.plant_index(id).expect("a plant went missing");
@@ -1610,8 +1610,8 @@ fn a_project_carries_its_sprites_through_a_save() {
 
 #[test]
 fn a_clip_measured_in_cells_comes_back_as_the_size_it_was_drawn() {
-    // Settler art used to be given a height in cells and stretched to it. A
-    // project written then still has to draw its settlers the same size, so the
+    // Person art used to be given a height in cells and stretched to it. A
+    // project written then still has to draw its people the same size, so the
     // height becomes the scale that puts the art at exactly that height.
     let mut state = State::new();
     state.civ.sprites.set(Motion::Walk, Some(strip(1, 6, 16)));
@@ -1632,18 +1632,18 @@ fn a_clip_measured_in_cells_comes_back_as_the_size_it_was_drawn() {
 }
 
 #[test]
-fn a_settler_behind_a_bush_is_drawn_behind_it() {
+fn a_person_behind_a_bush_is_drawn_behind_it() {
     // Draw order is depth, not the row something stands in. Two things in one
     // row used to tie and then be separated by what kind of thing they were,
-    // which put every settler in front of every plant in their row - so
+    // which put every person in front of every plant in their row - so
     // somebody walking behind a bush walked over it.
     use grow::civ::civ_render::depth_key;
 
-    // A plant stands in the middle of its cell; a settler stands wherever they
+    // A plant stands in the middle of its cell; a person stands wherever they
     // are in theirs.
     let bush = depth_key(4.0 + 0.5);
-    assert!(depth_key(4.2) < bush, "a settler at the back of the row is not behind the bush");
-    assert!(depth_key(4.8) > bush, "a settler at the front of the row is not in front of it");
+    assert!(depth_key(4.2) < bush, "a person at the back of the row is not behind the bush");
+    assert!(depth_key(4.8) > bush, "a person at the front of the row is not in front of it");
     // Same row, and the two are told apart; a row apart is still a row apart.
     assert!(depth_key(3.9) < bush);
     assert!(depth_key(5.1) > bush);
@@ -1661,7 +1661,7 @@ fn nobody_beds_down_where_the_day_ended() {
     state.civ.world.cols = 64;
     state.civ.world.rows = 30;
     state.civ.terrain.warmup = 60.0;
-    // No beds and no coin, so every settler takes the last resort.
+    // No beds and no coin, so every person takes the last resort.
     state.civ.start.storehouse = false;
     state.civ.people.inn_price = 1e9;
     let mut sim = Settlement::new(&state);
@@ -1691,12 +1691,12 @@ fn nobody_beds_down_where_the_day_ended() {
     assert!(asleep > 0, "nobody slept rough at all, so this proves nothing");
     assert!(
         far_asleep * 20 < asleep,
-        "{far_asleep} of {asleep} sleeping moments were far from town: settlers are \
+        "{far_asleep} of {asleep} sleeping moments were far from town: people are \
          still bedding down where the day ended"
     );
 }
 
-/// A small town, warmed up enough to have settlers walking about in it.
+/// A small town, warmed up enough to have people walking about in it.
 fn peopled(cols: i32, rows: i32) -> (Settlement, State) {
     let mut state = State::new();
     state.civ.world.cols = cols;
@@ -1707,7 +1707,7 @@ fn peopled(cols: i32, rows: i32) -> (Settlement, State) {
     (sim, state)
 }
 
-/// The first settler out in the open, who is the one a press on their own feet
+/// The first person out in the open, who is the one a press on their own feet
 /// has to find.
 fn outdoors(sim: &Settlement) -> u32 {
     sim.people
@@ -1718,7 +1718,7 @@ fn outdoors(sim: &Settlement) -> u32 {
 }
 
 #[test]
-fn a_settler_is_picked_up_by_pointing_at_them() {
+fn a_person_is_picked_up_by_pointing_at_them() {
     let (sim, _) = peopled(48, 24);
     let id = outdoors(&sim);
     let (x, y) = {
@@ -1726,7 +1726,7 @@ fn a_settler_is_picked_up_by_pointing_at_them() {
         (p.x, p.y)
     };
     assert_eq!(sim.person_near(x, y, 1.6), Some(id), "pointing at somebody's feet missed them");
-    // A settler is drawn standing up out of their cell, so the reach is taller
+    // A person is drawn standing up out of their cell, so the reach is taller
     // above them than below.
     assert_eq!(sim.person_near(x, y - 2.0, 1.6), Some(id), "pointing at somebody's head missed them");
     // Far enough away and the answer is nobody rather than the nearest.
@@ -1735,14 +1735,14 @@ fn a_settler_is_picked_up_by_pointing_at_them() {
 }
 
 #[test]
-fn a_settler_can_be_carried_somewhere_else_and_put_down() {
+fn a_person_can_be_carried_somewhere_else_and_put_down() {
     let (mut sim, _) = peopled(48, 24);
     let id = outdoors(&sim);
     let was = {
         let p = sim.people.get(id).unwrap();
         (p.cell_col(), p.cell_row())
     };
-    assert!(sim.hold_person(id), "a living settler could not be picked up");
+    assert!(sim.hold_person(id), "a living person could not be picked up");
     assert_eq!(sim.held, id);
 
     // Somewhere they can stand, as far from where they were as the map allows.
@@ -1753,18 +1753,18 @@ fn a_settler_can_be_carried_somewhere_else_and_put_down() {
         .max_by_key(|(c, r)| (c - was.0).abs() + (r - was.1).abs())
         .expect("the map has nowhere to stand");
     sim.move_held(target.0 as f64 + 0.5, target.1 as f64 + 0.5);
-    assert_eq!(sim.drop_held(), Some(target), "a settler was not put down where they were let go");
+    assert_eq!(sim.drop_held(), Some(target), "a person was not put down where they were let go");
     assert_eq!(sim.held, 0, "the hand is still holding somebody");
 
     let p = sim.people.get(id).unwrap();
-    assert_ne!((p.cell_col(), p.cell_row()), was, "the settler did not move at all");
-    assert!(p.task.is_none(), "a settler put down is still on their way somewhere");
-    assert!(p.path.is_empty(), "a settler put down is still walking a path from before");
-    assert!(!p.indoors(), "a settler picked up is still recorded as being inside");
+    assert_ne!((p.cell_col(), p.cell_row()), was, "the person did not move at all");
+    assert!(p.task.is_none(), "a person put down is still on their way somewhere");
+    assert!(p.path.is_empty(), "a person put down is still walking a path from before");
+    assert!(!p.indoors(), "a person picked up is still recorded as being inside");
 }
 
 #[test]
-fn a_settler_put_down_on_a_roof_lands_beside_it() {
+fn a_person_put_down_on_a_roof_lands_beside_it() {
     let (mut sim, _) = peopled(48, 24);
     let id = outdoors(&sim);
     let (cols, rows) = (sim.world().cols, sim.world().rows);
@@ -1776,12 +1776,12 @@ fn a_settler_put_down_on_a_roof_lands_beside_it() {
     assert!(sim.hold_person(id));
     sim.move_held(blocked.0 as f64 + 0.5, blocked.1 as f64 + 0.5);
     let landed = sim.drop_held().expect("nobody was put down");
-    assert_ne!(landed, blocked, "a settler was left standing in something solid");
-    assert!(sim.walkable(landed.0, landed.1), "a settler landed somewhere they cannot stand");
+    assert_ne!(landed, blocked, "a person was left standing in something solid");
+    assert!(sim.walkable(landed.0, landed.1), "a person landed somewhere they cannot stand");
 }
 
 #[test]
-fn a_settler_in_hand_is_left_out_of_the_tick() {
+fn a_person_in_hand_is_left_out_of_the_tick() {
     let (mut sim, state) = peopled(48, 24);
     let id = outdoors(&sim);
     assert!(sim.hold_person(id));
@@ -1795,8 +1795,8 @@ fn a_settler_in_hand_is_left_out_of_the_tick() {
         sim.step(&state, dt);
     }
     let p = sim.people.get(id).unwrap();
-    assert_eq!((p.x, p.y), held_at, "a settler being held walked off on their own");
-    assert!(p.task.is_none(), "a settler being held took on work");
+    assert_eq!((p.x, p.y), held_at, "a person being held walked off on their own");
+    assert!(p.task.is_none(), "a person being held took on work");
     // Time still passes for them: being carried about is no way out of getting
     // older or hungrier.
     assert!(p.age > 0.0);
@@ -1808,7 +1808,7 @@ fn a_settler_in_hand_is_left_out_of_the_tick() {
     let p = sim.people.get(id).unwrap();
     assert!(
         p.task.is_some() || (p.x, p.y) != held_at,
-        "a settler put down never picked their life back up"
+        "a person put down never picked their life back up"
     );
 }
 
@@ -1933,9 +1933,9 @@ fn an_empty_settlement_starts_counting_from_the_last_death() {
     );
 }
 
-// ---- foliage over a settler ---------------------------------------------
+// ---- foliage over a person ---------------------------------------------
 
-/// One settler pixel and one plant pixel in a two pixel buffer, so what
+/// One person pixel and one plant pixel in a two pixel buffer, so what
 /// foliage does over somebody can be read off directly.
 fn over_person(mode: grow::sim::Foliage, leaf: u32) -> [u32; 2] {
     use grow::util::{is_person, mark_person, mix_packed};
@@ -1962,12 +1962,12 @@ fn over_person(mode: grow::sim::Foliage, leaf: u32) -> [u32; 2] {
 }
 
 #[test]
-fn solid_foliage_covers_a_settler_the_way_a_plant_does() {
+fn solid_foliage_covers_a_person_the_way_a_plant_does() {
     use grow::util::is_person;
     let leaf = grow::util::pack_rgba(0, 255, 0, 255);
     let out = over_person(grow::sim::Foliage::Solid, leaf);
     assert_eq!(out, [leaf, leaf]);
-    assert!(!is_person(out[0]), "solid foliage is not the settler any more");
+    assert!(!is_person(out[0]), "solid foliage is not the person any more");
 }
 
 #[test]
@@ -1976,7 +1976,7 @@ fn hatched_foliage_leaves_every_other_pixel_showing() {
     let leaf = grow::util::pack_rgba(0, 255, 0, 255);
     let out = over_person(grow::sim::Foliage::Hatched, leaf);
     let kept = unpack_rgba(out[0]);
-    assert_eq!((kept.r, kept.g, kept.b), (255, 0, 0), "one pixel stays the settler");
+    assert_eq!((kept.r, kept.g, kept.b), (255, 0, 0), "one pixel stays the person");
     assert_eq!(out[1], mark_person(leaf), "and the next is the leaf");
     assert!(is_person(out[0]) && is_person(out[1]), "both stay marked for the next leaf");
 }
@@ -1988,16 +1988,16 @@ fn faded_foliage_mixes_and_stays_findable() {
     let out = over_person(grow::sim::Foliage::Faded(0.5), leaf);
     let c = unpack_rgba(out[0]);
     assert!(c.r > 60 && c.g > 60, "half of each should be there, got {c:?}");
-    assert!(is_person(out[0]), "the settler is still under it, so the next leaf fades too");
+    assert!(is_person(out[0]), "the person is still under it, so the next leaf fades too");
 }
 
 #[test]
-fn the_settler_mark_rides_in_the_alpha_and_changes_nothing_visible() {
+fn the_person_mark_rides_in_the_alpha_and_changes_nothing_visible() {
     use grow::util::{is_person, mark_person, unpack_rgba, PERSON_ALPHA};
     let color = grow::util::pack_rgba(120, 40, 200, 255);
     let marked = mark_person(color);
     assert!(is_person(marked));
-    assert!(!is_person(color), "an ordinary opaque pixel is not a settler");
+    assert!(!is_person(color), "an ordinary opaque pixel is not a person");
     let (before, after) = (unpack_rgba(color), unpack_rgba(marked));
     assert_eq!((before.r, before.g, before.b), (after.r, after.g, after.b));
     assert_eq!(after.a, 254, "one step off opaque");

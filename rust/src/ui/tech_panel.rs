@@ -40,7 +40,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let mut progress = Vec::new();
     if let Some(picker) = colony_picker(app, h) {
         progress.push(picker);
-        progress.push(note("Each town researches on its own. A colony founded by settlers from \
+        progress.push(note("Each town researches on its own. A colony founded by people from \
                             another starts with what they knew when they left."));
     }
     progress.push(current.clone());

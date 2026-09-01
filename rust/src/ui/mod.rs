@@ -84,7 +84,7 @@ pub enum Scope {
     View,
     /// The question the panel asks on the way out when a rebuild is waiting.
     Dialog,
-    /// The chrome over the map for driving a settler, which comes and goes
+    /// The chrome over the map for driving a person, which comes and goes
     /// with whoever is being driven rather than with a panel or a tab.
     Hud,
 }

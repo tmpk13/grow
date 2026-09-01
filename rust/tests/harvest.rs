@@ -161,7 +161,7 @@ fn ground_cover_is_cut_back_rather_than_pulled_up() {
 }
 
 #[test]
-fn what_was_cut_by_hand_is_fetched_before_a_settler_finds_their_own_work() {
+fn what_was_cut_by_hand_is_fetched_before_a_person_finds_their_own_work() {
     let (mut sim, state) = founded();
     let dt = 1.0 / state.civ.sim.tick_hz;
     for _ in 0..400 {
@@ -207,7 +207,7 @@ fn a_load_too_far_off_is_only_fetched_when_there_is_nothing_nearer() {
     sim.add_pile(px, py, Res::Wood, 8.0);
     sim.people[pi].clear_task();
     choose_task(&mut sim, &state, pi);
-    assert!(!fetching(&sim), "a settler walked the map past a load at their feet");
+    assert!(!fetching(&sim), "a person walked the map past a load at their feet");
 
     // With nothing nearer, it is.
     let near = sim.piles.iter().position(|p| p.id != id).expect("the near load is there");

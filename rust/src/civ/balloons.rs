@@ -22,7 +22,7 @@ use crate::util::clamp;
 
 /// One canopy in the air.
 ///
-/// Position is on the ground plane in cells, the same coordinates a settler
+/// Position is on the ground plane in cells, the same coordinates a person
 /// walks in, plus a height in cells above it. Keeping it in ground coordinates
 /// is what lets it be drawn in the right place on a projection where up the
 /// screen is both height and distance.

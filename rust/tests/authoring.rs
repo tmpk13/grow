@@ -108,7 +108,7 @@ fn a_sheet_survives_a_project_file() {
 }
 
 #[test]
-fn a_sheet_of_nothing_is_not_offered_as_settler_art() {
+fn a_sheet_of_nothing_is_not_offered_as_person_art() {
     let blank = Sheet::new("blank", "Blank", 4, 4);
     assert!(!blank.any());
     assert!(Clip::from_sheet(&blank).is_none());
@@ -782,7 +782,7 @@ fn a_clip_knows_whether_its_sheet_has_been_drawn_on_since() {
     assert_eq!(clip.sheet, "art-1");
     assert_eq!(clip.against(Some(&sheet)), FromSheet::Current);
 
-    // One pixel is enough: the settlers on the map are no longer showing it.
+    // One pixel is enough: the people on the map are no longer showing it.
     sheet.set(0, 0, 4, 4, 0xff0000ff);
     assert_eq!(clip.against(Some(&sheet)), FromSheet::Behind);
 
@@ -914,13 +914,13 @@ fn a_label_slugs_to_something_a_selector_can_hold() {
 #[test]
 fn a_file_name_survives_being_a_file_name() {
     use grow::util::file_name;
-    assert_eq!(file_name("Settler", "png"), "settler.png");
+    assert_eq!(file_name("Person", "png"), "person.png");
     assert_eq!(file_name("walk cycle", "png"), "walk-cycle.png");
     assert_eq!(file_name("Tree/Trunk", "zip"), "tree-trunk.zip");
     assert_eq!(file_name("!!!", "png"), "untitled.png");
     // No extension means a folder inside an archive, and a directory whose
     // name ends in a dot is one some systems refuse.
-    assert_eq!(file_name("Settler", ""), "settler");
+    assert_eq!(file_name("Person", ""), "person");
 }
 
 // ---- the marquee ---------------------------------------------------------

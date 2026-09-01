@@ -62,7 +62,7 @@ fn main() {
     };
 
     println!(
-        "{}: {} settlers, {} plants, {} rivers",
+        "{}: {} people, {} plants, {} rivers",
         sim.name,
         sim.people.count(),
         sim.plant_sim.plants.len(),
@@ -206,7 +206,7 @@ fn main() {
     }
 
     // Nobody is walled in. This is the one thing a ring can get wrong that
-    // nothing else would notice: every settler has to still have a way to the
+    // nothing else would notice: every person has to still have a way to the
     // middle of their own town.
     for pi in sim.people.live_indices() {
         if sim.people[pi].aboard != 0 {
@@ -252,7 +252,7 @@ fn main() {
         }
         if plant.claimed_by != 0 && !sim.people.is_alive(plant.claimed_by) {
             fail(
-                format!("plant {} is claimed by a settler who is gone", plant.id),
+                format!("plant {} is claimed by a person who is gone", plant.id),
                 &mut errors,
             );
         }
@@ -284,7 +284,7 @@ fn main() {
             fail("a pile with nothing in it is still on the map".into(), &mut errors);
         }
         if pile.claimed_by != 0 && !sim.people.is_alive(pile.claimed_by) {
-            fail("a pile is claimed by a settler who is gone".into(), &mut errors);
+            fail("a pile is claimed by a person who is gone".into(), &mut errors);
         }
     }
     for p in sim.people.iter() {

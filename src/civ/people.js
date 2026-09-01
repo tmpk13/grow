@@ -1,4 +1,4 @@
-// Settlers.
+// People.
 //
 // A person is data plus two mechanical pieces that do not need the rest of the
 // world: needs that drift over time, and movement along a path of cells. Every

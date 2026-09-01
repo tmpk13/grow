@@ -377,7 +377,7 @@ impl Viewport {
     }
 
     /// Where a pointer is on the ground plane, in cells, fractional. Not
-    /// clamped to the map and not rounded to a cell: a settler stands at a
+    /// clamped to the map and not rounded to a cell: a person stands at a
     /// point rather than in the middle of a square, and whether the point is
     /// on the map at all is the caller's question.
     /// Where a press landed in the picture itself, in world pixels: the sky

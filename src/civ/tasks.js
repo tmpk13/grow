@@ -1,4 +1,4 @@
-// What a settler does with the next second of their life.
+// What a person does with the next second of their life.
 //
 // Every task is a small state machine with a phase and a target: walk there,
 // work, carry the result somewhere. Nothing here reads a global; the

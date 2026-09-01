@@ -1,4 +1,4 @@
-//! What settlers make of each other.
+//! What people make of each other.
 //!
 //! Everyone a person has stood next to for long enough keeps a slot in that
 //! person's memory: how they met, how often since, and what the two of them
@@ -9,7 +9,7 @@
 //!
 //! The pass that finds who is near whom is the only part of this that could
 //! get expensive, so it runs on its own timer over a coarse bucket grid rather
-//! than over every pair of people, and each settler registers a bounded number
+//! than over every pair of people, and each person registers a bounded number
 //! of encounters per pass. A market square with forty people in it therefore
 //! costs forty times a small constant, not sixteen hundred.
 
@@ -88,9 +88,9 @@ pub struct SocialConfig {
     pub enabled: bool,
     /// Simulated seconds between passes over who is standing near whom.
     pub interval: f64,
-    /// How close two settlers have to be to notice each other, in cells.
+    /// How close two people have to be to notice each other, in cells.
     pub radius: f64,
-    /// Bonds one settler carries. The faintest are forgotten first, and kin
+    /// Bonds one person carries. The faintest are forgotten first, and kin
     /// are never forgotten at all.
     pub memory: usize,
     /// How far one meeting moves a bond toward what the two make of each other.
@@ -104,7 +104,7 @@ pub struct SocialConfig {
     /// Its say falls away as the two ages diverge, so this chooses between
     /// people of a generation rather than across generations.
     pub courtship: f64,
-    /// Encounters one settler may register in a single pass. This is what
+    /// Encounters one person may register in a single pass. This is what
     /// bounds the cost of a crowd.
     pub max_meetings: usize,
 }
