@@ -16,6 +16,56 @@ use serde::{Deserialize, Serialize};
 
 use crate::species::LAYER_COUNT;
 
+/// What the wilderness is allowed to do with a cell. Everything is `Any` unless
+/// somebody has said otherwise: a zone is authored, never generated.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u8)]
+pub enum Zone {
+    /// Whatever would have grown there grows there.
+    Any = 0,
+    /// Nothing seeds here. A clearing, a yard, a road.
+    Bare = 1,
+    /// Only what has a trunk: trees and shrubs. A wood.
+    Wood = 2,
+    /// Everything but trees and shrubs: the low growth. A meadow.
+    Low = 3,
+}
+
+impl Zone {
+    pub fn from_u8(v: u8) -> Zone {
+        match v {
+            1 => Zone::Bare,
+            2 => Zone::Wood,
+            3 => Zone::Low,
+            _ => Zone::Any,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Zone::Any => "Anything",
+            Zone::Bare => "Nothing grows",
+            Zone::Wood => "Trees only",
+            Zone::Low => "Low growth only",
+        }
+    }
+
+    /// Whether a plant of this size may seed in a cell zoned this way. What is
+    /// already standing is left alone: a zone says what may take root, not what
+    /// has to be pulled up.
+    pub fn takes(self, class: crate::species::SizeClass) -> bool {
+        use crate::species::SizeClass;
+        let woody = matches!(class, SizeClass::Tree | SizeClass::Shrub);
+        match self {
+            Zone::Any => true,
+            Zone::Bare => false,
+            Zone::Wood => woody,
+            Zone::Low => !woody,
+        }
+    }
+}
+
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct WorldConfig {

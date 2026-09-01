@@ -32,8 +32,10 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                     |app, v| {
                         app.state.civ.experiments.on = v;
                         app.request_save();
-                        // Everything below this switch comes and goes with it.
+                        // Everything below this switch comes and goes with it,
+                        // and so does the Take over control over the map.
                         app.rebuild_panel();
+                        app.rebuild_toolbar = true;
                     },
                 ),
                 note(
@@ -44,6 +46,52 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             ],
         ),
     );
+
+    if on {
+        let c = app.state.civ.experiments.control;
+        append(
+            root,
+            section(
+                "Take over a settler",
+                vec![
+                    note(
+                        "With this on, a Take over switch joins the row above the map. Press a \
+                         settler with it and they are yours: the arrow keys or W A S D walk them, \
+                         a stick on the map does the same with a thumb, and the buttons under it \
+                         are the four things they can be asked to do - cut what is in front of \
+                         them, pick a load up or put it down, step in or out of a doorway, and \
+                         eat what they have. They plan nothing for themselves until they are let \
+                         go, and everything else about being a settler still happens to them: \
+                         they age, they tire, and they starve if nobody feeds them.",
+                    ),
+                    app_bool(h, "Let a settler be taken over", c.on, None, |app, v| {
+                        app.state.civ.experiments.control.on = v;
+                        if !v {
+                            app.ui.take_over = false;
+                            if let Some(sim) = app.settlement.as_mut() {
+                                crate::civ::control::let_go(sim);
+                            }
+                        }
+                        app.request_save();
+                        // The switch above the map comes and goes with this.
+                        app.rebuild_toolbar = true;
+                    }),
+                    app_bool(h, "Show the stick", c.joystick,
+                        Some("the keys work either way; the stick is for a screen with no \
+                              keyboard behind it"),
+                        |app, v| {
+                            app.state.civ.experiments.control.joystick = v;
+                            app.request_save();
+                        }),
+                    control_num(h, "Walking pace", c.speed, 0.1, 4.0, 0.05,
+                        Some("against a settler's own"), |c, v| c.speed = v),
+                    control_num(h, "Reach (cells)", c.reach, 0.5, 8.0, 0.1,
+                        Some("how far a hand goes for something to cut, pick up or step into"),
+                        |c, v| c.reach = v),
+                ],
+            ),
+        );
+    }
 
     let aloft = el("div").class("stat-grid").get();
     if on {
@@ -129,6 +177,23 @@ impl Panel for ExperimentalPanel {
             ));
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn control_num(
+    h: &Handle,
+    label: &str,
+    value: f64,
+    min: f64,
+    max: f64,
+    step: f64,
+    hint: Option<&str>,
+    apply: fn(&mut crate::civ::control::ControlConfig, f64),
+) -> Element {
+    app_num(h, label, value, NumOpts { min, max, step }, hint, move |app, v| {
+        apply(&mut app.state.civ.experiments.control, v);
+        app.request_save();
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

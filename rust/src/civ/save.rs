@@ -83,6 +83,15 @@ pub struct Snapshot {
     /// saved one had not noticed yet, and come apart from there.
     #[serde(default)]
     pub plant_block: Vec<u8>,
+    /// The ground as it stands, where a hand has changed it. The map is made
+    /// again from the seed on the way in, so anything drawn on it - a lake cut
+    /// where the generator put none, a zone saying what may take root - would
+    /// be lost without this. Runs of a count and a value, and empty on a map
+    /// nobody has drawn on.
+    #[serde(default)]
+    pub kind_paint: String,
+    #[serde(default)]
+    pub zone_paint: String,
     /// What is left in each deposit, in the order the terrain lays them out.
     /// The rest of the map is made fresh from the seed.
     pub deposits: Vec<f64>,
@@ -132,6 +141,8 @@ struct SnapshotRef<'a> {
     next_balloon_id: i32,
     traffic: &'a [f32],
     plant_block: &'a [u8],
+    kind_paint: String,
+    zone_paint: String,
     deposits: Vec<f64>,
     time: f64,
     day: i32,
@@ -176,6 +187,16 @@ pub fn capture(sim: &Settlement, state: &State) -> String {
         next_balloon_id: sim.next_balloon_id,
         traffic: &sim.traffic,
         plant_block: &sim.plant_block,
+        kind_paint: if sim.terrain_painted {
+            crate::civ::save::bytes_rle(&sim.terrain.kind)
+        } else {
+            String::new()
+        },
+        zone_paint: if sim.terrain.any_zones() {
+            crate::civ::save::bytes_rle(&sim.terrain.zone)
+        } else {
+            String::new()
+        },
         deposits: sim.terrain.deposits.iter().map(|d| d.amount).collect(),
         time: sim.time,
         day: sim.day,
@@ -235,6 +256,26 @@ pub fn restore(sim: &mut Settlement, state: &State, snap: Snapshot) -> Result<()
         sim.plant_sim.raster_queue.push_back(id);
     }
     sim.plant_sim.buffer_dirty = true;
+
+    // ---- the ground as somebody left it ----
+    // Before the deposits, because a cell that has been turned to water has no
+    // business holding one.
+    if !snap.kind_paint.is_empty() {
+        let kind = bytes_from_rle(&snap.kind_paint);
+        if kind.len() == sim.terrain.kind.len() {
+            sim.terrain.kind = kind;
+            sim.terrain.water_cells =
+                sim.terrain.kind.iter().filter(|&&k| k == Cell::Water as u8).count();
+            sim.terrain_painted = true;
+        }
+    }
+    if !snap.zone_paint.is_empty() {
+        let zone = bytes_from_rle(&snap.zone_paint);
+        if zone.len() == sim.terrain.zone.len() {
+            sim.terrain.zone = zone;
+        }
+    }
+    sim.sync_zones();
 
     // ---- what was dug out of the ground ----
     for (i, amount) in snap.deposits.iter().enumerate() {
@@ -301,6 +342,38 @@ pub fn restore(sim: &mut Settlement, state: &State, snap: Snapshot) -> Result<()
     sim.ground_dirty = true;
     sim.buffer_dirty = true;
     Ok(())
+}
+
+/// A run of bytes as `<count><value>`, both two hex digits, which is what a
+/// grid of cell kinds or zones compresses to: almost all of it is the same
+/// value over and over.
+pub fn bytes_rle(px: &[u8]) -> String {
+    let mut out = String::new();
+    let mut at = 0;
+    while at < px.len() {
+        let v = px[at];
+        let mut run = 1;
+        while at + run < px.len() && px[at + run] == v && run < 255 {
+            run += 1;
+        }
+        out.push_str(&format!("{run:02x}{v:02x}"));
+        at += run;
+    }
+    out
+}
+
+pub fn bytes_from_rle(raw: &str) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at + 4 <= raw.len() {
+        let run = usize::from_str_radix(&raw[at..at + 2], 16).unwrap_or(0);
+        let v = u8::from_str_radix(&raw[at + 2..at + 4], 16).unwrap_or(0);
+        for _ in 0..run {
+            out.push(v);
+        }
+        at += 4;
+    }
+    out
 }
 
 /// What the buildings do to the map: the ground they stand on is blocked and

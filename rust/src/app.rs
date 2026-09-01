@@ -126,6 +126,32 @@ pub struct UiState {
     /// The stage looks inside a pressed building rather than dragging the map.
     /// The fourth exclusive press switch.
     pub inspect: bool,
+    /// The picture laid over the map to draw zones and ground from, and what
+    /// has been picked out of it. A tool rather than part of the project, so
+    /// it lives for as long as the page is open and no longer.
+    pub land: crate::ui::zone_paint::Landscape,
+    /// The stage puts down whatever the placing menu is holding. The fifth
+    /// exclusive press switch.
+    pub place: bool,
+    /// A piece of scenery being dragged: which one, where the press started in
+    /// world pixels, and how tall it was when it was taken hold of. Sideways
+    /// moves it, up and down makes it taller and shorter.
+    pub scene_drag: Option<(usize, f64, f64)>,
+    /// What that press would put down: a building, a plant or a load, and
+    /// which. How somebody is using the map, so it is not saved with it.
+    pub hand: crate::civ::place::Hand,
+    /// The stage hands the pressed settler over to be steered by hand. The
+    /// sixth exclusive press switch, and the one that is only on the toolbar
+    /// while the experiment behind it is on.
+    pub take_over: bool,
+    /// Which way the keys are pushing whoever is being driven: up, down, left
+    /// and right, each held or not. Kept as held state rather than read off the
+    /// event, because a key held down repeats at the operating system's rate
+    /// and stops entirely while another is pressed.
+    pub drive_keys: [bool; 4],
+    /// Where the stick on the map is pushed, from the middle, in its own
+    /// radius. Nothing while it is not being touched.
+    pub stick: (f64, f64),
     /// The building whose insides the Build panel is showing, by id. Outlives
     /// the switch: what was looked at stays on the panel until it is dismissed
     /// or the building goes.
@@ -174,6 +200,11 @@ pub struct App {
     pub scratch: Scratch,
     pub next_uid: u32,
     pub rebuild_panel: bool,
+    /// The row of controls over the map has to be built again: something that
+    /// is not a mode change has changed which controls belong in it. Only the
+    /// experiments switch does this, which is why it is a flag rather than a
+    /// call: the row is built during a frame, not during a click.
+    pub rebuild_toolbar: bool,
     pub redraw_panel: bool,
     /// The warmup blocks the thread, so it is deferred by one frame to let the
     /// note paint first.
@@ -790,6 +821,16 @@ pub fn start() -> Result<(), JsValue> {
         playing: false,
         play_time: 0.0,
         move_people: false,
+        land: crate::ui::zone_paint::Landscape {
+            threshold: 0.12,
+            ..crate::ui::zone_paint::Landscape::default()
+        },
+        place: false,
+        scene_drag: None,
+        hand: crate::civ::place::Hand::default(),
+        take_over: false,
+        drive_keys: [false; 4],
+        stick: (0.0, 0.0),
         harvest: false,
         add_people: false,
         inspect: false,
@@ -827,6 +868,7 @@ pub fn start() -> Result<(), JsValue> {
         scratch: Scratch::default(),
         next_uid: (js_sys::Math::random() * 1e6) as u32,
         rebuild_panel: false,
+        rebuild_toolbar: false,
         redraw_panel: false,
         pending_bootstrap: false,
         pending_civ_reset: false,
@@ -1289,6 +1331,69 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
             "press a building to see who and what is inside it, on the Build panel",
         );
         controls.push(inspect);
+
+        // The fifth thing a press can mean: putting something down. What that
+        // something is comes off the placing menu on the Build panel.
+        let h2 = h.clone();
+        let place = ui::toggle_button("Place", sh.app.ui.place, Scope::Toolbar, move |on| {
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.place = on;
+            if on {
+                press_switch_takes(&mut sh.app, "place-thing");
+            }
+            sync_grab_cursor(&sh.app);
+            let note = if on {
+                "press the map to put down what the placing menu is holding - it is on the \
+                 Build panel"
+            } else {
+                "the stage moves the map again"
+            };
+            sh.app.set_note(note);
+            // The menu says what a press would put down, and a press means
+            // something else now.
+            sh.app.rebuild_panel();
+        });
+        let _ = place.set_attribute("id", "place-thing");
+        let _ = place.set_attribute(
+            "title",
+            "put a building, a plant, a load or a piece of scenery where you press; what is \
+             placed is chosen on the Build panel",
+        );
+        controls.push(place);
+
+        // The sixth, and the only one that is not always there: taking a
+        // settler over is an experiment, so the switch comes and goes with the
+        // block it is under.
+        let experiments = sh.app.state.civ.experiments;
+        if experiments.on && experiments.control.on {
+            let h2 = h.clone();
+            let take = ui::toggle_button(
+                "Take over",
+                sh.app.ui.take_over,
+                Scope::Toolbar,
+                move |on| {
+                    let mut sh = h2.borrow_mut();
+                    sh.app.ui.take_over = on;
+                    if on {
+                        press_switch_takes(&mut sh.app, "take-over");
+                    }
+                    sync_grab_cursor(&sh.app);
+                    let note = if on {
+                        "press a settler to steer them yourself - ctrl or middle drag moves the map"
+                    } else {
+                        "the stage moves the map again"
+                    };
+                    sh.app.set_note(note);
+                },
+            );
+            let _ = take.set_attribute("id", "take-over");
+            let _ = take.set_attribute(
+                "title",
+                "press a settler to drive them with the keys or the stick; they plan nothing \
+                 for themselves until they are let go",
+            );
+            controls.push(take);
+        }
     }
 
     let _ = toolbar.append_child(&el("div").class("toolbar-row").children(controls).get());
@@ -1515,6 +1620,18 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                     return;
                 }
             }
+            // A press on nobody falls through to the camera, the same as
+            // every other switch that has to find something to act on.
+            if takes_over(&sh.app, pe)
+                && take_over_press(&mut sh.app, pe.client_x() as f64, pe.client_y() as f64)
+            {
+                return;
+            }
+            if places(&sh.app, pe)
+                && place_press(&mut sh.app, pe.client_x() as f64, pe.client_y() as f64)
+            {
+                return;
+            }
             if !paints(&sh.app, pe) {
                 return;
             }
@@ -1575,6 +1692,10 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             let mut sh = h2.borrow_mut();
             if list.len() < 2 && grab.get() != 0 {
                 drag_held(&mut sh.app, x, y);
+                return;
+            }
+            if list.len() < 2 && sh.app.ui.scene_drag.is_some() {
+                drag_scenery(&mut sh.app, x, y);
                 return;
             }
             if list.len() < 2 && sh.app.ui.cut_at.is_some() {
@@ -1653,6 +1774,11 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             end_stroke(&h2, &stroke);
             end_grab(&h2, &grab);
             let mut sh = h2.borrow_mut();
+            if sh.app.ui.scene_drag.take().is_some() {
+                // Where it was left is where it stands, and the panel is
+                // showing numbers that have just changed under it.
+                sh.app.rebuild_panel();
+            }
             sh.app.ui.cut_at = None;
             if event == "pointerleave" {
                 sh.app.ui.hover_at = None;
@@ -1710,6 +1836,182 @@ fn adds(app: &App, pe: &web_sys::PointerEvent) -> bool {
         && !pe.ctrl_key()
         && pe.button() != 1
         && pe.buttons() & 4 == 0
+}
+
+/// Whether this press puts something down rather than dragging the map.
+fn places(app: &App, pe: &web_sys::PointerEvent) -> bool {
+    app.mode == Mode::Settlement
+        && app.ui.place
+        && app.settlement.is_some()
+        && !pe.ctrl_key()
+        && pe.button() != 1
+        && pe.buttons() & 4 == 0
+}
+
+/// Puts down whatever the placing menu is holding, where the press landed. A
+/// press that cannot put it there says why and keeps the press: aiming at a
+/// spot and being told a mill will not fit is the answer, and handing that
+/// press to the camera would only move the map out from under the aim.
+fn place_press(app: &mut App, client_x: f64, client_y: f64) -> bool {
+    let world = match app.settlement.as_ref() {
+        Some(s) => s.world().clone(),
+        None => return false,
+    };
+    if app.ui.hand.kind == crate::civ::place::Kind::Scenery {
+        return scenery_press(app, &world, client_x, client_y);
+    }
+    let (gx, gy) = match app.viewport.ground_at(client_x, client_y, &world) {
+        Some(p) => p,
+        None => return false,
+    };
+    let hand = app.ui.hand.clone();
+    let (col, row) = (gx.floor() as i32, gy.floor() as i32);
+    let App { settlement, state, .. } = app;
+    let said = match settlement.as_mut() {
+        Some(sim) => crate::civ::place::put(sim, state, &hand, col, row),
+        None => return false,
+    };
+    match said {
+        Ok(note) => {
+            app.set_note(&note);
+            app.civ_stepped = true;
+            app.redraw_panel = true;
+        }
+        Err(why) => app.set_note(&why),
+    }
+    true
+}
+
+/// A press in the sky with the placing menu holding scenery. On a piece it
+/// takes hold of it; on empty sky it puts a new one up there. Either way the
+/// pointer keeps it until it is let go, so putting one up and dragging it into
+/// place is one gesture.
+fn scenery_press(app: &mut App, world: &crate::world::World, client_x: f64, client_y: f64) -> bool {
+    let (fx, fy) = match app.viewport.frame_at(client_x, client_y) {
+        Some(p) => p,
+        None => return false,
+    };
+    if fy < 0.0 {
+        // Above the picture entirely, which is the letterbox rather than the
+        // sky: that press belongs to the camera.
+        return false;
+    }
+    if fy >= world.sky_px as f64 {
+        app.set_note("scenery stands in the sky: press above the land");
+        return true;
+    }
+    let cell = world.cell_px.max(1) as f64;
+    let held = crate::civ::scenery::at(&app.state.civ.scenery, world, fx as i32, fy as i32);
+    let at = match held {
+        Some(i) => {
+            let name = app.state.civ.scenery[i].label();
+            app.set_note(&format!("{name}: drag to move it, up and down for its size"));
+            i
+        }
+        None => {
+            let mut scene = app.ui.hand.scene.clone();
+            scene.x = fx / cell;
+            // Every piece gets its own outline; two mountains of the same size
+            // standing beside each other are not the same mountain.
+            scene.seed = app.state.civ.scenery.len() as u32 * 7919 + (fx.abs() as u32) + 1;
+            app.state.civ.scenery.push(scene);
+            let name = app.state.civ.scenery.last().map(|s| s.label()).unwrap_or_default();
+            app.set_note(&format!("{name} put up"));
+            app.state.civ.scenery.len() - 1
+        }
+    };
+    let height = app.state.civ.scenery[at].height;
+    app.ui.scene_drag = Some((at, fy, height));
+    repaint_scenery(app);
+    app.rebuild_panel();
+    true
+}
+
+/// Carries the piece of scenery in hand along with the pointer.
+fn drag_scenery(app: &mut App, client_x: f64, client_y: f64) {
+    let (at, from_y, was) = match app.ui.scene_drag {
+        Some(d) => d,
+        None => return,
+    };
+    let world = match app.settlement.as_ref() {
+        Some(s) => s.world().clone(),
+        None => return,
+    };
+    let (fx, fy) = match app.viewport.frame_at(client_x, client_y) {
+        Some(p) => p,
+        None => return,
+    };
+    let cell = world.cell_px.max(1) as f64;
+    let piece = match app.state.civ.scenery.get_mut(at) {
+        Some(piece) => piece,
+        None => {
+            app.ui.scene_drag = None;
+            return;
+        }
+    };
+    piece.x = fx / cell;
+    // Up is taller. The sky band is the whole of what there is to fill, so
+    // nothing is allowed to be taller than it by more than half again.
+    let grown = (from_y - fy) / cell;
+    let ceiling = (world.sky_px as f64 / cell) * 1.5;
+    piece.height = (was + grown).clamp(0.5, ceiling.max(2.0));
+    repaint_scenery(app);
+}
+
+/// The scenery lives in the cached ground, so anything that moves it has to
+/// say the ground is stale. It is also part of the project, which is what a
+/// save is for.
+pub fn repaint_scenery(app: &mut App) {
+    if let Some(sim) = app.settlement.as_mut() {
+        sim.ground_dirty = true;
+        sim.buffer_dirty = true;
+    }
+    app.request_save();
+}
+
+/// Whether this press takes a settler over rather than dragging the map. The
+/// experiment has to be on as well as the switch: everything under that switch
+/// comes and goes with it.
+fn takes_over(app: &App, pe: &web_sys::PointerEvent) -> bool {
+    app.mode == Mode::Settlement
+        && app.ui.take_over
+        && app.state.civ.experiments.on
+        && app.state.civ.experiments.control.on
+        && app.settlement.is_some()
+        && !pe.ctrl_key()
+        && pe.button() != 1
+        && pe.buttons() & 4 == 0
+}
+
+/// Hands the pressed settler over to whoever is at the keyboard. A press on
+/// nobody finds nothing and gives the press back to the camera.
+fn take_over_press(app: &mut App, client_x: f64, client_y: f64) -> bool {
+    let world = match app.settlement.as_ref() {
+        Some(s) => s.world().clone(),
+        None => return false,
+    };
+    let (gx, gy) = match app.viewport.ground_at(client_x, client_y, &world) {
+        Some(p) => p,
+        None => return false,
+    };
+    let (id, name) = {
+        let sim = match app.settlement.as_ref() {
+            Some(s) => s,
+            None => return false,
+        };
+        match sim.person_near(gx, gy, GRAB_REACH) {
+            Some(id) => (id, sim.people.get(id).map(|p| p.name.clone()).unwrap_or_default()),
+            None => return false,
+        }
+    };
+    let took = match app.settlement.as_mut() {
+        Some(sim) => crate::civ::control::take_over(sim, id),
+        None => false,
+    };
+    if took {
+        app.set_note(&format!("{name} is yours: the keys or the stick move them"));
+    }
+    took
 }
 
 /// Whether this press looks inside a building rather than dragging the map.
@@ -1877,6 +2179,14 @@ fn press_switch_takes(app: &mut App, keep: &str) {
         app.ui.inspect = false;
         set_pressed("look-inside", false);
     }
+    if keep != "take-over" {
+        app.ui.take_over = false;
+        set_pressed("take-over", false);
+    }
+    if keep != "place-thing" {
+        app.ui.place = false;
+        set_pressed("place-thing", false);
+    }
 }
 
 /// Presses or unpresses a switch that something else turned off. The stage
@@ -1949,6 +2259,18 @@ fn pinch_middle(list: &[(i32, f64, f64)]) -> (f64, f64) {
 }
 
 fn bind_keys(h: &Handle) {
+    // Letting a steering key go is the only thing keyup is for, and it has to
+    // be heard wherever the key was let go: a hand that wandered off the map
+    // still stops the walk.
+    let h2 = h.clone();
+    on(window().unchecked_ref(), "keyup", Scope::Global, move |e: Event| {
+        let ke = e.dyn_ref::<web_sys::KeyboardEvent>().unwrap();
+        let mut sh = h2.borrow_mut();
+        if ui::drive::driving(&sh.app) {
+            drive_key(&mut sh, &ke.key(), false);
+        }
+    });
+
     let h2 = h.clone();
     on(window().unchecked_ref(), "keydown", Scope::Global, move |e: Event| {
         let ke = e.dyn_ref::<web_sys::KeyboardEvent>().unwrap();
@@ -2000,6 +2322,10 @@ fn bind_keys(h: &Handle) {
             e.prevent_default();
             return;
         }
+        if ui::drive::driving(&sh.app) && drive_key(&mut sh, &ke.key(), true) {
+            e.prevent_default();
+            return;
+        }
         match ke.code().as_str() {
             "Space" => {
                 e.prevent_default();
@@ -2036,6 +2362,36 @@ fn bind_keys(h: &Handle) {
             },
         }
     });
+}
+
+/// A key pressed or let go while somebody is being driven. The four directions
+/// are held rather than repeated - a key held down repeats at whatever rate the
+/// operating system says, and stops entirely while another is pressed - and the
+/// four actions happen on the way down only.
+fn drive_key(sh: &mut Shell, key: &str, down: bool) -> bool {
+    let lower = key.to_ascii_lowercase();
+    for (i, (letter, arrow, _, _)) in ui::drive::DRIVE_KEYS.iter().enumerate() {
+        if lower == *letter || key == *arrow {
+            sh.app.ui.drive_keys[i] = down;
+            return true;
+        }
+    }
+    if !down {
+        return false;
+    }
+    for act in crate::civ::control::ACTS {
+        if lower != act.key() {
+            continue;
+        }
+        let note = match sh.app.settlement.as_mut() {
+            Some(sim) => crate::civ::control::act(sim, &sh.app.state, act),
+            None => return true,
+        };
+        sh.app.set_note(&note);
+        sh.app.civ_stepped = true;
+        return true;
+    }
+    false
 }
 
 /// The last chance to write the settlement down. A reload can land between two
@@ -2653,6 +3009,14 @@ fn frame(h: &Handle, ts: f64) {
         }
     }
 
+    // Where the keys and the stick are pushing, read once and handed to the
+    // settlement before it steps: the walk has to be part of the tick, or it
+    // would run at the frame rate rather than at the world's.
+    let push = ui::drive::push(&sh.app);
+    if let Some(civ) = &mut sh.app.settlement {
+        civ.drive = push;
+    }
+
     let cfg = sh.app.sim_settings();
     let civ_ready = sh.app.settlement.as_ref().is_some_and(|c| c.ready);
     if cfg.running && (sh.app.mode == Mode::Lab || (sh.app.mode == Mode::Settlement && civ_ready)) {
@@ -2672,6 +3036,7 @@ fn frame(h: &Handle, ts: f64) {
     }
 
     run_cut(&mut sh.app, dt_real);
+    ui::drive::sync(sh, h);
     draw(&mut sh.app, cfg.raster_budget);
 
     if let Some(panel) = &mut sh.panel {
@@ -2687,6 +3052,15 @@ fn frame(h: &Handle, ts: f64) {
         if let Some(panel) = &mut sh.panel {
             panel.redraw(&mut sh.app);
         }
+    }
+    if sh.app.rebuild_toolbar {
+        sh.app.rebuild_toolbar = false;
+        // The listeners of the row just replaced stay in the toolbar bag until
+        // the next mode change empties it. That is a handful of closures for a
+        // switch nobody flips twice a minute, and the alternative - clearing
+        // the bag here - would take the tabs and the mode buttons with it.
+        build_toolbar(sh, h);
+        sync_zoom(&sh.app);
     }
     if sh.app.rebuild_panel {
         let tab = sh.app.ui.tab;

@@ -2046,6 +2046,37 @@
     "mode_label": "Settlement",
     "tab": "land",
     "tab_label": "Land",
+    "group": "Zones from a picture",
+    "label": "Make it",
+    "anchor": "make-it",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "Zones from a picture",
+    "label": "How near the color",
+    "hint": "0 takes only that exact color; 1 takes the whole box whatever it looks like",
+    "anchor": "how-near-the-color",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "Zones from a picture",
+    "label": "Apply to the map",
+    "anchor": "apply-to-the-map",
+    "kind": "button"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
     "group": "View",
     "label": "Day and night",
     "hint": "tints the map with the hour and lights the windows",
@@ -3088,6 +3119,37 @@
     "mode_label": "Settlement",
     "tab": "build",
     "tab_label": "Build",
+    "group": "Place by hand",
+    "label": "Put down",
+    "anchor": "put-down",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Place by hand",
+    "label": "Which",
+    "anchor": "which",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Place by hand",
+    "label": "Put it up finished",
+    "hint": "off lays a site for the town to carry materials to and raise",
+    "anchor": "put-it-up-finished",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
     "group": "Planner",
     "label": "Plan buildings automatically",
     "hint": "off leaves every building to the Build buttons below",
@@ -3372,6 +3434,38 @@
     "group": "Homes and towns",
     "label": "Cells between town centers",
     "anchor": "cells-between-town-centers",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Homes and towns",
+    "label": "Strays found towns of their own",
+    "anchor": "strays-found-towns-of-their-own",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Homes and towns",
+    "label": "Far from home (cells)",
+    "hint": "from their own town's center",
+    "anchor": "far-from-home-cells",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Homes and towns",
+    "label": "Out there before giving up (s)",
+    "hint": "settlement seconds; a settler walks about two and a half cells of it, so this is short by design",
+    "anchor": "out-there-before-giving-up-s",
     "kind": "field"
   },
   {

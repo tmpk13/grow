@@ -16,6 +16,7 @@ pub mod art_panel;
 pub mod build_panel;
 pub mod color_wheel;
 pub mod decode;
+pub mod drive;
 pub mod economy_panel;
 pub mod experimental_panel;
 pub mod find_box;
@@ -35,6 +36,7 @@ pub mod tech_panel;
 pub mod restart_bar;
 pub mod view_menu;
 pub mod world_panel;
+pub mod zone_paint;
 
 pub fn window() -> Window {
     web_sys::window().expect("no window")
@@ -82,6 +84,9 @@ pub enum Scope {
     View,
     /// The question the panel asks on the way out when a rebuild is waiting.
     Dialog,
+    /// The chrome over the map for driving a settler, which comes and goes
+    /// with whoever is being driven rather than with a panel or a tab.
+    Hud,
 }
 
 /// A listener, kept alive for as long as the node it is attached to.
@@ -94,6 +99,7 @@ thread_local! {
     static LIST_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
     static VIEW_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
     static DIALOG_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
+    static HUD_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
 }
 
 fn with_bag<R>(scope: Scope, f: impl FnOnce(&mut Vec<Listener>) -> R) -> R {
@@ -104,6 +110,7 @@ fn with_bag<R>(scope: Scope, f: impl FnOnce(&mut Vec<Listener>) -> R) -> R {
         Scope::List => LIST_BAG.with(|b| f(&mut b.borrow_mut())),
         Scope::View => VIEW_BAG.with(|b| f(&mut b.borrow_mut())),
         Scope::Dialog => DIALOG_BAG.with(|b| f(&mut b.borrow_mut())),
+        Scope::Hud => HUD_BAG.with(|b| f(&mut b.borrow_mut())),
     }
 }
 

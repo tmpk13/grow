@@ -297,6 +297,11 @@ pub struct Person {
     pub aboard: i32,
     pub profession: Profession,
     pub carry: Carry,
+    /// Seconds spent a long way from their own town, counted while they are
+    /// out there and reset the moment they are near it again. A settler who
+    /// has given up on going home rather than one on a long errand.
+    #[serde(default)]
+    pub stray_time: f64,
     /// How much the dark has come to worry this settler, from not at all to
     /// enough to spend money on. It grows on nights spent walking home unlit
     /// and eases in daylight, indoors, and under a lamp.
@@ -376,6 +381,7 @@ impl Person {
             aboard: 0,
             profession: Profession::Laborer,
             carry: Carry::default(),
+            stray_time: 0.0,
             fear: 0.0,
             task: None,
             path: Vec::new(),

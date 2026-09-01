@@ -97,6 +97,10 @@ pub struct Sim {
     /// Seconds a cut plant takes to go over. Set from the settlement, which is
     /// the only place anything is ever cut down.
     pub fall_time: f64,
+    /// What may take root in each cell, when somebody has drawn zones on the
+    /// map. Empty on a map nobody has zoned, which is every map in the lab, and
+    /// empty is what keeps the check out of the spawn loop entirely.
+    pub zones: Vec<u8>,
 }
 
 impl Sim {
@@ -117,6 +121,7 @@ impl Sim {
             raster_queue: VecDeque::new(),
             wild_scale: 1.0,
             fall_time: 1.2,
+            zones: Vec::new(),
         };
         sim.reset(state.seed);
         sim
@@ -265,7 +270,45 @@ impl Sim {
         }
     }
 
+    /// A seed taking where the wilderness put it: everything `sow` does, plus
+    /// the zones, which are what somebody has said may grow where.
     pub fn try_spawn(
+        &mut self,
+        state: &State,
+        species_index: usize,
+        col: i32,
+        row: i32,
+        blocked: Option<&[u8]>,
+    ) -> Option<usize> {
+        let c = clampi(col, 0, self.world.cols - 1);
+        let r = clampi(row, 0, self.world.rows - 1);
+        if !self.zone_takes(state, species_index, c, r) {
+            return None;
+        }
+        self.sow(state, species_index, c, r, blocked)
+    }
+
+    /// Whether a zone drawn on this cell takes a plant of this size. Nothing
+    /// zoned means everything takes, which is every cell of a map nobody has
+    /// drawn on and every cell of the lab.
+    fn zone_takes(&self, state: &State, species_index: usize, c: i32, r: i32) -> bool {
+        if self.zones.is_empty() {
+            return true;
+        }
+        let class = state.species[species_index].size_class;
+        let i = (r * self.world.cols + c) as usize;
+        match self.zones.get(i) {
+            Some(&z) => crate::world::Zone::from_u8(z).takes(class),
+            None => true,
+        }
+    }
+
+    /// One plant put where it is asked for, zones and all ignored: this is a
+    /// hand planting something, and the hand outranks what the map was zoned
+    /// for. Everything else - spacing, the layer's own claims, blocked ground -
+    /// still applies, because those are what would make the plant impossible
+    /// rather than unwanted.
+    pub fn sow(
         &mut self,
         state: &State,
         species_index: usize,

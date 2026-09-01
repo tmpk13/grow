@@ -202,6 +202,12 @@ impl SpriteCache {
     }
 }
 
+/// The same lookup for anything outside this file that has to read a sampling
+/// box as a ramp.
+pub fn ramp_for(materials: &Materials, sampler_id: &str) -> Rc<Bands> {
+    ramp_of(materials, sampler_id)
+}
+
 fn ramp_of(materials: &Materials, sampler_id: &str) -> Rc<Bands> {
     let bands = materials.bands(sampler_id);
     if bands.is_empty() {
@@ -248,6 +254,20 @@ pub fn paint_terrain(sim: &Settlement, state: &State, buf: &mut [u32]) {
         let c = mix_packed(sky_top, sky_bottom, t);
         let row = (y * world.px_w) as usize;
         buf[row..row + world.px_w as usize].fill(c);
+    }
+
+    // What stands beyond the far edge: over the sky, and under the land, which
+    // is what puts its foot behind the map rather than on it.
+    {
+        let sky_at = |y: i32| {
+            let t = if world.sky_px > 1 {
+                (y as f64 / (world.sky_px - 1) as f64).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            mix_packed(sky_top, sky_bottom, t)
+        };
+        crate::civ::scenery::paint(sim, state, buf, &sky_at);
     }
 
     let fade = cfg.world.depth_fade;
@@ -1639,14 +1659,17 @@ fn ensure_ground(sim: &mut Settlement, state: &State) {
     let len = sim.buffer.len();
     let world_px = (sim.world().px_w, sim.world().px_h);
     let bg_key = format!(
-        "{}x{}:{}:{}:{}:{}:{}",
+        "{}x{}:{}:{}:{}:{}:{}:{:016x}",
         world_px.0,
         world_px.1,
         state.materials.version,
         state.civ.view.water_top,
         state.civ.view.water_deep,
         state.civ.view.current,
-        sim.terrain_version
+        sim.terrain_version,
+        // What stands behind the map is painted into this buffer too, so
+        // moving a mountain is the background changing.
+        crate::civ::scenery::stamp(&state.civ.scenery)
     );
     if sim.bg.len() != len || sim.bg_key != bg_key {
         let mut bg = vec![0u32; len];

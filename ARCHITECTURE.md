@@ -63,6 +63,8 @@ flowchart TD
     tchp["ui/tech_panel.rs"]
     expp["ui/experimental_panel.rs<br/>one switch, and what is under it"]
     sdrop["ui/sprite_drop.rs<br/>drop zones: settler motions and made things"]
+    zpaint["ui/zone_paint.rs<br/>a picture over the map: ground and zones"]
+    hud["ui/drive.rs<br/>the stick and the buttons, over the map"]
   end
 
   subgraph core [Simulation core, no browser]
@@ -101,6 +103,9 @@ flowchart TD
     names["civ/names.rs"]
     csave["civ/save.rs<br/>a running settlement, written down"]
     hand["civ/harvest.rs<br/>cutting by hand, and what it teaches"]
+    place["civ/place.rs<br/>what a press puts down"]
+    ctl["civ/control.rs<br/>a settler steered by hand"]
+    scene["civ/scenery.rs<br/>what stands behind the map"]
     phz["civ/phases.rs<br/>where a tick's time goes, when asked"]
   end
 
@@ -158,6 +163,15 @@ flowchart TD
   ecop --> econ
   tchp --> tech
   expp --> ball
+  expp --> ctl
+  hud --> ctl
+  bldp --> place
+  lndp --> zpaint
+  lndp --> scene
+  zpaint --> terrain
+  place --> scene
+  ctl --> tasks
+  civrender --> scene
   sett --> ball
   ball --> cfg
   sim --> world
@@ -293,7 +307,16 @@ classDiagram
     +tech, start, sim, view
     +PeopleSprites sprites
     +MadeSprites made
+    +Vec~Scene~ scenery
     +f64 art_px_per_cell
+  }
+
+  class Scene {
+    +Shape shape
+    +f64 x, width, height
+    +f64 distance, snow
+    +String sampler
+    +profile(t)
   }
 
   class PeopleSprites {
@@ -439,6 +462,7 @@ classDiagram
   State *-- Species
   State *-- CivConfig
   CivConfig *-- PeopleSprites
+  CivConfig *-- Scene
   PeopleSprites *-- Clip
   Materials *-- Sampler
   Sim *-- World
@@ -643,6 +667,56 @@ flowchart LR
   anchor --> sprite["sprite drawn with its own origin on the anchor"]
   row["row index"] --> haze["depth shade: far rows lift toward the light<br/>end of their own ramp"]
   haze --> sprite
+```
+
+## Drawing on the map
+
+Everything about the ground is generated from the seed, and two things can be
+drawn over it by hand from a picture laid corner to corner over the map: what a
+cell is made of, and what may take root in it.
+
+```mermaid
+flowchart LR
+  img["a picture, stretched over the map"] --> press["press: take the color under it"]
+  press --> drag["drag: the box to work in"]
+  drag --> match["cells in the box within<br/>the threshold of that color"]
+  match --> ground["ground: water, rock, grass, sand<br/>Settlement::paint_cells"]
+  match --> zone["growth: nothing, trees only,<br/>low only, anything<br/>Settlement::zone_cells"]
+  ground --> save["written down with the settlement,<br/>which is otherwise made from its seed"]
+  zone --> sim["Sim::zones, asked by try_spawn"]
+  zone --> save
+```
+
+A zone says what may *take root*, not what has to be pulled up: what is already
+standing is left alone, and a hand planting something is not asked either -
+`Sim::sow` is the spawn without the zone check, and `try_spawn` is the same
+thing with it. Ground with a building on it is never painted: the map moving
+under a building is the one thing this must not do.
+
+## Behind the map
+
+The sky band can be filled with scenery: peaks, ridges and rounded hills, drawn
+into the cached ground between the sky and the land so the map covers their
+feet and they read as standing beyond the far edge. Nothing else in the program
+knows they are there - nobody walks on one, nothing is built on one, and the
+simulation never asks.
+
+A piece is a shape, a width and a height in cells, and how far off it is. That
+last number does two things at once: it hazes the piece toward the sky color at
+its own row, and it orders the drawing, because the further thing is always the
+one behind. That is what keeps the list on the panel from being a stack anybody
+has to shuffle.
+
+```mermaid
+flowchart LR
+  press["a press on the sky<br/>with Place holding scenery"] --> hit{"on a piece?"}
+  hit -->|yes| take["take hold of it"]
+  hit -->|no| put["put a new one up there"]
+  take --> drag["drag: sideways moves it,<br/>up and down is its height"]
+  put --> drag
+  drag --> ground["the cached ground is stale"]
+  panel["the Land panel"] --> adjust["what it is made of,<br/>how far off, the snow line"]
+  adjust --> ground
 ```
 
 ## Rivers
@@ -1042,6 +1116,25 @@ ring was closed. A ring is also the work of a town rather than of a village: a
 settlement that walls itself too early spends everything it owns on the wall
 and then starves inside it, so there is a head count below which nobody starts.
 
+## What a press on the map means
+
+The stage is one canvas and a press on it can mean six different things, so the
+switches over the map are exclusive: turning one on turns the others off, and
+`press_switch_takes` is the one place that knows it. Every one of them hands a
+press back to the camera when it finds nothing to act on - pressing open ground
+with Look inside on still drags the map - except placing, which keeps the press
+and says why nothing was put there.
+
+| Switch | A press means |
+| --- | --- |
+| none | move the map |
+| Move people | pick a settler up and carry them |
+| Harvest | cut what is growing, held down |
+| Add people | set a new settler down |
+| Look inside | show a building's card on the Build panel |
+| Place | put down what the placing menu is holding |
+| Take over | steer that settler by hand (experiment) |
+
 ## Experiments
 
 One switch, off by default, and everything under it asks that switch first.
@@ -1057,6 +1150,49 @@ spare sends one up over itself; while it is aloft the colony's research runs
 faster. A balloon is a position on the ground plane plus a height, so it is
 drawn in the same projection as everything else and simply painted after the
 sorted draw list, being in the sky.
+
+The second is taking a settler over. `Settlement::driven` names one person and
+`drive` is a direction in cells; `update_person` hands that person to
+`control::drive_tick` at exactly the point where it hands a held person nothing
+at all, so a driven settler stops planning and nothing else about them changes.
+They age, tire and starve like anybody else, which is what the four buttons
+under the map are for: cut what is in reach, pick a load up or put it down,
+step in or out of a doorway, and eat what they have. Steering is a direction
+rather than a path, so water is swum rather than walked round and a wall stops
+only the part of the push that is into it.
+
+```mermaid
+flowchart LR
+  keys["W A S D or the arrows,<br/>held rather than repeated"] --> push["ui::drive::push"]
+  stick["the stick on the map"] --> push
+  push --> civ["Settlement::drive,<br/>written before the tick"]
+  civ --> tick["control::drive_tick:<br/>no plan, no path"]
+  tick --> move["slide along each axis in turn"]
+  acts["the four buttons,<br/>or c x e r"] --> act["control::act"]
+  act --> task["a task the hand asked for,<br/>which runs to its end"]
+  task --> tick
+```
+
+## Two ways a town is founded
+
+An expedition is planned: a crowded, well stocked town picks a site, picks a
+party, and sends them out with supplies, a quarter of the treasury and a
+storehouse waiting for them.
+
+A stray is not planned at all. Anybody who spends `stray_wait` seconds further
+than `stray_distance` from their own town's center stops going home and founds
+one where they stand, with whoever else is out there beside them. They arrive
+with what they know - knowledge travels with the people who have it - and
+nothing else. This is what happens to anybody set down across the map, carried
+there, or walked there by hand, and it is the reason a settler put down in the
+far corner is no longer a settler on a very long walk.
+
+The patience is in seconds because the distances are small in time: a settler
+walks 2.4 cells a second, so anybody who means to go home is back inside the
+distance in well under a minute, and a patience in days would only ever be
+spent walking. The count is kept per person and dropped the moment they are
+near their town again; the founding runs after the tick's people loop rather
+than inside it, and only on a tick where somebody has actually given up.
 
 ## Counters
 

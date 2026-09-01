@@ -3,6 +3,45 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A midground: hills, ridges and mountains standing in the sky band
+  behind the map. With Place on and the placing menu holding scenery, a press
+  on the sky puts one up and the same gesture drags it - sideways to move it,
+  up and down for its size - and the Land panel lists what is standing, what
+  each piece is made of, and takes them down again. How far off a piece is
+  hazes it into the sky and decides what stands in front of what, so nothing
+  has to be shuffled by hand. It is drawn into the cached ground over the sky
+  and under the land, so the map covers its foot, and it is scenery only:
+  nobody walks on one and the town never asks about it.
+- (LLM) Somebody who ends up a long way from their own town and stays there
+  gives up on walking back and founds one where they stand, with anyone else
+  out there beside them. They bring what they know and nothing else: no stores
+  and no storehouse, because nobody planned it. The patience is measured in
+  seconds rather than days, since a settler covers the width of a small map in
+  under a minute and anything longer would only ever be spent walking home.
+- (LLM) Zones and ground drawn from a picture: drop one on the Land panel and
+  it is laid over the whole map corner to corner, press it to take the color
+  under the pointer and drag out the piece to work on, and every cell in that
+  box near enough to that color becomes water, rock, grass or sand, or is zoned
+  for what may take root there - nothing, trees only, or the low growth only.
+  Zones hold for whatever seeds next rather than pulling up what is already
+  there, a hand planting something outranks them, and both the drawn ground and
+  the zones are written down with the settlement, which is otherwise made again
+  from its seed.
+- (LLM) A placing menu: with Place on above the map, every press puts down what
+  the menu on the Build panel is holding - a building from the catalog, laid as
+  a site or put up finished for the chosen town, a plant of any species the
+  project holds, or a load of anything. Everything placed is placed the way the
+  town would have placed it, so it is built, harvested and hauled by the same
+  rules; a press that cannot put it there says why rather than moving the map
+  out from under the aim.
+- (LLM) A settler can be taken over, under the experiments switch: a Take over
+  press hands them to the keys or to a stick on the map, and the row under it
+  is the four things they can be asked to do - cut what is in front of them,
+  pick a load up or put it down, step in or out of a doorway, eat what they
+  have. They plan nothing for themselves until they are let go, and everything
+  else about being a settler still happens to them, so a driven settler starves
+  if nobody feeds them. Water is swum rather than walked round, and a wall stops
+  only the part of the push that is into it.
 - (LLM) Anything the town has put up can be condemned from its Look inside
   card, and the people take it apart themselves: the same walk and the same
   effort as building, measured against what it cost to raise, with most of the

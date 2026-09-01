@@ -817,7 +817,11 @@ if (
 ) {
   problems.push('the move people button does not show that it is on');
 }
-const sweepStage = () => page.evaluate(() => {
+// Presses every few pixels of the stage until the note says the press landed
+// on somebody. `want` is what that note starts with, which is what tells
+// picking somebody up from taking them over.
+const sweepStage = (want = 'holding', release = false) =>
+  page.evaluate(({ want, release }) => {
   const canvas = document.getElementById('world-canvas');
   const r = canvas.getBoundingClientRect();
   const note = () => (document.getElementById('save-note').textContent || '').trim();
@@ -835,12 +839,17 @@ const sweepStage = () => page.evaluate(() => {
   for (let y = r.top + 4; y < r.bottom - 4; y += 6) {
     for (let x = r.left + 4; x < r.right - 4; x += 6) {
       send('pointerdown', x, y);
-      if (note().startsWith('holding')) return { x, y, who: note() };
+      if (note().includes(want)) {
+        // A settler picked up stays picked up until the drag that follows
+        // puts them down; one taken over is not held by the pointer at all.
+        if (release) send('pointerup', x, y);
+        return { x, y, who: note() };
+      }
       send('pointerup', x, y);
     }
   }
   return null;
-});
+  }, { want, release });
 // Settlers indoors are not on the map to be picked up, so a town that has
 // gone to bed has nobody out there at all. The clock is run on between
 // sweeps until somebody is up.
@@ -1120,6 +1129,218 @@ if (!inspectSweep) {
 }
 await page.click('#look-inside');
 await page.waitForTimeout(150);
+
+// Taking a settler over: the switch is only on the toolbar while the
+// experiment behind it is on, and what it puts up is stage chrome rather than
+// a panel - a stick and the four things a settler can be asked to do.
+await page.click('.tab[data-tab="experimental"]');
+await page.waitForTimeout(500);
+if ((await page.locator('#take-over').count()) !== 0) {
+  problems.push('the take over switch was on the toolbar with the experiment off');
+}
+// Zones from a picture: a four pixel image, red down one side and blue down
+// the other, laid over the map. Dragging a box over the red half and applying
+// a zone to it should take about half the cells in the box and nothing else.
+await page.click('.tab[data-tab="land"]');
+await page.waitForTimeout(500);
+const zoneGroup = page.locator('#panel-body .group:has-text("Zones from a picture")');
+if ((await zoneGroup.count()) === 0) {
+  problems.push('the Land panel has no way to draw zones from a picture');
+} else {
+  const RED_AND_BLUE =
+    'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFUlEQVR4nGO4YGAARAYJF4CIgTgOABDSFIGliA40AAAAAElFTkSuQmCC';
+  await zoneGroup.locator('input[type=file]').setInputFiles({
+    name: 'land.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(RED_AND_BLUE, 'base64'),
+  });
+  await page.waitForTimeout(900);
+  const canvas = zoneGroup.locator('canvas.landscape');
+  if ((await canvas.count()) === 0) {
+    problems.push('the dropped picture was not laid over the map');
+  } else {
+    // Press on the red half and drag the box across the whole picture. The
+    // events are dispatched on the canvas itself rather than driven with the
+    // mouse: the panel scrolls, and a canvas that is half above the fold has a
+    // bounding box the pointer cannot reach.
+    await canvas.evaluate((node) => {
+      const r = node.getBoundingClientRect();
+      const send = (type, fx, fy, buttons) =>
+        node.dispatchEvent(
+          new PointerEvent(type, {
+            pointerId: 1,
+            clientX: r.left + r.width * fx,
+            clientY: r.top + r.height * fy,
+            bubbles: true,
+            button: 0,
+            buttons,
+          }),
+        );
+      send('pointerdown', 0.1, 0.5, 1);
+      send('pointermove', 0.6, 0.9, 1);
+      send('pointermove', 0.98, 0.98, 1);
+      send('pointerup', 0.98, 0.98, 0);
+    });
+    await page.waitForTimeout(400);
+    const readout = (await page.textContent('#zone-readout')) ?? '';
+    const hit = readout.match(/^(\d+) cells match, of (\d+)/);
+    if (!hit) {
+      problems.push(`dragging a box on the picture read "${readout}"`);
+    } else if (!(Number(hit[1]) > 0 && Number(hit[1]) < Number(hit[2]))) {
+      problems.push(`the color threshold took ${hit[1]} of ${hit[2]} cells, not some of them`);
+    }
+    await zoneGroup.locator('[data-find="make-it"] select').selectOption('bare');
+    await page.waitForTimeout(200);
+    await zoneGroup.locator('.btn:text-is("Apply to the map")').click();
+    await page.waitForTimeout(500);
+    const said = (await page.textContent('#save-note')).trim();
+    if (!/cells are growth: nothing/.test(said)) {
+      problems.push(`applying a zone said "${said}"`);
+    }
+    await page.screenshot({ path: `${outDir}/11l-zones.png` });
+    await zoneGroup.locator('.btn:text-is("Forget the picture")').click();
+    await page.waitForTimeout(400);
+  }
+}
+
+// Placing things by hand: the menu is on the Build panel and the press is the
+// stage's, the same as every other switch over the map.
+await page.click('.tab[data-tab="build"]');
+await page.waitForTimeout(500);
+await page.click('#place-thing');
+await page.waitForTimeout(500);
+const placeMenu = page.locator('#panel-body [data-find="put-down"] select');
+if ((await placeMenu.count()) === 0) {
+  problems.push('turning Place on brought up no placing menu');
+} else {
+  // Scenery: a press on the sky puts a hill up behind the map, and the Land
+  // panel is where it is then adjusted and taken down again.
+  await placeMenu.selectOption('scenery');
+  await page.waitForTimeout(400);
+  // Down the middle until a press lands in the sky band: where that is on
+  // screen depends on the camera, and the letterbox above the map belongs to
+  // the camera rather than to the sky.
+  const putUp = await page.evaluate(() => {
+    const canvas = document.getElementById('world-canvas');
+    const r = canvas.getBoundingClientRect();
+    const note = () => (document.getElementById('save-note').textContent || '').trim();
+    const send = (type, x, y, buttons) =>
+      canvas.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 1,
+          clientX: x,
+          clientY: y,
+          bubbles: true,
+          button: 0,
+          buttons,
+        }),
+      );
+    const x = r.left + r.width * 0.5;
+    for (let y = r.top + 4; y < r.bottom - 4; y += 8) {
+      send('pointerdown', x, y, 1);
+      send('pointerup', x, y, 0);
+      if (note().includes('put up')) return note();
+    }
+    return note();
+  });
+  await page.waitForTimeout(500);
+  if (!/put up/.test(putUp)) {
+    problems.push(`pressing the sky with scenery in hand said "${putUp}"`);
+  }
+  await page.screenshot({ path: `${outDir}/11m-scenery.png` });
+  await page.click('.tab[data-tab="land"]');
+  await page.waitForTimeout(600);
+  const behind = page.locator('#panel-body .group:has-text("Behind the map")');
+  if ((await behind.locator('.btn.danger:text-is("Take it down")').count()) === 0) {
+    problems.push('the piece that went up is not listed on the Land panel');
+  } else {
+    await behind.locator('.btn.danger:text-is("Take it down")').first().click();
+    await page.waitForTimeout(500);
+    if ((await behind.locator('.btn.danger:text-is("Take it down")').count()) !== 0) {
+      problems.push('taking a piece of scenery down left it standing');
+    }
+  }
+  await page.click('.tab[data-tab="build"]');
+  await page.waitForTimeout(500);
+
+  await placeMenu.selectOption('load');
+  await page.waitForTimeout(500);
+  const amount = '#panel-body [data-find="how-much"] input.num';
+  if ((await page.locator(amount).count()) === 0) {
+    problems.push('a load has nothing to say how much of it to put down');
+  }
+  const before = (await page.textContent('#save-note')).trim();
+  await page.mouse.click(stage.x + stage.width * 0.5, stage.y + stage.height * 0.6);
+  await page.waitForTimeout(400);
+  const said = (await page.textContent('#save-note')).trim();
+  if (said === before || !/ground|nowhere|off the map/.test(said)) {
+    problems.push(`placing a load said "${said}"`);
+  }
+  await page.screenshot({ path: `${outDir}/11k-placing.png` });
+}
+await page.click('#place-thing');
+await page.waitForTimeout(200);
+await page.click('.tab[data-tab="experimental"]');
+await page.waitForTimeout(400);
+await page.click('#panel-body [data-find="try-the-unfinished-things"] .btn');
+await page.waitForTimeout(500);
+await page.click('#panel-body [data-find="let-a-settler-be-taken-over"] .btn');
+await page.waitForTimeout(600);
+if ((await page.locator('#take-over').count()) === 0) {
+  problems.push('turning the experiment on did not put the take over switch up');
+} else {
+  await pause();
+  await page.click('#take-over');
+  await page.waitForTimeout(200);
+  const drove = await sweepStage(' is yours', true);
+  if (!drove || !/ is yours/.test(drove.who)) {
+    problems.push(`no settler could be taken over: ${drove ? drove.who : 'nobody found'}`);
+  } else {
+    console.log(`took over: ${drove.who}`);
+    await page.waitForTimeout(400);
+    const hud = page.locator('#stage-hud');
+    if (!(await hud.isVisible())) {
+      problems.push('taking a settler over put no chrome over the map');
+    }
+    if ((await hud.locator('.stick').count()) === 0) {
+      problems.push('the stick is missing with the stick switch on');
+    }
+    const acts = await hud.locator('.hud-acts .btn').count();
+    if (acts < 5) {
+      problems.push(`the driving row has ${acts} buttons rather than the four and a let go`);
+    }
+    await page.screenshot({ path: `${outDir}/11j-driving.png` });
+    // A press on one of them says what happened, whether or not there was
+    // anything in reach to do it to.
+    await hud.locator('.btn:has-text("Pick up"), .btn:has-text("Put down")').first().click();
+    await page.waitForTimeout(300);
+    const said = (await page.textContent('#save-note')).trim();
+    if (said.length === 0) {
+      problems.push('pressing a driving button said nothing at all');
+    }
+    // The keys steer: hold one down for a moment with the world running and
+    // the settler should have moved.
+    await resume();
+    await page.keyboard.down('d');
+    await page.waitForTimeout(700);
+    await page.keyboard.up('d');
+    await page.waitForTimeout(200);
+    await pause();
+    await hud.locator('.btn:text-is("Let go")').click();
+    await page.waitForTimeout(400);
+    if (await hud.isVisible()) {
+      problems.push('letting go left the driving chrome over the map');
+    }
+  }
+  await page.click('#take-over');
+  await page.waitForTimeout(150);
+}
+// Put the experiments back where they were.
+await page.click('#panel-body [data-find="let-a-settler-be-taken-over"] .btn');
+await page.waitForTimeout(300);
+await page.click('#panel-body [data-find="try-the-unfinished-things"] .btn');
+await page.waitForTimeout(300);
+await resume();
 
 // The sky past the map's edge: flip the space clouds on, let a few frames
 // draw the letterbox as sky, and flip them back. The console listener is what

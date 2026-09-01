@@ -23,6 +23,8 @@ pub enum Cell {
     Sand = 3,
 }
 
+pub use crate::world::Zone;
+
 impl Cell {
     pub fn from_u8(v: u8) -> Cell {
         match v {
@@ -269,6 +271,10 @@ pub struct Terrain {
     /// and for pushing a boat along.
     pub flow: Vec<i8>,
     pub rivers: Vec<River>,
+    /// What the wilderness may do with each cell. Authored rather than
+    /// generated, so it survives a reload the way the deposits do while the
+    /// rest of the map is made again from the seed.
+    pub zone: Vec<u8>,
 }
 
 /// The eight steps a course may take, in the order a direction index means.
@@ -300,6 +306,7 @@ impl Terrain {
             river_index: Vec::new(),
             flow: Vec::new(),
             rivers: Vec::new(),
+            zone: Vec::new(),
         };
         t.generate(cfg);
         t
@@ -314,6 +321,9 @@ impl Terrain {
         self.deposit_index = vec![0; n];
         self.river_index = vec![0; n];
         self.flow = vec![-1; n];
+        // Zones are authored rather than generated, so they are not wiped
+        // here; a map made from nothing simply has none.
+        self.zone.resize(n, 0);
         self.deposits.clear();
         self.rivers.clear();
 
@@ -349,6 +359,7 @@ impl Terrain {
             std::mem::take(&mut self.river_index),
             std::mem::take(&mut self.flow),
         );
+        let zone = std::mem::take(&mut self.zone);
         self.cols = cols;
         self.rows = rows;
         let n = (cols * rows) as usize;
@@ -359,6 +370,7 @@ impl Terrain {
         self.deposit_index = vec![0; n];
         self.river_index = vec![0; n];
         self.flow = vec![-1; n];
+        self.zone = vec![0; n];
 
         self.fill_noise(cfg);
         for r in 0..old_rows {
@@ -372,6 +384,7 @@ impl Terrain {
                 self.deposit_index[to] = dindex[from];
                 self.river_index[to] = rindex[from];
                 self.flow[to] = flow[from];
+                self.zone[to] = zone.get(from).copied().unwrap_or(0);
             }
         }
 
@@ -755,6 +768,37 @@ impl Terrain {
 
     pub fn is_water(&self, c: i32, r: i32) -> bool {
         self.type_at(c, r) == Cell::Water
+    }
+
+    /// What the wilderness may do with a cell.
+    pub fn zone_at(&self, c: i32, r: i32) -> Zone {
+        if !self.in_bounds(c, r) {
+            return Zone::Any;
+        }
+        match self.zone.get(self.idx(c, r)) {
+            Some(&v) => Zone::from_u8(v),
+            None => Zone::Any,
+        }
+    }
+
+    /// Draws a zone on one cell. Nothing else about the map changes: a zone is
+    /// about what takes root there, not about what the ground is.
+    pub fn set_zone(&mut self, c: i32, r: i32, zone: Zone) {
+        if !self.in_bounds(c, r) {
+            return;
+        }
+        let n = (self.cols * self.rows) as usize;
+        if self.zone.len() < n {
+            self.zone.resize(n, 0);
+        }
+        let i = self.idx(c, r);
+        self.zone[i] = zone as u8;
+    }
+
+    /// Whether anything has been zoned at all, which is what keeps the whole
+    /// grid out of the spawn loop on a map nobody has drawn on.
+    pub fn any_zones(&self) -> bool {
+        self.zone.iter().any(|&z| z != 0)
     }
 
     pub fn is_buildable(&self, c: i32, r: i32) -> bool {

@@ -8,7 +8,7 @@ use crate::civ::buildings::{scaled_cost, BuildConfig, Job, Structure, BUILDINGS,
 use crate::civ::resources::{format_cost, missing_from, Stock, RES_IDS};
 use crate::ui::{
     app_bool, app_num, append, bar, button, clear, clear_scope, colony_picker, danger_button, el,
-    note, section, stat, NumOpts, Scope,
+    note, section, select_field, stat, NumOpts, Scope,
 };
 
 pub struct BuildPanel {
@@ -33,6 +33,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let inside_wrap = section("Looking inside", vec![inside.clone()]);
     let _ = inside_wrap.set_attribute("hidden", "hidden");
     append(root, inside_wrap.clone());
+
+    append(root, place_section(app, h));
 
     append(root, section("Planner", vec![
         app_bool(h, "Plan buildings automatically", cfg.auto_build,
@@ -114,6 +116,18 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             |c, v| c.expedition_interval = v),
         build_num(h, "Cells between town centers", cfg.colony_spacing as f64, 8.0, 200.0, 1.0, None,
             |c, v| c.colony_spacing = v as i32),
+        note("Somebody who ends up a long way from their own town and stays there gives up on \
+              walking back and founds one where they stand. They bring nothing but what they \
+              know: no stores and no storehouse, because nobody planned this. Anyone else out \
+              there with them joins it."),
+        app_bool(h, "Strays found towns of their own", cfg.strays_settle, None,
+            |app, v| { app.state.civ.build.strays_settle = v; app.request_save(); }),
+        build_num(h, "Far from home (cells)", cfg.stray_distance, 10.0, 300.0, 1.0,
+            Some("from their own town's center"), |c, v| c.stray_distance = v),
+        build_num(h, "Out there before giving up (s)", cfg.stray_wait, 1.0, 600.0, 1.0,
+            Some("settlement seconds; a settler walks about two and a half cells of it, so \
+                  this is short by design"),
+            |c, v| c.stray_wait = v),
     ]));
 
     append(root, section("Pulling things down", vec![
@@ -221,6 +235,143 @@ fn build_num(
         apply(&mut app.state.civ.build, v);
         app.request_save();
     })
+}
+
+/// The placing menu: what the next press on the map puts down. Only the choice
+/// lives here; the press itself is the stage's, the same as every other switch
+/// over the map.
+fn place_section(app: &App, h: &Handle) -> Element {
+    let hand = app.ui.hand.clone();
+    let mut rows = vec![note(
+        "With Place on above the map, every press puts one of these down where it lands: a \
+         building for the town chosen below, a plant of any species this project holds, a load \
+         of anything on the ground, or a piece of scenery in the sky behind the map. What is \
+         placed on the map is placed the way the town would have placed it, so it is built, \
+         harvested and hauled by the same rules as everything else.",
+    )];
+    let kinds: Vec<(String, String)> = crate::civ::place::KINDS
+        .iter()
+        .map(|k| (k.key().to_string(), k.label().to_string()))
+        .collect();
+    rows.push(select_field(
+        "Put down",
+        hand.kind.key(),
+        &kinds,
+        None,
+        {
+            let h2 = h.clone();
+            move |v| {
+                let mut sh = h2.borrow_mut();
+                sh.app.ui.hand.kind = crate::civ::place::Kind::from_key(&v);
+                sh.app.rebuild_panel = true;
+            }
+        },
+    ));
+    match hand.kind {
+        crate::civ::place::Kind::Building => {
+            let options: Vec<(String, String)> = crate::civ::buildings::BUILDINGS
+                .iter()
+                .map(|d| (d.id.to_string(), format!("{} - {}", d.category.label(), d.label)))
+                .collect();
+            rows.push(select_field("Which", &hand.building, &options, None, {
+                let h2 = h.clone();
+                move |v| {
+                    h2.borrow_mut().app.ui.hand.building = v;
+                }
+            }));
+            rows.push(app_bool(
+                h,
+                "Put it up finished",
+                hand.finished,
+                Some("off lays a site for the town to carry materials to and raise"),
+                |app, v| app.ui.hand.finished = v,
+            ));
+            if let Some(picker) = colony_picker(app, h) {
+                rows.push(picker);
+            }
+        }
+        crate::civ::place::Kind::Plant => {
+            let options: Vec<(String, String)> = app
+                .state
+                .species
+                .iter()
+                .map(|s| (s.id.clone(), s.name.clone()))
+                .collect();
+            let chosen = if app.state.species.iter().any(|s| s.id == hand.species) {
+                hand.species.clone()
+            } else {
+                app.state.species.first().map(|s| s.id.clone()).unwrap_or_default()
+            };
+            rows.push(select_field("Which", &chosen, &options, None, {
+                let h2 = h.clone();
+                move |v| {
+                    h2.borrow_mut().app.ui.hand.species = v;
+                }
+            }));
+            rows.push(note(
+                "One plant, grown from nothing the way the wilderness grows one: it needs room \
+                 for its own kind and will not take in water or on ground somebody has built on.",
+            ));
+        }
+        crate::civ::place::Kind::Scenery => {
+            let shapes: Vec<(String, String)> = crate::civ::scenery::SHAPES
+                .iter()
+                .map(|s| (s.key().to_string(), s.label().to_string()))
+                .collect();
+            rows.push(select_field("Which", hand.scene.shape.key(), &shapes, None, {
+                let h2 = h.clone();
+                move |v| {
+                    h2.borrow_mut().app.ui.hand.scene.shape =
+                        crate::civ::scenery::Shape::from_key(&v);
+                }
+            }));
+            rows.push(app_num(h, "Width (cells)", hand.scene.width,
+                NumOpts { min: 2.0, max: 200.0, step: 1.0 }, None,
+                |app, v| app.ui.hand.scene.width = v));
+            rows.push(app_num(h, "Height (cells)", hand.scene.height,
+                NumOpts { min: 0.5, max: 60.0, step: 0.5 },
+                Some("or drag it up and down once it is up"),
+                |app, v| app.ui.hand.scene.height = v));
+            rows.push(app_num(h, "How far off", hand.scene.distance,
+                NumOpts { min: 0.0, max: 1.0, step: 0.05 },
+                Some("hazes it into the sky, and puts it behind anything nearer"),
+                |app, v| app.ui.hand.scene.distance = v));
+            rows.push(app_num(h, "Snow line", hand.scene.snow,
+                NumOpts { min: 0.0, max: 1.0, step: 0.05 },
+                Some("as a share of its height; 1 is no snow at all"),
+                |app, v| app.ui.hand.scene.snow = v));
+            rows.push(note(
+                "Press the sky to put one up, and drag it: sideways moves it, up and down \
+                 makes it taller and shorter. Pressing one that is already there takes hold \
+                 of it instead. The list of what is standing, and what to make it of, is on \
+                 the Land panel.",
+            ));
+        }
+        crate::civ::place::Kind::Load => {
+            let options: Vec<(String, String)> = RES_IDS
+                .iter()
+                .map(|r| (r.id().to_string(), r.label().to_string()))
+                .collect();
+            rows.push(select_field("Which", hand.res.id(), &options, None, {
+                let h2 = h.clone();
+                move |v| {
+                    let res = RES_IDS.iter().find(|r| r.id() == v).copied();
+                    if let Some(res) = res {
+                        h2.borrow_mut().app.ui.hand.res = res;
+                    }
+                }
+            }));
+            rows.push(app_num(
+                h,
+                "How much",
+                hand.amount,
+                NumOpts { min: 1.0, max: 200.0, step: 1.0 },
+                None,
+                |app, v| app.ui.hand.amount = v,
+            ));
+        }
+    }
+    section("Place by hand", rows)
 }
 
 impl BuildPanel {

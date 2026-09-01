@@ -157,6 +157,81 @@ body:not(.stage-only) .stage-escape {
   display: none;
 }
 
+/* Driving a settler: the stick and what they can be asked to do, over the map
+   rather than in the panel, because it is played with rather than set. The bar
+   itself lets presses through; only the controls in it take them. */
+.stage-hud {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--gap);
+  padding: var(--gap);
+  pointer-events: none;
+}
+
+.stage-hud > * {
+  pointer-events: auto;
+}
+
+/* A class that sets `display` beats the browser's own rule for [hidden], so
+   the bar has to say it itself or hiding it does nothing. */
+.stage-hud[hidden] {
+  display: none;
+}
+
+.hud-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+.hud-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.hud-who {
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-panel) 82%, transparent);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+/* A ring with a knob in it. Sized in rem so it follows the text scale, and
+   `touch-action: none` so dragging it is not read as scrolling the page. */
+.stick {
+  display: grid;
+  place-items: center;
+  width: 7rem;
+  height: 7rem;
+  border: var(--hairline) solid var(--line);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+  touch-action: none;
+}
+
+.stick-knob {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 55%, var(--bg-raised));
+  border: var(--hairline) solid var(--line);
+  transition: transform 0.08s linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stick-knob {
+    transition: none;
+  }
+}
+
 /* Settled into the window on its own rather than because somebody asked for it.
    There is nothing to press to get out of it: the first sign of life anywhere,
    a moved pointer included, hands the menus straight back. */
@@ -702,6 +777,21 @@ input[type="color"] {
   max-width: 100%;
   image-rendering: pixelated;
   display: block;
+}
+
+/* The picture laid over the map to draw zones from. It is dragged on, so it
+   must not be read as a page scroll on a touch screen, and it is a landscape
+   rather than pixel art: the browser may smooth it. */
+.landscape {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 40vh;
+  object-fit: contain;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+  touch-action: none;
+  cursor: crosshair;
 }
 
 /* shading */

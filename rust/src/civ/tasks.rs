@@ -312,6 +312,15 @@ pub fn update_person(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
         return;
     }
 
+    // Somebody being steered plans nothing for themselves: no work is chosen,
+    // no bed is walked to, and hunger is theirs to answer. Everything above
+    // this line still happens to them, which is the point of it being a settler
+    // rather than a piece being moved about.
+    if sim.driven != 0 && sim.driven == sim.people[pi].id {
+        crate::civ::control::drive_tick(sim, state, pi, dt);
+        return;
+    }
+
     let health = sim.people[pi].health;
     let hardy = sim.people[pi].traits.hardiness;
     let sick = pcfg.sickness_rate * dt / pcfg.day_length.max(1.0)
@@ -929,6 +938,12 @@ fn start_harvest(
         Some(id) => id,
         None => return false,
     };
+    take_plant(sim, pi, plant_id, &job)
+}
+
+/// Claims a plant and walks over to it. Shared by the settler who chose it for
+/// themselves and by the hand that pointed at it.
+fn take_plant(sim: &mut Settlement, pi: usize, plant_id: i32, job: &HarvestJob) -> bool {
     let index = match sim.plant_sim.plant_index(plant_id) {
         Some(i) => i,
         None => return false,
@@ -956,6 +971,20 @@ fn start_harvest(
         timer: 0.0,
     });
     true
+}
+
+/// Cutting what is within arm's reach, for somebody being steered by hand
+/// rather than choosing for themselves. The wild job, which is what anybody can
+/// strip without a camp behind them, and one pass at the reach asked for rather
+/// than the widening search a camp makes.
+pub fn cut_within_reach(sim: &mut Settlement, state: &State, pi: usize, reach: f64) -> bool {
+    let job = HarvestJob { radius: reach, ..WILD_JOB };
+    let origin = (sim.people[pi].cell_col(), sim.people[pi].cell_row());
+    let plant_id = match pick_plant(sim, state, pi, &job, origin, reach) {
+        Some(id) => id,
+        None => return false,
+    };
+    take_plant(sim, pi, plant_id, &job)
 }
 
 /// Best mass for the walk, read out of the coarse plant index so a camp on a

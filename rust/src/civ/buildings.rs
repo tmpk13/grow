@@ -984,6 +984,16 @@ pub struct BuildConfig {
     /// Share of what it was built from that comes back when it is taken apart
     /// rather than left to fall in, which is the point of doing it by hand.
     pub pull_down_salvage: f64,
+    /// Whether somebody who ends up a long way from their town and stays there
+    /// gives up on it and founds one where they stand.
+    pub strays_settle: bool,
+    /// How far from their town's center counts as a long way, in cells.
+    pub stray_distance: f64,
+    /// Seconds out there before they stop walking home and start a town.
+    /// Short, because it is measured against a walk: a settler covers the
+    /// width of a small map in under a minute, so a patience in days would
+    /// only ever be spent walking back.
+    pub stray_wait: f64,
 }
 
 impl Default for BuildConfig {
@@ -1027,6 +1037,9 @@ impl Default for BuildConfig {
             crumble_salvage: 0.25,
             pull_down_share: 0.45,
             pull_down_salvage: 0.6,
+            strays_settle: true,
+            stray_distance: 45.0,
+            stray_wait: 12.0,
         }
     }
 }

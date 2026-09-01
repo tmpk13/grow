@@ -279,6 +279,75 @@ fn mirroring_a_clip_reads_every_frame_backwards() {
     assert_eq!(clip.pixel(0, 0, 0), 1);
 }
 
+// ---- what stands behind the map ------------------------------------------
+
+fn hill(x: f64, distance: f64) -> grow::civ::scenery::Scene {
+    grow::civ::scenery::Scene {
+        shape: grow::civ::scenery::Shape::Bank,
+        x,
+        width: 20.0,
+        height: 8.0,
+        distance,
+        snow: 1.0,
+        sampler: "mat-stone".to_string(),
+        seed: 5,
+    }
+}
+
+#[test]
+fn a_piece_of_scenery_covers_its_own_span_and_nothing_else() {
+    use grow::civ::scenery::at;
+    let world = grow::world::World::new(&grow::civ::config::default_civ_world());
+    let cell = world.cell_px as f64;
+    let piece = hill(30.0, 0.4);
+    // Its outline never leaves nought to one, so nothing is ever drawn below
+    // the horizon or above the height it was given.
+    for i in 0..=100 {
+        let t = i as f64 / 100.0;
+        let v = piece.profile(t);
+        assert!((0.0..=1.0).contains(&v), "the outline reads {v} at {t}");
+    }
+    assert_eq!(piece.profile(-0.01), 0.0);
+    assert_eq!(piece.profile(1.01), 0.0);
+
+    let scenery = vec![piece];
+    // The middle of it, just under the horizon: that is the piece.
+    let mid_x = (30.0 * cell) as i32;
+    assert_eq!(at(&scenery, &world, mid_x, world.sky_px - 1), Some(0));
+    // Well to the side of it is open sky, and so is anything below the
+    // horizon: the land is not the sky.
+    assert_eq!(at(&scenery, &world, mid_x + (40.0 * cell) as i32, world.sky_px - 1), None);
+    assert_eq!(at(&scenery, &world, mid_x, world.sky_px + 4), None);
+    assert_eq!(at(&scenery, &world, mid_x, 0), None, "the sky above its summit is not it");
+}
+
+#[test]
+fn the_furthest_thing_is_drawn_first_and_pressed_last() {
+    use grow::civ::scenery::{at, back_to_front};
+    let world = grow::world::World::new(&grow::civ::config::default_civ_world());
+    let cell = world.cell_px as f64;
+    // Two hills in the same place, one behind the other.
+    let scenery = vec![hill(30.0, 0.2), hill(30.0, 0.9)];
+    assert_eq!(back_to_front(&scenery), vec![1, 0], "the far one is not drawn first");
+    // A press lands on the near one, which is what is on top of the picture.
+    let mid_x = (30.0 * cell) as i32;
+    assert_eq!(at(&scenery, &world, mid_x, world.sky_px - 1), Some(0));
+}
+
+#[test]
+fn scenery_is_part_of_the_project_file() {
+    let mut state = State::new();
+    state.civ.scenery = vec![hill(12.0, 0.35)];
+    state.civ.scenery[0].snow = 0.6;
+    let back = State::from_json(&state.to_json()).expect("round trip");
+    assert_eq!(back.civ.scenery.len(), 1);
+    let piece = &back.civ.scenery[0];
+    assert_eq!(piece.shape, grow::civ::scenery::Shape::Bank);
+    assert_eq!(piece.x, 12.0);
+    assert_eq!(piece.snow, 0.6);
+    assert_eq!(piece.sampler, "mat-stone");
+}
+
 // ---- how a sampling box is read ------------------------------------------
 
 fn box_of(colors: &[(u32, usize)]) -> (Materials, String) {

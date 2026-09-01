@@ -342,6 +342,8 @@ impl Default for ViewConfig {
 pub struct Experiments {
     pub on: bool,
     pub balloons: BalloonConfig,
+    /// Taking over a settler and steering them by hand.
+    pub control: crate::civ::control::ControlConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -367,6 +369,11 @@ pub struct CivConfig {
     /// Pictures for the things people make: buildings, walls, boats and loads
     /// in hand. Empty means everything is generated from the sampling boxes.
     pub made: MadeSprites,
+    /// What stands behind the map: hills and mountains in the sky band. Part
+    /// of the project rather than of the settlement, because it is drawn
+    /// rather than grown, and the same scenery stands over any town founded on
+    /// this map.
+    pub scenery: Vec<crate::civ::scenery::Scene>,
     /// Art pixels to one map cell: the one number that says how large every
     /// dropped picture comes out. Art authored at this resolution is drawn at
     /// its own size, so a settler drawn twelve pixels tall stands a cell and a
@@ -397,6 +404,7 @@ impl Default for CivConfig {
             experiments: Experiments::default(),
             sprites: PeopleSprites::default(),
             made: MadeSprites::default(),
+            scenery: Vec::new(),
             art_px_per_cell: crate::civ::sprites::DEFAULT_ART_PX_PER_CELL,
             people_archive: 400,
         }

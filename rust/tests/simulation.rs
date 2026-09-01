@@ -610,6 +610,409 @@ fn a_motion_with_no_art_borrows_from_a_related_one() {
     assert!(sprites.any(), "the sheets are still there");
 }
 
+// ---- strays -------------------------------------------------------------
+
+#[test]
+fn somebody_left_a_long_way_from_home_founds_a_town_of_their_own() {
+    // A big map, so there is somewhere to be far away in.
+    let mut state = State::new();
+    state.civ.world.cols = 140;
+    state.civ.world.rows = 60;
+    state.civ.terrain.warmup = 30.0;
+    state.civ.build.stray_wait = 8.0;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..600 {
+        sim.step(&state, dt);
+    }
+    let towns = sim.colonies.len();
+    let home = sim.colonies[0].center;
+
+    // Carry somebody to the far side of the map and leave them there.
+    let id = outdoors(&sim);
+    let far = (2..sim.world().rows - 2)
+        .flat_map(|r| (2..sim.world().cols - 2).map(move |c| (c, r)))
+        .filter(|&(c, r)| sim.walkable(c, r) && sim.terrain.is_buildable(c, r))
+        .max_by_key(|&(c, r)| {
+            (((c - home.0) as f64).hypot((r - home.1) as f64) * 100.0) as i64
+        })
+        .expect("nowhere far away");
+    let gone = ((far.0 - home.0) as f64).hypot((far.1 - home.1) as f64);
+    assert!(gone > state.civ.build.stray_distance, "the map is not big enough to be lost on");
+
+    assert!(sim.hold_person(id));
+    sim.move_held(far.0 as f64 + 0.5, far.1 as f64 + 0.5);
+    assert!(sim.drop_held().is_some(), "they could not be put down out there");
+
+    // Held where they were put: they cannot walk home fast enough to matter,
+    // so the days out there add up.
+    let mut founded = false;
+    for _ in 0..(state.civ.people.day_length * state.civ.sim.tick_hz * 8.0) as usize {
+        sim.step(&state, dt);
+        if sim.colonies.len() > towns {
+            founded = true;
+            break;
+        }
+    }
+    assert!(founded, "eight days out there and nobody started anything");
+    let town = sim.colonies.last().expect("the new town");
+    assert!(
+        sim.people.get(id).is_some_and(|p| p.colony == town.id),
+        "the town was founded without the settler who founded it"
+    );
+    // It is far enough from the old one to be its own place.
+    let d = ((town.center.0 - home.0) as f64).hypot((town.center.1 - home.1) as f64);
+    assert!(
+        d >= state.civ.build.colony_spacing as f64,
+        "the new town is {d:.0} cells from the old one"
+    );
+}
+
+#[test]
+fn nobody_settles_where_they_stand_with_the_setting_off() {
+    let mut state = State::new();
+    state.civ.world.cols = 140;
+    state.civ.world.rows = 60;
+    state.civ.terrain.warmup = 30.0;
+    state.civ.build.strays_settle = false;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..600 {
+        sim.step(&state, dt);
+    }
+    let towns = sim.colonies.len();
+    let home = sim.colonies[0].center;
+    let id = outdoors(&sim);
+    let far = (2..sim.world().rows - 2)
+        .flat_map(|r| (2..sim.world().cols - 2).map(move |c| (c, r)))
+        .filter(|&(c, r)| sim.walkable(c, r) && sim.terrain.is_buildable(c, r))
+        .max_by_key(|&(c, r)| {
+            (((c - home.0) as f64).hypot((r - home.1) as f64) * 100.0) as i64
+        })
+        .expect("nowhere far away");
+    assert!(sim.hold_person(id));
+    sim.move_held(far.0 as f64 + 0.5, far.1 as f64 + 0.5);
+    sim.drop_held();
+    for _ in 0..(state.civ.people.day_length * state.civ.sim.tick_hz * 8.0) as usize {
+        sim.step(&state, dt);
+    }
+    assert_eq!(sim.colonies.len(), towns, "a town was founded with the setting off");
+}
+
+// ---- drawing on the map --------------------------------------------------
+
+#[test]
+fn painting_a_cell_changes_the_ground_and_takes_what_stood_on_it() {
+    use grow::civ::terrain::Cell;
+    let (mut sim, state) = peopled(48, 24);
+    // A dry cell with nothing built on it, and something growing in it if the
+    // map will give us one.
+    let dry = (2..sim.world().rows - 2)
+        .flat_map(|r| (2..sim.world().cols - 2).map(move |c| (c, r)))
+        .find(|&(c, r)| !sim.in_water(c, r) && sim.walkable(c, r))
+        .expect("nowhere dry on the map");
+    assert!(sim.sow(&state, 0, dry.0, dry.1) || true);
+
+    assert!(sim.paint_cell(dry.0, dry.1, Cell::Water), "the cell would not take water");
+    assert!(sim.in_water(dry.0, dry.1), "it is not water after being painted water");
+    assert!(!sim.walkable(dry.0, dry.1), "water was left walkable");
+    assert!(
+        !sim.plant_sim.plants.iter().any(|p| p.col == dry.0 && p.row == dry.1),
+        "something is still growing in the water"
+    );
+    assert!(sim.terrain_painted, "the map does not know it has been drawn on");
+    // Painting it what it already is changes nothing.
+    assert!(!sim.paint_cell(dry.0, dry.1, Cell::Water));
+
+    // Ground with something on it is left alone: the map may not move under a
+    // building.
+    let built = sim.buildings.first().map(|b| (b.col, b.row));
+    if let Some((c, r)) = built {
+        assert!(!sim.paint_cell(c, r, Cell::Water), "the ground moved under a building");
+    }
+}
+
+#[test]
+fn a_zone_says_what_may_take_root_without_touching_what_is_there() {
+    use grow::world::Zone;
+    let (mut sim, state) = peopled(48, 24);
+    // A cell that will take a plant at all: the wilderness is dense after a
+    // bootstrap, and most cells refuse one for spacing rather than for zoning.
+    let mut spot = None;
+    for r in 2..sim.world().rows - 2 {
+        for c in 2..sim.world().cols - 2 {
+            if sim.sow(&state, 0, c, r) {
+                let at = sim.plant_sim.plants.len() - 1;
+                sim.plant_sim.remove_plant_at(at);
+                spot = Some((c, r));
+                break;
+            }
+        }
+        if spot.is_some() {
+            break;
+        }
+    }
+    let spot = spot.expect("nowhere on the map would take a plant");
+
+    // Nothing zoned: the wilderness may seed anywhere.
+    assert!(sim.plant_sim.zones.is_empty());
+    sim.zone_cells(&[spot], Zone::Bare);
+    assert!(!sim.plant_sim.zones.is_empty(), "the wilderness was not told about the zone");
+    assert_eq!(sim.terrain.zone_at(spot.0, spot.1), Zone::Bare);
+
+    // The wilderness will not seed there, and the hand still can: a zone says
+    // what takes root by itself, not what a person may plant.
+    let blocked = sim.blocked.clone();
+    assert!(sim
+        .plant_sim
+        .try_spawn(&state, 0, spot.0, spot.1, Some(&blocked))
+        .is_none());
+    assert!(sim.sow(&state, 0, spot.0, spot.1), "a hand could not plant in a bare zone");
+
+    // Trees only takes a tree and refuses the low growth, and the other way
+    // round, whatever species the project happens to hold.
+    let trees: Vec<usize> = (0..state.species.len())
+        .filter(|&i| state.species[i].size_class == grow::species::SizeClass::Tree)
+        .collect();
+    let low: Vec<usize> = (0..state.species.len())
+        .filter(|&i| {
+            !matches!(
+                state.species[i].size_class,
+                grow::species::SizeClass::Tree | grow::species::SizeClass::Shrub
+            )
+        })
+        .collect();
+    assert!(Zone::Wood.takes(grow::species::SizeClass::Tree));
+    assert!(!Zone::Wood.takes(grow::species::SizeClass::Herb));
+    assert!(Zone::Low.takes(grow::species::SizeClass::Herb));
+    assert!(!Zone::Low.takes(grow::species::SizeClass::Tree));
+    assert!(!trees.is_empty() && !low.is_empty(), "the default project has both");
+}
+
+// ---- putting things down by hand -----------------------------------------
+
+#[test]
+fn what_is_placed_by_hand_is_what_the_town_would_have_placed() {
+    use grow::civ::place::{put, Hand, Kind};
+    use grow::civ::planner::can_place_at;
+    use grow::civ::resources::Res;
+    let (mut sim, state) = peopled(48, 24);
+    let def = grow::civ::buildings::building_by_id("hut").expect("a hut is in the catalog");
+
+    // Somewhere a hut can stand, found the way the planner finds one.
+    let spot = (2..sim.world().rows - 2)
+        .flat_map(|r| (2..sim.world().cols - 2).map(move |c| (c, r)))
+        .find(|&(c, r)| can_place_at(&sim, &state, def, c, r))
+        .expect("nowhere on the map a hut could go");
+
+    let mut hand = Hand { building: "hut".to_string(), finished: true, ..Hand::default() };
+    let said = put(&mut sim, &state, &hand, spot.0, spot.1).expect("the hut was refused");
+    assert!(said.to_lowercase().contains("hut"), "it said {said}");
+    let at = sim
+        .buildings
+        .iter()
+        .position(|b| b.col == spot.0 && b.row == spot.1)
+        .expect("nothing stands where it was put");
+    assert!(sim.buildings[at].built, "asked for finished, got a site");
+
+    // The same spot again is refused, and says why rather than silently doing
+    // nothing.
+    let why = put(&mut sim, &state, &hand, spot.0, spot.1).expect_err("two huts in one place");
+    assert!(why.contains("fit"), "it said {why}");
+
+    // A site, which is what the town lays for itself.
+    let next = (2..sim.world().rows - 2)
+        .flat_map(|r| (2..sim.world().cols - 2).map(move |c| (c, r)))
+        .find(|&(c, r)| can_place_at(&sim, &state, def, c, r))
+        .expect("nowhere left for a second hut");
+    hand.finished = false;
+    put(&mut sim, &state, &hand, next.0, next.1).expect("the site was refused");
+    let site = sim
+        .buildings
+        .iter()
+        .position(|b| b.col == next.0 && b.row == next.1)
+        .expect("no site where it was put");
+    assert!(!sim.buildings[site].built, "asked for a site, got it finished");
+
+    // A load, which is a pile like any other.
+    hand.kind = Kind::Load;
+    hand.res = Res::Stone;
+    hand.amount = 7.0;
+    let (c, r) = (next.0, next.1 + 3);
+    put(&mut sim, &state, &hand, c, r).expect("the load was refused");
+    assert!(
+        sim.piles.iter().any(|p| p.res == Res::Stone && p.n >= 7.0),
+        "the load is nowhere on the ground"
+    );
+
+    // A plant, grown the way the wilderness grows one.
+    hand.kind = Kind::Plant;
+    hand.species = state.species[0].id.clone();
+    let before = sim.plant_sim.plants.len();
+    let mut grew = false;
+    for r in 2..sim.world().rows - 2 {
+        for c in 2..sim.world().cols - 2 {
+            if put(&mut sim, &state, &hand, c, r).is_ok() {
+                grew = true;
+                break;
+            }
+        }
+        if grew {
+            break;
+        }
+    }
+    assert!(grew, "nowhere on the map would take a plant");
+    assert_eq!(sim.plant_sim.plants.len(), before + 1);
+
+    // Off the map is off the map, whatever is in hand.
+    assert!(put(&mut sim, &state, &hand, -3, -3).is_err());
+}
+
+// ---- taking a settler over -----------------------------------------------
+
+#[test]
+fn a_settler_taken_over_goes_where_they_are_pushed_and_plans_nothing() {
+    use grow::civ::control;
+    let (mut sim, mut state) = peopled(48, 24);
+    state.civ.experiments.on = true;
+    state.civ.experiments.control.on = true;
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..600 {
+        sim.step(&state, dt);
+    }
+    let id = outdoors(&sim);
+    assert!(control::take_over(&mut sim, id), "nobody was taken over");
+    assert_eq!(sim.driven, id);
+    let pi = sim.people.index_of(id).expect("they are still on the register");
+    assert!(sim.people[pi].task.is_none(), "the task they were on was not dropped");
+
+    // Pushed in some direction they can go, they go. Which one is the map's
+    // business: a settler can be stood against a wall.
+    let mut walked = 0.0f64;
+    for push in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
+        let pi = sim.people.index_of(id).expect("still there");
+        let (x0, y0) = (sim.people[pi].x, sim.people[pi].y);
+        sim.drive = push;
+        for _ in 0..120 {
+            sim.step(&state, dt);
+        }
+        let pi = sim.people.index_of(id).expect("still there");
+        walked = walked.max((sim.people[pi].x - x0).hypot(sim.people[pi].y - y0));
+        assert!(
+            sim.people[pi].task.is_none(),
+            "work was chosen for a settler who is being steered"
+        );
+    }
+    assert!(walked > 0.5, "pushing them anywhere moved them {walked:.2} cells");
+
+    // Wherever they ended up is somewhere a person can be.
+    let pi = sim.people.index_of(id).expect("still there");
+    let (c, r) = (sim.people[pi].cell_col(), sim.people[pi].cell_row());
+    assert!(
+        sim.walkable(c, r) || sim.in_water(c, r),
+        "they were steered into ground nobody can stand on"
+    );
+
+    // Let go, and the town has them back: standing still with no hand on them,
+    // they take work again.
+    sim.drive = (0.0, 0.0);
+    control::let_go(&mut sim);
+    assert_eq!(sim.driven, 0);
+    let mut busy = false;
+    for _ in 0..600 {
+        sim.step(&state, dt);
+        let pi = sim.people.index_of(id).expect("still there");
+        if sim.people[pi].task.is_some() {
+            busy = true;
+            break;
+        }
+    }
+    assert!(busy, "they never found anything to do again");
+}
+
+#[test]
+fn the_hand_can_pick_a_load_up_and_put_it_down_again() {
+    use grow::civ::control::{act, take_over, Act};
+    use grow::civ::resources::Res;
+    let (mut sim, mut state) = peopled(48, 24);
+    state.civ.experiments.on = true;
+    state.civ.experiments.control.on = true;
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..600 {
+        sim.step(&state, dt);
+    }
+    let id = outdoors(&sim);
+    assert!(take_over(&mut sim, id));
+    let pi = sim.people.index_of(id).expect("still there");
+    // Empty handed to start with, whatever they were doing before.
+    let (res, n) = sim.people[pi].drop_load();
+    let (c, r) = (sim.people[pi].cell_col(), sim.people[pi].cell_row());
+    if let Some(res) = res {
+        sim.add_pile(c, r, res, n);
+    }
+    // A load at their feet, and nothing else near enough to be picked up
+    // instead.
+    sim.piles.clear();
+    sim.add_pile(c, r, Res::Stone, 4.0);
+
+    let said = act(&mut sim, &state, Act::Carry);
+    let pi = sim.people.index_of(id).expect("still there");
+    assert!(sim.people[pi].carrying(), "the load was not picked up: {said}");
+    assert_eq!(sim.people[pi].carry.res, Some(Res::Stone));
+
+    let said = act(&mut sim, &state, Act::Carry);
+    let pi = sim.people.index_of(id).expect("still there");
+    assert!(!sim.people[pi].carrying(), "the load was not put down: {said}");
+    assert!(
+        sim.piles.iter().any(|p| p.res == Res::Stone && p.n > 0.0),
+        "what they put down is nowhere on the ground"
+    );
+}
+
+#[test]
+fn a_settler_being_driven_can_be_fed_from_their_own_hands() {
+    use grow::civ::control::{act, take_over, Act};
+    use grow::civ::resources::Res;
+    let (mut sim, mut state) = peopled(48, 24);
+    state.civ.experiments.on = true;
+    state.civ.experiments.control.on = true;
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..300 {
+        sim.step(&state, dt);
+    }
+    let id = outdoors(&sim);
+    assert!(take_over(&mut sim, id));
+    let pi = sim.people.index_of(id).expect("still there");
+    sim.people[pi].drop_load();
+    sim.people[pi].pick(Res::Food, 4.0);
+    sim.people[pi].hunger = 0.9;
+
+    let said = act(&mut sim, &state, Act::Eat);
+    let pi = sim.people.index_of(id).expect("still there");
+    assert!(sim.people[pi].hunger < 0.9, "eating did nothing: {said}");
+    assert!(sim.people[pi].carry.n < 4.0, "the meal came from nowhere");
+}
+
+#[test]
+fn taking_over_somebody_who_has_died_lets_go_of_them() {
+    use grow::civ::control::{driven_index, take_over};
+    let (mut sim, mut state) = peopled(48, 24);
+    state.civ.experiments.on = true;
+    state.civ.experiments.control.on = true;
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..300 {
+        sim.step(&state, dt);
+    }
+    let id = outdoors(&sim);
+    assert!(take_over(&mut sim, id));
+    let pi = sim.people.index_of(id).expect("still there");
+    sim.people[pi].alive = false;
+    assert!(driven_index(&mut sim).is_none());
+    assert_eq!(sim.driven, 0, "the hand is still on somebody who is gone");
+}
+
 // ---- pulling things down -------------------------------------------------
 
 #[test]

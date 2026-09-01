@@ -401,6 +401,23 @@ pub struct Settlement {
     /// hungry, but they do not walk, work or take on anything new until they
     /// are put down again.
     pub held: u32,
+    /// Somebody has been out there long enough to give up on going home, so
+    /// the founding pass is worth running this tick. Set by `watch_stray` and
+    /// cleared by the pass, which is what keeps a scan of everybody off every
+    /// tick of every settlement.
+    pub stray_ready: bool,
+    /// Whether a hand has changed what the ground is anywhere, which is what
+    /// decides whether the map has to be written down or can be made again
+    /// from the seed. Not saved as such: a save that carries painted ground
+    /// says so by having any.
+    pub terrain_painted: bool,
+    /// The settler somebody has taken over, or nobody. They plan nothing for
+    /// themselves while it is set. Not saved, the same as being held: a
+    /// settlement picked up again is one nobody has hold of.
+    pub driven: u32,
+    /// Where the hand steering them is pushing, in cells either way, one at
+    /// full push. A key being held down, or a stick pushed over.
+    pub drive: (f64, f64),
     /// Plants the pointer is part way through cutting. Not saved: a hold that
     /// was interrupted is not something to come back to.
     pub hand: Vec<HandCut>,
@@ -491,6 +508,10 @@ impl Settlement {
             next_colony_id: 1,
             focus: 0,
             held: 0,
+            stray_ready: false,
+            terrain_painted: false,
+            driven: 0,
+            drive: (0.0, 0.0),
             hand: Vec::new(),
             lore: Lore::default(),
             boats: Vec::new(),
@@ -549,6 +570,8 @@ impl Settlement {
 
         self.plant_sim.wild_scale = cfg.terrain.wildness.max(0.1);
         self.terrain = Terrain::new(self.world(), &cfg.terrain, seed);
+        self.terrain_painted = false;
+        self.plant_sim.zones = Vec::new();
         self.blocked = vec![0; n];
         for i in 0..n {
             if self.terrain.kind[i] == Cell::Water as u8 {
@@ -2290,6 +2313,135 @@ impl Settlement {
 
     /// Leaves a load on the ground and says which pile it went into, so a
     /// caller with something to say about that pile can find it again.
+    /// Turns one cell into something else: water where there was grass, rock
+    /// where there was sand. Ground with something built on it is left alone -
+    /// the map moving under a building is the one thing this must not do - and
+    /// anything standing in a cell that becomes water goes with it.
+    ///
+    /// This is the ground being authored rather than generated, so it is
+    /// written down with the settlement from here on.
+    pub fn paint_cell(&mut self, col: i32, row: i32, kind: Cell) -> bool {
+        if !self.in_bounds(col, row) {
+            return false;
+        }
+        let i = self.idx(col, row);
+        if self.build_grid[i] != 0 {
+            return false;
+        }
+        if self.terrain.kind[i] == kind as u8 {
+            return false;
+        }
+        self.terrain.kind[i] = kind as u8;
+        // Painted water is a lake: it belongs to no river and runs nowhere,
+        // which is what keeps a boat from trying to follow it.
+        if kind == Cell::Water {
+            self.terrain.river_index[i] = 0;
+            self.terrain.flow[i] = -1;
+            self.blocked[i] = 1;
+            self.drown_cell(col, row);
+        } else {
+            self.blocked[i] = 0;
+        }
+        self.terrain.water_cells = self
+            .terrain
+            .kind
+            .iter()
+            .filter(|&&k| k == Cell::Water as u8)
+            .count();
+        self.terrain_painted = true;
+        // The cached background is painted from the terrain and kept until the
+        // terrain says otherwise, so drawing on the ground has to say so or the
+        // change is not on the picture until something else rebuilds it.
+        self.terrain_version += 1;
+        self.ground_dirty = true;
+        self.buffer_dirty = true;
+        true
+    }
+
+    /// What a cell turned to water takes with it: what was growing there and
+    /// what was lying on it. People and boats sort themselves out - somebody
+    /// standing in new water swims out of it, the same as anybody put down in
+    /// a river.
+    fn drown_cell(&mut self, col: i32, row: i32) {
+        let mut at = 0;
+        while at < self.plant_sim.plants.len() {
+            let p = &self.plant_sim.plants[at];
+            if p.col == col && p.row == row {
+                self.plant_sim.remove_plant_at(at);
+            } else {
+                at += 1;
+            }
+        }
+        self.piles.retain(|p| p.col != col || p.row != row);
+    }
+
+    /// A whole selection turned into something else in one go. The coarse
+    /// plant index is rebuilt once at the end rather than once a cell, which
+    /// is the difference between painting a lake and waiting for one.
+    pub fn paint_cells(&mut self, cells: &[(i32, i32)], kind: Cell) -> usize {
+        let mut done = 0;
+        for &(c, r) in cells {
+            if self.paint_cell(c, r, kind) {
+                done += 1;
+            }
+        }
+        if done > 0 {
+            self.rebuild_plant_index();
+        }
+        done
+    }
+
+    /// The same for zones, which change nothing about the ground itself and so
+    /// cost nothing but the marking.
+    pub fn zone_cells(&mut self, cells: &[(i32, i32)], zone: crate::world::Zone) -> usize {
+        let mut done = 0;
+        for &(c, r) in cells {
+            if !self.in_bounds(c, r) {
+                continue;
+            }
+            self.terrain.set_zone(c, r, zone);
+            done += 1;
+        }
+        if done > 0 {
+            self.sync_zones();
+        }
+        done
+    }
+
+    /// Hands the wilderness the zones drawn on the map, so what may take root
+    /// where is asked once rather than looked up through the terrain on every
+    /// attempt. Empty until somebody draws one.
+    pub fn sync_zones(&mut self) {
+        self.plant_sim.zones = if self.terrain.any_zones() {
+            self.terrain.zone.clone()
+        } else {
+            Vec::new()
+        };
+    }
+
+    /// Grows one plant where it is asked for, if anything can grow there. The
+    /// wilderness's own spawn, with the town's blocked ground handed to it, so
+    /// a tree cannot be sown inside a wall. A zone is not asked: this is a hand
+    /// planting something, and the hand outranks what the map was zoned for.
+    pub fn sow(&mut self, state: &State, species_index: usize, col: i32, row: i32) -> bool {
+        if !self.in_bounds(col, row) || species_index >= state.species.len() {
+            return false;
+        }
+        if self.in_water(col, row) {
+            return false;
+        }
+        let blocked = self.blocked.clone();
+        let grown = self
+            .plant_sim
+            .sow(state, species_index, col, row, Some(&blocked))
+            .is_some();
+        if grown {
+            self.buffer_dirty = true;
+            self.ground_dirty = true;
+        }
+        grown
+    }
+
     pub fn add_pile(&mut self, col: i32, row: i32, res: Res, n: f64) -> Option<usize> {
         if n <= 0.0 {
             return None;
@@ -2774,9 +2926,16 @@ impl Settlement {
             let _t = phases::time(Phase::People);
             for pi in self.people.live_indices() {
                 update_person(self, state, pi, dt);
+                self.watch_stray(state, pi, dt);
                 if !self.people[pi].alive {
                     self.bury_person(state, pi);
                 }
+            }
+            // Founding a town moves people between colonies, so it happens
+            // after the loop that walks them rather than inside it, and only
+            // on a tick where somebody has actually given up on going home.
+            if self.stray_ready {
+                self.stray_tick(state);
             }
         }
 
@@ -2912,6 +3071,158 @@ impl Settlement {
         // The archive is only trimmed here, where nothing is holding a slot.
         self.people.prune(state.civ.people_archive.max(50));
         self.refresh_colonies();
+    }
+
+    /// Somebody a long way from their own town, for long enough, stops walking
+    /// home and starts a town where they are.
+    ///
+    /// This is what happens to anybody set down across the map, whether they
+    /// were carried there, walked there by hand, or simply arrived: the walk
+    /// home was always the answer before, however far it was. A stray founds
+    /// with nothing: no stores, no storehouse, and no party sent out to join
+    /// them, because nobody planned this. What they do have is what they know,
+    /// which travels with the people who know it.
+    fn stray_tick(&mut self, state: &State) {
+        self.stray_ready = false;
+        let cfg = &state.civ.build;
+        if !cfg.strays_settle {
+            return;
+        }
+        let live = self.colonies.iter().filter(|c| !c.abandoned).count() as i32;
+        if live >= cfg.max_colonies {
+            return;
+        }
+        let wait = cfg.stray_wait.max(0.5);
+        let founder = self
+            .people
+            .live_indices()
+            .into_iter()
+            .find(|&pi| self.people[pi].stray_time >= wait);
+        let pi = match founder {
+            Some(pi) => pi,
+            None => return,
+        };
+        let (px, py) = (self.people[pi].x, self.people[pi].y);
+        let spot = match self.stray_site(state, px, py) {
+            Some(spot) => spot,
+            // Nowhere to put a town: they keep walking, and the clock starts
+            // again wherever they end up.
+            None => {
+                self.people[pi].stray_time = 0.0;
+                return;
+            }
+        };
+        let from = self.people[pi].colony;
+        let parent = self.colony_index(from);
+        let new_ci = self.found_colony(state, spot, from);
+        let new_id = self.colonies[new_ci].id;
+        let name = self.colonies[new_ci].name.clone();
+        if let Some(ci) = parent {
+            // Knowledge travels with the people who have it, which is the whole
+            // of what they bring.
+            self.colonies[new_ci].tech.known = self.colonies[ci].tech.known.clone();
+            self.colonies[new_ci].refresh_tech();
+        }
+
+        // Whoever else is out there with them, and has also given up, is in the
+        // town they are standing in.
+        let day = self.day;
+        let joining: Vec<usize> = self
+            .people
+            .live_indices()
+            .into_iter()
+            .filter(|&i| {
+                let p = &self.people[i];
+                if p.colony == new_id || p.aboard != 0 || self.held == p.id {
+                    return false;
+                }
+                let near = (p.x - px).hypot(p.y - py) <= cfg.stray_distance.max(8.0) * 0.25;
+                near && (i == pi || p.stray_time > 0.0 || !p.adult())
+            })
+            .collect();
+        for i in joining {
+            self.leave_building(i);
+            abandon_task(self, i);
+            self.release_deed(i);
+            self.release_stall(i);
+            let p = &mut self.people[i];
+            p.colony = new_id;
+            p.home = 0;
+            p.work = 0;
+            p.stray_time = 0.0;
+            p.log(day, format!("settled {name}"));
+        }
+        self.refresh_colonies();
+        let settlers = self.colony_population(new_id);
+        self.colonies[new_ci]
+            .econ
+            .log_event(format!("{settlers} too far from home found {name}"), day);
+        self.assign_homes(new_ci);
+        self.assign_workplaces(state, new_ci);
+        if let Some(ci) = parent {
+            self.assign_homes(ci);
+            self.assign_workplaces(state, ci);
+        }
+    }
+
+    /// How long somebody has been a long way from their own town, counted
+    /// while they are out there and dropped the moment they are near it again.
+    ///
+    /// Seconds rather than days, and few of them: a settler walks two and a
+    /// half cells a second, so anybody who means to go home is back inside the
+    /// distance in well under a minute. A patience measured in days would only
+    /// ever be spent walking.
+    pub fn watch_stray(&mut self, state: &State, pi: usize, dt: f64) {
+        let cfg = &state.civ.build;
+        let p = &self.people[pi];
+        // At sea or in a hand is not out there by any choice of theirs, and a
+        // child founds nothing.
+        if !cfg.strays_settle || !p.adult() || p.aboard != 0 || self.held == p.id {
+            self.people[pi].stray_time = 0.0;
+            return;
+        }
+        let center = match self.colony_index(p.colony) {
+            Some(ci) => self.colonies[ci].center,
+            None => return,
+        };
+        let d = (center.0 as f64 - p.x).hypot(center.1 as f64 - p.y);
+        if d < cfg.stray_distance.max(8.0) {
+            self.people[pi].stray_time = 0.0;
+            return;
+        }
+        self.people[pi].stray_time += dt;
+        if self.people[pi].stray_time >= cfg.stray_wait.max(0.5) {
+            self.stray_ready = true;
+        }
+    }
+
+    /// Where a stray puts their town: the cell they are standing in if it will
+    /// take one, or the nearest that will, and never so close to another town
+    /// that the two would be one place.
+    fn stray_site(&self, state: &State, px: f64, py: f64) -> Option<(i32, i32)> {
+        let gap = state.civ.build.colony_spacing.max(8) as f64;
+        let centers: Vec<(i32, i32)> =
+            self.colonies.iter().filter(|c| !c.abandoned).map(|c| c.center).collect();
+        let (cx, cy) = (px.floor() as i32, py.floor() as i32);
+        for radius in 0..6 {
+            for r in cy - radius..=cy + radius {
+                for c in cx - radius..=cx + radius {
+                    if !self.in_bounds(c, r) || !self.walkable(c, r) {
+                        continue;
+                    }
+                    if !self.terrain.is_buildable(c, r) || self.terrain.deposit_at(c, r).is_some() {
+                        continue;
+                    }
+                    let close = centers
+                        .iter()
+                        .any(|&(x, y)| ((x - c) as f64).hypot((y - r) as f64) < gap);
+                    if !close {
+                        return Some((c, r));
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// A house nobody lives in comes down, a day at a time.

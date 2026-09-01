@@ -8,8 +8,81 @@ use crate::civ::config::FOLIAGE_MODES;
 use crate::civ::terrain::{DepositKind, DEPOSIT_KINDS};
 use crate::ui::{
     app_bool, app_button, app_color, app_num, app_restart_num, app_select, append, btn_row, clear,
-    el, note, sampler_options, section, stat, NumOpts,
+    danger_button, el, note, sampler_options, section, stat, NumOpts, Scope,
 };
+
+/// What stands behind the map. Putting one up is a press on the sky with the
+/// placing menu holding scenery; this is where what is standing is adjusted,
+/// given something to be made of, and taken down again.
+fn scenery_section(app: &App, h: &Handle) -> Element {
+    let mut rows = vec![note(
+        "Hills and mountains in the sky band, behind everything on the map. They are scenery \
+         and nothing else: nobody walks on one, nothing is built on one, and the town never \
+         asks about them. How far off a piece is hazes it into the sky and decides what stands \
+         in front of what, so a near ridge is drawn over a far one whatever order they went up \
+         in.",
+    )];
+    if app.state.civ.scenery.is_empty() {
+        rows.push(note(
+            "Nothing behind the map yet. Turn Place on above the map, choose Scenery in the \
+             placing menu on the Build panel, and press the sky.",
+        ));
+    }
+    for (i, piece) in app.state.civ.scenery.iter().enumerate() {
+        rows.push(el("h4").text(&piece.label()).get());
+        rows.push(app_select(h, "Made of", &piece.sampler.clone(), &sampler_options(app), None,
+            move |app, v| {
+                if let Some(p) = app.state.civ.scenery.get_mut(i) {
+                    p.sampler = v.to_string();
+                }
+                crate::app::repaint_scenery(app);
+            }));
+        rows.push(scene_num(h, i, "Across (cells)", piece.x, -200.0, 600.0, 1.0,
+            Some("where its middle stands; outside the map is allowed"), |p, v| p.x = v));
+        rows.push(scene_num(h, i, "Width (cells)", piece.width, 2.0, 200.0, 1.0, None,
+            |p, v| p.width = v));
+        rows.push(scene_num(h, i, "Height (cells)", piece.height, 0.5, 60.0, 0.5, None,
+            |p, v| p.height = v));
+        rows.push(scene_num(h, i, "How far off", piece.distance, 0.0, 1.0, 0.05,
+            Some("hazes it into the sky, and puts it behind anything nearer"),
+            |p, v| p.distance = v));
+        rows.push(scene_num(h, i, "Snow line", piece.snow, 0.0, 1.0, 0.05,
+            Some("as a share of its height; 1 is no snow at all"), |p, v| p.snow = v));
+        let h2 = h.clone();
+        rows.push(danger_button("Take it down", Scope::Panel, move || {
+            let mut sh = h2.borrow_mut();
+            sh.app.record("scenery", false);
+            if i < sh.app.state.civ.scenery.len() {
+                sh.app.state.civ.scenery.remove(i);
+            }
+            crate::app::repaint_scenery(&mut sh.app);
+            sh.app.rebuild_panel = true;
+        }));
+    }
+    section("Behind the map", rows)
+}
+
+/// One number on one piece of scenery. The ground is redrawn on every change,
+/// which is cheap: the cache is only the sky band and the land under it.
+#[allow(clippy::too_many_arguments)]
+fn scene_num(
+    h: &Handle,
+    at: usize,
+    label: &str,
+    value: f64,
+    min: f64,
+    max: f64,
+    step: f64,
+    hint: Option<&str>,
+    apply: fn(&mut crate::civ::scenery::Scene, f64),
+) -> Element {
+    app_num(h, label, value, NumOpts { min, max, step }, hint, move |app, v| {
+        if let Some(piece) = app.state.civ.scenery.get_mut(at) {
+            apply(piece, v);
+        }
+        crate::app::repaint_scenery(app);
+    })
+}
 
 pub struct LandPanel {
     summary: Element,
@@ -143,6 +216,9 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         deposit_fields.push(block);
     }
     append(root, section("Deposits", deposit_fields));
+
+    append(root, crate::ui::zone_paint::build(app, h));
+    append(root, scenery_section(app, h));
 
     let view = &app.state.civ.view;
     let mut view_fields = vec![

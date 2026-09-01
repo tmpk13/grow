@@ -124,6 +124,39 @@ fn json<T: serde::Serialize>(value: &T) -> String {
 }
 
 #[test]
+fn ground_drawn_on_by_hand_comes_back_with_the_settlement() {
+    use grow::civ::terrain::Cell;
+    use grow::world::Zone;
+    let state = State::new();
+    let mut original = founded(&state, 0.4);
+
+    // A row of cells turned to water, and a row zoned bare, both of them
+    // things the map would never have generated for itself here.
+    let cells: Vec<(i32, i32)> = (4..12).map(|c| (c, 6)).collect();
+    let zoned: Vec<(i32, i32)> = (4..12).map(|c| (c, 8)).collect();
+    let painted = original.paint_cells(&cells, Cell::Water);
+    original.zone_cells(&zoned, Zone::Bare);
+    assert!(painted > 0, "nothing took the water");
+
+    let snapshot = Snapshot::from_json(&capture(&original, &state)).expect("reads back");
+    let mut loaded = Settlement::new(&state);
+    restore(&mut loaded, &state, snapshot).expect("the world matches");
+
+    for &(c, r) in &cells {
+        assert_eq!(
+            loaded.in_water(c, r),
+            original.in_water(c, r),
+            "the ground at {c},{r} came back different"
+        );
+        assert_eq!(loaded.walkable(c, r), original.walkable(c, r));
+    }
+    for &(c, r) in &zoned {
+        assert_eq!(loaded.terrain.zone_at(c, r), Zone::Bare, "the zone at {c},{r} was lost");
+    }
+    assert!(!loaded.plant_sim.zones.is_empty(), "the restored wilderness was not told the zones");
+}
+
+#[test]
 fn a_restored_settlement_carries_on_the_same_way() {
     let state = State::new();
     let mut original = founded(&state, 8.0);

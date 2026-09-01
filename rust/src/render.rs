@@ -380,6 +380,20 @@ impl Viewport {
     /// clamped to the map and not rounded to a cell: a settler stands at a
     /// point rather than in the middle of a square, and whether the point is
     /// on the map at all is the caller's question.
+    /// Where a press landed in the picture itself, in world pixels: the sky
+    /// band included, which the ground coordinates cannot say because there is
+    /// no row above the first one.
+    pub fn frame_at(&self, client_x: f64, client_y: f64) -> Option<(f64, f64)> {
+        if self.zoom <= 0.0 {
+            return None;
+        }
+        let r = self.canvas.get_bounding_client_rect();
+        Some((
+            (client_x - r.left() - self.pan_x) / self.zoom,
+            (client_y - r.top() - self.pan_y) / self.zoom,
+        ))
+    }
+
     pub fn ground_at(&self, client_x: f64, client_y: f64, world: &World) -> Option<(f64, f64)> {
         if self.zoom <= 0.0 || world.cell_px <= 0 || world.depth_px <= 0 {
             return None;
