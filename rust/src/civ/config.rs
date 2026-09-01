@@ -184,7 +184,9 @@ pub struct ViewConfig {
     /// The wind in the trees: standing plants lean from the tips, each with
     /// its own phase, and a gust that travels across the map. Runs on
     /// simulation time, so a paused world holds still and two runs of one
-    /// seed stay the same picture.
+    /// seed stay the same picture. Off by default: a still wood is the
+    /// quieter picture to arrive at, and the motion costs a repaint of every
+    /// plant on screen.
     pub sway: bool,
     /// How far the crown of a full grown tree leans, in pixels. Small plants
     /// lean less by their height.
@@ -311,7 +313,7 @@ impl Default for ViewConfig {
             foliage: "solid".into(),
             foliage_alpha: 0.5,
             smoke: true,
-            sway: true,
+            sway: false,
             sway_amp: 1.6,
             sway_speed: 0.4,
             clouds: true,
