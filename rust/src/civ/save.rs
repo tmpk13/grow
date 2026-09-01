@@ -102,6 +102,10 @@ pub struct Snapshot {
     pub social_timer: f64,
     pub births: u32,
     pub deaths: u32,
+    /// Camp fires lit since the founding. Written down for the same reason the
+    /// births are: nothing standing on the map remembers it.
+    #[serde(default)]
+    pub fires_lit: u32,
     pub dead: Vec<Obituary>,
     pub name: String,
     pub center: Option<(i32, i32)>,
@@ -151,6 +155,7 @@ struct SnapshotRef<'a> {
     social_timer: f64,
     births: u32,
     deaths: u32,
+    fires_lit: u32,
     dead: &'a [Obituary],
     name: &'a str,
     center: Option<(i32, i32)>,
@@ -205,6 +210,7 @@ pub fn capture(sim: &Settlement, state: &State) -> String {
         social_timer: sim.social_timer,
         births: sim.births,
         deaths: sim.deaths,
+        fires_lit: sim.fires_lit,
         dead: &sim.dead,
         name: &sim.name,
         center: sim.center,
@@ -317,6 +323,7 @@ pub fn restore(sim: &mut Settlement, state: &State, snap: Snapshot) -> Result<()
     sim.social_timer = snap.social_timer;
     sim.births = snap.births;
     sim.deaths = snap.deaths;
+    sim.fires_lit = snap.fires_lit;
     sim.dead = snap.dead;
     sim.name = snap.name;
     sim.center = snap.center;
@@ -382,7 +389,7 @@ pub fn bytes_from_rle(raw: &str) -> Vec<u8> {
 fn rebuild_ground(sim: &mut Settlement) {
     let cols = sim.world().cols;
     for i in 0..sim.blocked.len() {
-        sim.blocked[i] = u8::from(sim.terrain.kind[i] == Cell::Water as u8);
+        sim.blocked[i] = u8::from(Cell::from_u8(sim.terrain.kind[i]).bare());
         sim.build_grid[i] = 0;
         sim.gates[i] = 0;
     }

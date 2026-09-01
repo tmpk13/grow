@@ -137,6 +137,11 @@ pub struct Building {
     /// has finished taking it down.
     #[serde(default)]
     pub condemned: bool,
+    /// Settlement seconds a temporary build has stood since it was finished.
+    /// Past its type's lifetime it goes out. Everything meant to last has no
+    /// lifetime and so never counts.
+    #[serde(default)]
+    pub burned: f64,
 }
 
 /// What a building is, through a save and back: the definition is one of the
@@ -177,6 +182,19 @@ impl Building {
         c >= self.col && c < self.col + self.w && r >= self.row && r < self.row + self.h
     }
 
+    /// How far through its life a temporary build is, from just lit at zero to
+    /// out at one. Zero for everything meant to last. Asked by the drawing,
+    /// by the key its picture is cached under and by the tick that takes it
+    /// away, so the setting that stretches a life is applied once here rather
+    /// than three times over.
+    pub fn burnt_through(&self, cfg: &crate::civ::buildings::BuildConfig) -> f64 {
+        let life = self.def.lifetime * cfg.camp_fire_burn.max(0.01);
+        if life <= 0.0 {
+            0.0
+        } else {
+            clamp01(self.burned / life)
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -434,10 +452,19 @@ pub struct Settlement {
     pub day: i32,
     pub ticks: u64,
     pub traffic_timer: f64,
+    /// Simulated seconds since anybody was asked whether they would light a
+    /// fire. The question walks the register, and the answer cannot change
+    /// between one tick and the next, so it is asked about once a second.
+    /// Not saved: a restored settlement asks again on its first night.
+    pub fire_timer: f64,
     /// Counts down to the next pass over who is standing near whom.
     pub social_timer: f64,
     pub births: u32,
     pub deaths: u32,
+    /// Camp fires lit since the settlement was founded. A fire leaves nothing
+    /// behind when it goes out, so what is standing says almost nothing about
+    /// how much of the night is being spent out of doors; this does.
+    pub fires_lit: u32,
     pub dead: Vec<Obituary>,
     /// The name of the first landing, which is what the world goes by.
     pub name: String,
@@ -475,8 +502,11 @@ pub struct Settlement {
     /// the sickness check reads a handful of wells rather than sweeping every
     /// building per person per tick.
     health_sources: Vec<(f64, f64, f64, f64, i32)>,
-    /// Built lamps: center and lit radius squared, kept the same way.
-    light_sources: Vec<(f64, f64, f64)>,
+    /// Built lights: center, lit radius squared, and whether the thing
+    /// throwing it is there to stay. A fire counts as light to anybody
+    /// standing in it and counts for nothing when the town is deciding
+    /// whether a street needs a lamp post.
+    light_sources: Vec<(f64, f64, f64, bool)>,
 }
 
 impl Settlement {
@@ -523,9 +553,11 @@ impl Settlement {
             day: 0,
             ticks: 0,
             traffic_timer: 0.0,
+            fire_timer: 0.0,
             social_timer: 0.0,
             births: 0,
             deaths: 0,
+            fires_lit: 0,
             dead: Vec::new(),
             name: String::new(),
             center: None,
@@ -574,7 +606,7 @@ impl Settlement {
         self.plant_sim.zones = Vec::new();
         self.blocked = vec![0; n];
         for i in 0..n {
-            if self.terrain.kind[i] == Cell::Water as u8 {
+            if Cell::from_u8(self.terrain.kind[i]).bare() {
                 self.blocked[i] = 1;
             }
         }
@@ -606,9 +638,11 @@ impl Settlement {
         self.day = 0;
         self.ticks = 0;
         self.traffic_timer = 0.0;
+        self.fire_timer = 0.0;
         self.social_timer = 0.0;
         self.births = 0;
         self.deaths = 0;
+        self.fires_lit = 0;
         self.dead.clear();
         self.name = String::new();
         self.center = None;
@@ -690,7 +724,7 @@ impl Settlement {
                     gates[to] = self.gates[from];
                     traffic[to] = self.traffic[from];
                     plant_block[to] = self.plant_block[from];
-                } else if self.terrain.kind[to] == Cell::Water as u8 {
+                } else if Cell::from_u8(self.terrain.kind[to]).bare() {
                     blocked[to] = 1;
                 }
             }
@@ -1109,7 +1143,7 @@ impl Settlement {
             return false;
         }
         let i = self.idx(c, r);
-        self.terrain.kind[i] != Cell::Water as u8
+        Cell::from_u8(self.terrain.kind[i]).walkable()
             && (self.build_grid[i] == 0 || self.gates[i] != 0)
     }
 
@@ -1213,7 +1247,9 @@ impl Settlement {
                 return false;
             }
             let i = (r * cols + c) as usize;
-            (build[i] == 0 || gates[i] != 0) && plants[i] == 0
+            (build[i] == 0 || gates[i] != 0)
+                && plants[i] == 0
+                && kind[i] != Cell::Cliff as u8
         };
         let swim = swim_cost;
         let cost = |i: usize, base: i32| step_cost(kind[i], traffic[i], swim, base);
@@ -1251,7 +1287,7 @@ impl Settlement {
                 return false;
             }
             let i = (r * cols + c) as usize;
-            kind[i] != Cell::Water as u8 && (build[i] == 0 || gates[i] != 0)
+            Cell::from_u8(kind[i]).walkable() && (build[i] == 0 || gates[i] != 0)
         };
         let cost = |i: usize, base: i32| step_cost(Cell::Grass as u8, traffic[i], 1.0, base);
         let out = grid.find(from, to, 24_000, passable, cost);
@@ -1376,6 +1412,7 @@ impl Settlement {
             decay: 0.0,
             soak: None,
             condemned: false,
+            burned: 0.0,
         };
         self.buildings.push(b);
         let bi = self.buildings.len() - 1;
@@ -1423,7 +1460,7 @@ impl Settlement {
                 }
                 self.build_grid[i] = 0;
                 self.gates[i] = 0;
-                if self.terrain.kind[i] != Cell::Water as u8 {
+                if !Cell::from_u8(self.terrain.kind[i]).bare() {
                     self.blocked[i] = 0;
                 }
             }
@@ -1981,9 +2018,11 @@ impl Settlement {
                 _ => continue,
             };
             // A house already on a lit street needs no second lamp, and the
-            // fear it was raised against goes with it.
+            // fear it was raised against goes with it. A fire burning outside
+            // tonight is not a lit street: it will be ash by tomorrow, which
+            // is the whole reason somebody pays for a post instead.
             let (hc, hr) = (self.buildings[home].col, self.buildings[home].row);
-            if self.lit_at(hc, hr) {
+            if self.lit_for_good_at(hc, hr) {
                 self.people[pi].fear = 0.0;
                 continue;
             }
@@ -2005,6 +2044,138 @@ impl Settlement {
                 .log_event(format!("{name} paid for a lamp post"), day);
             return;
         }
+    }
+
+    /// The fires: the ones burning down, and the one somebody lights.
+    ///
+    /// A temporary build is the only thing on the map that takes itself away
+    /// again. Nothing is salvaged when one goes out - it burned - and nothing
+    /// is written in the log, because a fire out at dawn is not news.
+    fn fires_tick(&mut self, state: &State, dt: f64) {
+        let cfg = &state.civ.build;
+        let now = self.time;
+        let mut out: Vec<i32> = Vec::new();
+        for b in &mut self.buildings {
+            if !b.built || b.def.lifetime <= 0.0 {
+                continue;
+            }
+            b.burned += dt;
+            // Burning is what it does, and what it does is what puts smoke
+            // over it: nobody works at a fire to mark it busy.
+            b.active = now;
+            if b.burnt_through(cfg) >= 1.0 {
+                out.push(b.id);
+            }
+        }
+        for id in out {
+            if let Some(bi) = self.building_index(id) {
+                self.remove_building(bi);
+                self.ground_dirty = true;
+            }
+        }
+        self.fire_timer += dt;
+        if self.fire_timer >= 1.0 {
+            self.fire_timer = 0.0;
+            self.light_camp_fires(state);
+        }
+    }
+
+    /// Somebody caught out after dark, out of every light and with the fear to
+    /// show for it, stops walking and lights a fire where they stand.
+    ///
+    /// The rule is deliberately the lamp's rule with the money taken out of
+    /// it. A lamp is bought by whoever can afford one and stands outside their
+    /// own door forever; a fire is lit by whoever is furthest gone, wherever
+    /// they happen to be standing, and is gone by morning. The threshold sits
+    /// above the lamp's on purpose: a fire lights the cell it stands on, so it
+    /// eases the dread that would otherwise have bought a post, and putting it
+    /// first would mean no town ever lit a street.
+    ///
+    /// One town gets one fire per pass, and never more than the cap: a bad
+    /// night should read as a scatter of lights over the map rather than as
+    /// the wilderness alight.
+    fn light_camp_fires(&mut self, state: &State) {
+        let cfg = &state.civ.build;
+        if !cfg.camp_fires || !self.night_lights(state) {
+            return;
+        }
+        let def = match building_by_id("campfire") {
+            Some(def) => def,
+            None => return,
+        };
+        let want = clamp01(cfg.camp_fire_fear);
+        let cap = cfg.camp_fires_at_once.max(0);
+        for ci in 0..self.colonies.len() {
+            let colony = self.colonies[ci].id;
+            if !def.base && !self.colonies[ci].unlocked.contains(def.id) {
+                continue;
+            }
+            let burning = self
+                .buildings
+                .iter()
+                .filter(|b| b.colony == colony && b.def.structure == Structure::Fire)
+                .count() as i32;
+            if burning >= cap {
+                continue;
+            }
+            // The most frightened first, so the one town's one fire goes to
+            // whoever the night has been hardest on.
+            let mut candidates: Vec<usize> = self
+                .people
+                .live_indices()
+                .into_iter()
+                .filter(|&pi| {
+                    let p = &self.people[pi];
+                    p.colony == colony && p.fear >= want && !p.indoors()
+                })
+                .collect();
+            candidates.sort_by(|a, b| self.people[*b].fear.total_cmp(&self.people[*a].fear));
+
+            for pi in candidates {
+                let (c, r) = (self.people[pi].cell_col(), self.people[pi].cell_row());
+                // Already standing in somebody's light, their own fire from a
+                // minute ago included: nothing to light.
+                if self.lit_at(c, r) {
+                    continue;
+                }
+                let at = match self.fire_spot(def, c, r) {
+                    Some(at) => at,
+                    None => continue,
+                };
+                if self.place_building(state, ci, def.id, at.0, at.1, true).is_none() {
+                    continue;
+                }
+                // The fear is not wiped, only lit against: sitting by a fire
+                // eases it at the rate any other light does, through the same
+                // path, and what is left of it is still what eventually buys a
+                // lamp post. A town that lights fires has to be a town that
+                // ends up with lamps.
+                let day = self.day;
+                self.fires_lit += 1;
+                self.people[pi].log(day, "lit a fire out in the dark".to_string());
+                break;
+            }
+        }
+    }
+
+    /// A cell for a fire: the one they are standing on if it is free, then
+    /// what is beside it. A fire claims its cell like a lamp post does, and a
+    /// person standing on a cell does not free it.
+    fn fire_spot(&self, def: &BuildingDef, col: i32, row: i32) -> Option<(i32, i32)> {
+        for ring in 0..=2i32 {
+            for dr in -ring..=ring {
+                for dc in -ring..=ring {
+                    if ring > 0 && dc.abs() != ring && dr.abs() != ring {
+                        continue;
+                    }
+                    let (c, r) = (col + dc, row + dr);
+                    if crate::civ::planner::fits(self, def, c, r, 0, 0) {
+                        return Some((c, r));
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Somewhere just outside a house to stand a lamp. Close in first, so the
@@ -2328,26 +2499,34 @@ impl Settlement {
         if self.build_grid[i] != 0 {
             return false;
         }
-        if self.terrain.kind[i] == kind as u8 {
+        let was = Cell::from_u8(self.terrain.kind[i]);
+        if was == kind {
             return false;
         }
         self.terrain.kind[i] = kind as u8;
+        // Kept as a running count rather than recounted. A whole map laid down
+        // from a drawing is one call per cell, and a count that walked the
+        // grid every time would be the square of the map.
+        match (was == Cell::Water, kind == Cell::Water) {
+            (false, true) => self.terrain.water_cells += 1,
+            (true, false) => self.terrain.water_cells = self.terrain.water_cells.saturating_sub(1),
+            _ => {}
+        }
         // Painted water is a lake: it belongs to no river and runs nowhere,
         // which is what keeps a boat from trying to follow it.
         if kind == Cell::Water {
             self.terrain.river_index[i] = 0;
             self.terrain.flow[i] = -1;
             self.blocked[i] = 1;
-            self.drown_cell(col, row);
+            self.clear_cell(col, row);
+        } else if kind == Cell::Cliff {
+            // Bare rock standing up: nothing roots in it and nothing that was
+            // rooted there is still there.
+            self.blocked[i] = 1;
+            self.clear_cell(col, row);
         } else {
             self.blocked[i] = 0;
         }
-        self.terrain.water_cells = self
-            .terrain
-            .kind
-            .iter()
-            .filter(|&&k| k == Cell::Water as u8)
-            .count();
         self.terrain_painted = true;
         // The cached background is painted from the terrain and kept until the
         // terrain says otherwise, so drawing on the ground has to say so or the
@@ -2358,11 +2537,12 @@ impl Settlement {
         true
     }
 
-    /// What a cell turned to water takes with it: what was growing there and
-    /// what was lying on it. People and boats sort themselves out - somebody
-    /// standing in new water swims out of it, the same as anybody put down in
-    /// a river.
-    fn drown_cell(&mut self, col: i32, row: i32) {
+    /// What a cell turned to water or to standing rock takes with it: what was
+    /// growing there and what was lying on it. People and boats sort
+    /// themselves out - somebody standing in new water swims out of it and
+    /// somebody under new rock is put on the nearest ground they can stand on,
+    /// the same as anybody set down where they cannot be.
+    fn clear_cell(&mut self, col: i32, row: i32) {
         let mut at = 0;
         while at < self.plant_sim.plants.len() {
             let p = &self.plant_sim.plants[at];
@@ -3000,6 +3180,9 @@ impl Settlement {
             boats_tick(self, state, dt);
             balloons_tick(self, state, dt);
         }
+        // After the fear has been ticked and before the day rolls over: what
+        // decides whether a fire is lit is where people ended up standing.
+        self.fires_tick(state, dt);
 
         let day = day_number(self.time, &cfg.people);
         if day != self.day {
@@ -3914,7 +4097,12 @@ impl Settlement {
             if b.def.light > 0.0 {
                 let cx = b.col as f64 + b.w as f64 / 2.0;
                 let cy = b.row as f64 + b.h as f64 / 2.0;
-                self.light_sources.push((cx, cy, b.def.light * b.def.light));
+                self.light_sources.push((
+                    cx,
+                    cy,
+                    b.def.light * b.def.light,
+                    b.def.lifetime <= 0.0,
+                ));
             }
         }
     }
@@ -4453,7 +4641,22 @@ impl Settlement {
     /// Whether a lamp reaches this cell. Only built lamps count: a post going
     /// up is not lighting anything yet.
     pub fn lit_at(&self, col: i32, row: i32) -> bool {
-        self.light_sources.iter().any(|&(cx, cy, r2)| {
+        self.light_sources.iter().any(|&(cx, cy, r2, _)| {
+            let dx = col as f64 + 0.5 - cx;
+            let dy = row as f64 + 0.5 - cy;
+            dx * dx + dy * dy <= r2
+        })
+    }
+
+    /// Lit by something that will still be there tomorrow. A camp fire is
+    /// light to whoever is sitting at it and no answer at all to the question
+    /// of whether a street wants a lamp post, which is the difference between
+    /// this and `lit_at`.
+    pub fn lit_for_good_at(&self, col: i32, row: i32) -> bool {
+        self.light_sources.iter().any(|&(cx, cy, r2, lasting)| {
+            if !lasting {
+                return false;
+            }
             let dx = col as f64 + 0.5 - cx;
             let dy = row as f64 + 0.5 - cy;
             dx * dx + dy * dy <= r2

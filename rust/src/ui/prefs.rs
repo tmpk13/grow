@@ -37,10 +37,14 @@ pub struct Prefs {
     /// Keep a copy of every sheet in the sprite store as the project saves, so
     /// art outlives the project it was drawn in.
     pub keep_sprites: bool,
-    /// The menu sections folded shut, by their titles. A section is rebuilt
-    /// whole whenever its panel is, so the fold has to be read back from
-    /// somewhere the rebuild can reach or every change would spring it open.
-    pub folded: Vec<String>,
+    /// The menu sections somebody has pulled open, by their titles. A section
+    /// arrives folded - a panel is longer than a window and the map is what
+    /// most of the window is for - so what is worth remembering is the few
+    /// that were opened rather than the many that were not. A section is
+    /// rebuilt whole whenever its panel is, so the fold has to be read back
+    /// from somewhere the rebuild can reach or every change would shut it
+    /// again.
+    pub unfolded: Vec<String>,
     /// How wide the side menu was dragged to, in rem so it keeps its
     /// proportion when the text is rescaled. Zero means the stylesheet's own
     /// width, which is also what a double press on the handle goes back to.
@@ -53,7 +57,7 @@ impl Default for Prefs {
             collapsed: false,
             scale: 1.0,
             keep_sprites: true,
-            folded: Vec::new(),
+            unfolded: Vec::new(),
             panel_rem: 0.0,
         }
     }
@@ -77,13 +81,13 @@ impl Prefs {
     }
 
     pub fn is_folded(&self, title: &str) -> bool {
-        self.folded.iter().any(|t| t == title)
+        !self.unfolded.iter().any(|t| t == title)
     }
 
     pub fn set_folded(&mut self, title: &str, folded: bool) {
-        self.folded.retain(|t| t != title);
-        if folded {
-            self.folded.push(title.to_string());
+        self.unfolded.retain(|t| t != title);
+        if !folded {
+            self.unfolded.push(title.to_string());
         }
     }
 

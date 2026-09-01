@@ -146,6 +146,31 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             |c, v| c.pull_down_salvage = v),
     ]));
 
+    append(root, section("Camp fires", vec![
+        note("A camp fire is the one thing on the map that takes itself away again. Somebody \
+              out after dark, standing in no light at all and further gone than the price of \
+              a lamp post, stops walking, gathers what is lying around and lights a fire \
+              where they are. It costs the town nothing, it throws a small light while it \
+              lasts, and it burns down to nothing and is gone. Nothing is salvaged from one, \
+              because it burned. A fire lights the cell it stands on like anything else does, \
+              which is why the fear below has to sit above the one that buys a post: put it \
+              under and nobody is ever frightened enough to pay for one."),
+        app_bool(h, "People light fires in the dark", cfg.camp_fires, None,
+            |app, v| { app.state.civ.build.camp_fires = v; app.request_save(); }),
+        build_num(h, "Frightened enough to light one", cfg.camp_fire_fear, 0.0, 1.0, 0.05,
+            Some("above the fear that buys a lamp post, or nobody is ever frightened \
+                  enough to pay for one and the town never lights a street"),
+            |c, v| c.camp_fire_fear = v),
+        build_num(h, "How long one burns", cfg.camp_fire_burn, 0.1, 6.0, 0.1,
+            Some("against the burn time the catalog gives it, which is five settlement \
+                  minutes"),
+            |c, v| c.camp_fire_burn = v),
+        build_num(h, "Fires per town at once", cfg.camp_fires_at_once as f64, 0.0, 20.0, 1.0,
+            Some("a bad night should read as a scatter of lights, not as the wilderness \
+                  alight"),
+            |c, v| c.camp_fires_at_once = v as i32),
+    ]));
+
     append(root, section("Walls and gates", vec![
         note("A town that has learned to fortify rings itself: a rectangle around \
               everything it has built, with the gates cut where the paths are already \

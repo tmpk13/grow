@@ -47,6 +47,7 @@ impl Make {
             Make::Ground(Cell::Water) => "water",
             Make::Ground(Cell::Rock) => "rock",
             Make::Ground(Cell::Sand) => "sand",
+            Make::Ground(Cell::Cliff) => "cliff",
             Make::Growth(Zone::Any) => "anything",
             Make::Growth(Zone::Bare) => "bare",
             Make::Growth(Zone::Wood) => "wood",
@@ -60,6 +61,7 @@ impl Make {
             Make::Ground(Cell::Water) => "Ground: water",
             Make::Ground(Cell::Rock) => "Ground: rock",
             Make::Ground(Cell::Sand) => "Ground: sand",
+            Make::Ground(Cell::Cliff) => "Ground: rock face (nobody crosses)",
             Make::Growth(Zone::Any) => "Growth: anything",
             Make::Growth(Zone::Bare) => "Growth: nothing",
             Make::Growth(Zone::Wood) => "Growth: trees only",
@@ -72,9 +74,10 @@ impl Make {
     }
 }
 
-pub const MAKES: [Make; 8] = [
+pub const MAKES: [Make; 9] = [
     Make::Ground(Cell::Water),
     Make::Ground(Cell::Rock),
+    Make::Ground(Cell::Cliff),
     Make::Ground(Cell::Grass),
     Make::Ground(Cell::Sand),
     Make::Growth(Zone::Bare),

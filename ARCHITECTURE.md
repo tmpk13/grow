@@ -49,10 +49,12 @@ flowchart TD
     dec["ui/decode.rs<br/>dropped files to packed pixels"]
     wheel["ui/color_wheel.rs<br/>the brush control"]
     ctl["ui/mod.rs<br/>schema driven fields"]
+    secio["ui/section_io.rs<br/>one section of the menu, copied or saved"]
   end
 
   subgraph artpanels [Sprite editor panels]
     artp["ui/art_panel.rs<br/>brush, layers, frames, sheets, downloads"]
+    mapp["ui/map_panel.rs<br/>a map drawn by hand, over a picture"]
   end
 
   subgraph civpanels [Settlement panels]
@@ -92,6 +94,7 @@ flowchart TD
     social["civ/social.rs<br/>who has met whom, and what they made of it"]
     csprites["civ/sprites.rs<br/>clips per person motion and per made thing's state"]
     cclouds["civ/clouds.rs<br/>one seamless tile of weather"]
+    draft["civ/map_draft.rs<br/>a hand drawn map, one brush per cell"]
     boats["civ/boats.rs<br/>hulls, cargoes, voyages"]
     ball["civ/balloons.rs<br/>canopies aloft, and what they are worth"]
     path["civ/pathing.rs<br/>A* over land and water"]
@@ -128,7 +131,7 @@ flowchart TD
   sdrop --> findc
   main --> vmenu["ui/view_menu.rs<br/>grid, occupancy, label kinds"]
   main --> rbar["ui/restart_bar.rs<br/>what is waiting on Apply"]
-  main --> prefs["ui/prefs.rs<br/>menu fold, text scale,<br/>section folds, menu width"]
+  main --> prefs["ui/prefs.rs<br/>menu fold, text scale,<br/>which sections are open, menu width"]
   main --> presz["ui/panel_resize.rs<br/>the handle on the menu's edge"]
   presz --> prefs
   main --> rst["ui/reset.rs<br/>clears every browser store"]
@@ -169,6 +172,11 @@ flowchart TD
   lndp --> zpaint
   lndp --> scene
   zpaint --> terrain
+  mapp --> draft
+  mapp --> pnt
+  mapp --> dec
+  draft --> terrain
+  ctl --> secio
   place --> scene
   ctl --> tasks
   civrender --> scene
@@ -1145,7 +1153,15 @@ experiment would apply is exactly one rather than something that rounds to it.
 The panel does not draw the settings for a block that is off, so nothing under
 it reaches menu search either.
 
-The first thing in it is hot air balloons. A town with a school and cloth to
+Two things are under it. The map editor is the odd one, because it is not on
+the settlement's panels at all: with the switch on, `tabs_for` hands back a
+third page for the sprite editor. A tab list is static and the thing that
+decides between them is a switch on another panel, so there are two lists
+rather than a filter, and `tab_id_of` looks in the longer one whether or not it
+is showing - a search hit on a page behind the switch should say so by taking
+somebody there rather than by landing them on the first tab.
+
+The other is hot air balloons. A town with a school and cloth to
 spare sends one up over itself; while it is aloft the colony's research runs
 faster. A balloon is a position on the ground plane plus a height, so it is
 drawn in the same projection as everything else and simply painted after the
@@ -1415,7 +1431,7 @@ flowchart TD
 
 ## What comes down
 
-Three things on the map end by falling rather than by being taken away, and all
+Four things on the map end by falling rather than by being taken away, and all
 of them are a state of the thing itself rather than a separate entity, so all
 of them are in the save for nothing.
 
@@ -1442,6 +1458,13 @@ stand again puts it right and loses the work. A site that has not gone up is
 called off rather than condemned: nothing to take apart, and what was delivered
 is left where it stood.
 
+The fourth is the only one nobody has to do anything about.
+`BuildingDef.lifetime` is settlement seconds a finished thing stands for, zero
+for everything meant to last, and `Building.burned` counts up against it while
+it is built. Past the line `fires_tick` takes it off the map with no salvage
+and no entry in the log, because a fire out at dawn is not news. One type has a
+lifetime: the camp fire.
+
 ```mermaid
 flowchart TD
   cut["a plant is cut"] --> stem{"has a stem?"}
@@ -1458,7 +1481,76 @@ flowchart TD
   hand --> spare["let stand again:<br/>put right, work lost"]
   hand --> fell
   site["a site called off"] --> back_out["removed at the press,<br/>what was delivered left standing"]
+  lit["a fire is lit"] --> burn["burned counts up<br/>against def.lifetime"]
+  burn --> out["off the map, no salvage,<br/>nothing logged"]
 ```
+
+## Fires, and why the threshold is where it is
+
+A camp fire is the lamp post's rule with the money taken out of it. Both are
+raised by a person rather than by a plan and both answer the same signal -
+`Person::fear`, which rises while somebody is outdoors after dark on a cell
+`lit_at` says nothing lights. A lamp is bought by whoever holds a deed and has
+the coin, stands outside their own door forever, and zeroes the fear it was
+raised against. A fire costs nothing, is lit where whoever lit it was standing,
+and is gone by morning.
+
+Two things had to be true for both to survive in one settlement, and neither is
+obvious until the other feature exists:
+
+**A fire must not zero the fear.** It lights the cell it stands on, so
+`tick_fear` already eases the dread through the ordinary path. Zeroing it as
+well meant nobody ever reached the lamp threshold and no town ever lit a
+street.
+
+**A fire must not read as a lit street.** `light_sources` carries a fourth
+field saying whether the light lasts. `lit_at` ignores it - light is light to
+whoever is standing in it - and `lit_for_good_at` requires it, which is what
+the lamp decision asks. A fire outside a house tonight does not answer the
+question of whether that house wants a post.
+
+With those two in place the thresholds order themselves: `camp_fire_fear` at
+0.75 sits above `fear_to_light` at 0.6, so a post is the answer for anybody who
+can afford one and a fire is what is left for the night after that. Putting the
+fire's threshold under the lamp's pins the whole town's fear at the fire's
+number and no lamp is ever bought.
+
+## A map drawn by hand
+
+The map editor is the pixel editor with a legend instead of a palette. The
+draft is `civ::map_draft::MapDraft` - a grid of brush ids and nothing else -
+and `ui::map_panel::MapSurface` implements the same `paint::Surface` the sheet
+editor draws through, so the pencil, the fill, the eraser, the pick, the line,
+the mirror and the one-undo-step-per-stroke are all the code that was already
+there. `stage_surface(app)` picks between the two by the tab, and `flat_dims`
+answers for whichever is showing, which is what frames the camera and what
+decides that a press is a stroke rather than a drag.
+
+What the page adds is meaning: `Brush::color` is what a brush paints with and
+`Brush::from_color` reads a press back, so a color the legend does not know -
+the eraser's, or one off the wheel - is read as "say nothing about this cell".
+
+Two things live in different places for different reasons. The paint is in the
+project, because it is small, because that puts it on the undo stack, and
+because a drawing of a place outlives any one town founded on it; it is stored
+as the run encoding `civ/save.rs` uses for cell grids, since a map is mostly
+the same answer over and over. The picture being traced is in `app.ui`, on the
+same terms as the landscape dropped on the Land panel: a photograph is
+megabytes and the drawing over it is what is worth keeping.
+
+Applying it walks the running map's own cells, asks the draft what each should
+be by stretching it corner to corner, and batches the answers by kind, because
+`paint_cells` and `zone_cells` each do one expensive pass at the end of a batch
+rather than one per cell.
+
+One kind of ground came with it. `Cell::Cliff` is the only ground nobody
+crosses and nothing roots in, which is what "somewhere people cannot walk"
+needed: water was the only unwalkable ground the map had, and water is crossed
+by swimming. The terrain generator never produces one, so every generated map
+is bit for bit the map it was, and the change is two predicates -
+`Cell::walkable` for standing on and `Cell::bare` for what the wilderness
+leaves alone - replacing the places that spelled out "water" when they meant
+one of those.
 
 ## Settlement drawing
 
@@ -1535,6 +1627,27 @@ TLS and a filesystem. A page compiled to WebAssembly has none of those. So
 entry once, keeps the three or four entries each word is closest to, throws
 away every word that is close to nothing (which is most of them), and ships
 about eighty kilobytes of answers instead.
+
+## What a panel gives you back
+
+Two things about a section of the menu are worth writing down.
+
+Sections arrive folded. `Prefs` keeps the ones somebody has pulled open rather
+than the ones they have shut, which is the whole of the change: with a list of
+what is closed there is no value of an empty list that means "all closed", and
+an empty list is what a browser that has never seen the tool has. The rename is
+also the migration - `Prefs` is `#[serde(default)]`, so a stored `folded` key
+deserializes to an empty `unfolded`, which is exactly the new default.
+
+A section that holds settings carries Copy and Save in its head, and they take
+no schema. The same `data-find` stamp that makes menu search possible makes a
+section readable back out of the page it drew itself into: `ui::section_io`
+walks `label.field[data-find]` inside the section body, reads one of five
+control shapes per row, and writes the slug, the name and the value. The order
+the shapes are tried matters - a low/high pair has to be recognized before the
+single number, because it is two number inputs. A section with no fields in it
+gets no buttons, and the buttons carry no `data-find` of their own, or the menu
+index would grow two entries per section for controls that are not settings.
 
 ## Art instead of generation
 

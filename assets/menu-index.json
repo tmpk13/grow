@@ -2207,6 +2207,17 @@
     "tab": "land",
     "tab_label": "Land",
     "group": "View",
+    "label": "Cloud start height",
+    "hint": "how far down the sky the weather begins, as a share of it; zero fills the whole sky and raising it leaves clear air over the top of the frame",
+    "anchor": "cloud-start-height",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
     "label": "Clouds past the map's edge",
     "hint": "the empty space around the map becomes the same sky: the gradient carries on and the clouds repeat across it",
     "anchor": "clouds-past-the-map-s-edge",
@@ -3488,6 +3499,49 @@
     "label": "Salvage from pulling down",
     "hint": "share of the materials that come back, which is more than falls out of a collapse",
     "anchor": "salvage-from-pulling-down",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Camp fires",
+    "label": "People light fires in the dark",
+    "anchor": "people-light-fires-in-the-dark",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Camp fires",
+    "label": "Frightened enough to light one",
+    "hint": "above the fear that buys a lamp post, or nobody is ever frightened enough to pay for one and the town never lights a street",
+    "anchor": "frightened-enough-to-light-one",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Camp fires",
+    "label": "How long one burns",
+    "hint": "against the burn time the catalog gives it, which is five settlement minutes",
+    "anchor": "how-long-one-burns",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Camp fires",
+    "label": "Fires per town at once",
+    "hint": "a bad night should read as a scatter of lights, not as the wilderness alight",
+    "anchor": "fires-per-town-at-once",
     "kind": "field"
   },
   {

@@ -15,7 +15,7 @@ use grow::civ::resources::{Res, RES_IDS};
 use grow::civ::settlement::Settlement;
 use grow::civ::terrain::Cell;
 use grow::state::State;
-use grow::util::unpack_rgba;
+use grow::util::{clamp01, unpack_rgba};
 
 fn main() {
     let days: i32 = std::env::args()
@@ -400,6 +400,24 @@ fn main() {
         "  lamps {lit} lit of {lamps}, fear of the dark {:.2} on average, {:.2} at worst",
         mean, worst
     );
+    // Fires burn out, so what is standing at the end of a run says almost
+    // nothing; what is worth printing is how far through their lives they are.
+    let fires: Vec<f64> = sim
+        .buildings
+        .iter()
+        .filter(|b| b.built && b.def.structure == Structure::Fire)
+        .map(|b| clamp01(b.burned / b.def.lifetime.max(0.001)))
+        .collect();
+    let burnt = if fires.is_empty() {
+        "none burning".to_string()
+    } else {
+        format!(
+            "{} burning, {:.0}% through on average",
+            fires.len(),
+            fires.iter().sum::<f64>() / fires.len() as f64 * 100.0
+        )
+    };
+    println!("  camp fires: {} lit in all, {burnt}", sim.fires_lit);
 
     let mut bonds = 0usize;
     let mut friendships = 0usize;

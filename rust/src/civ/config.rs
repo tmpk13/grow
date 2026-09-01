@@ -203,6 +203,11 @@ pub struct ViewConfig {
     /// How strongly the edges churn as they pass. Zero freezes the shapes and
     /// leaves only the drift.
     pub cloud_wobble: f64,
+    /// Where the weather starts, as a share of the sky band measured down from
+    /// the top of it. Zero fills the whole sky; raising it holds the clouds
+    /// off the top of the frame and slides the band down toward the horizon.
+    /// The same line is used past the map's edge, so the sky is one sky.
+    pub cloud_top: f64,
     /// The empty space around the map becomes the same sky: the gradient
     /// carries on past the edge and the clouds repeat across all of it.
     pub cloud_space: bool,
@@ -253,6 +258,14 @@ impl ViewConfig {
             "faded" => crate::sim::Foliage::Faded(clamp01(self.foliage_alpha)),
             _ => crate::sim::Foliage::Solid,
         }
+    }
+
+    /// The first row of the sky band clouds are allowed on, in world pixels.
+    /// Everything above it is clear sky, and the tile is anchored here rather
+    /// than at the top of the world, so raising the line slides the whole band
+    /// down instead of sliding a window over it.
+    pub fn cloud_start_px(&self, sky_px: i32) -> i32 {
+        (sky_px.max(0) as f64 * clamp01(self.cloud_top)).round() as i32
     }
 
     /// Whether labels of this kind are drawn. Every kind is off while the
@@ -314,12 +327,13 @@ impl Default for ViewConfig {
             foliage_alpha: 0.5,
             smoke: true,
             sway: false,
-            sway_amp: 1.6,
-            sway_speed: 0.4,
+            sway_amp: 0.6,
+            sway_speed: 0.45,
             clouds: true,
-            cloud_cover: 0.35,
-            cloud_speed: 1.2,
-            cloud_wobble: 0.5,
+            cloud_cover: 0.85,
+            cloud_speed: 0.74,
+            cloud_wobble: 0.1,
+            cloud_top: 0.0,
             cloud_space: false,
             water_top: "#2b4f63".into(),
             water_deep: "#16303f".into(),
@@ -385,6 +399,10 @@ pub struct CivConfig {
     /// How many dead people stay on file. The register keeps a slot per
     /// person ever born; this is where a very long run stops growing.
     pub people_archive: usize,
+    /// A map drawn by hand in the map editor, waiting to be applied. Part of
+    /// the project rather than of the settlement: it is a drawing of a place,
+    /// and it outlives any one town founded on it.
+    pub map_draft: crate::civ::map_draft::MapDraft,
 }
 
 impl Default for CivConfig {
@@ -409,6 +427,7 @@ impl Default for CivConfig {
             scenery: Vec::new(),
             art_px_per_cell: crate::civ::sprites::DEFAULT_ART_PX_PER_CELL,
             people_archive: 400,
+            map_draft: Default::default(),
         }
     }
 }

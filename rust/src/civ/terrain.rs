@@ -21,6 +21,11 @@ pub enum Cell {
     Water = 1,
     Rock = 2,
     Sand = 3,
+    /// Ground nothing crosses: a face of rock rather than a floor of it.
+    /// Nothing is generated as this - the terrain has no cliffs of its own -
+    /// so it only ever appears where somebody painted it, which is what makes
+    /// it safe to add: every map that was generated is the map it was.
+    Cliff = 4,
 }
 
 pub use crate::world::Zone;
@@ -31,8 +36,21 @@ impl Cell {
             1 => Cell::Water,
             2 => Cell::Rock,
             3 => Cell::Sand,
+            4 => Cell::Cliff,
             _ => Cell::Grass,
         }
+    }
+
+    /// Whether anybody can stand on it. Water is crossed by swimming and so
+    /// is not counted here; a cliff is not crossed at all.
+    pub fn walkable(self) -> bool {
+        !matches!(self, Cell::Water | Cell::Cliff)
+    }
+
+    /// Whether the wilderness leaves it alone. Nothing takes root in open
+    /// water or in a face of rock.
+    pub fn bare(self) -> bool {
+        matches!(self, Cell::Water | Cell::Cliff)
     }
 }
 

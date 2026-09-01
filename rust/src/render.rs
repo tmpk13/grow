@@ -73,6 +73,9 @@ pub struct Viewport {
 struct SpaceClouds {
     drift: i32,
     sky_px: i32,
+    /// The world row the clouds start on, the same line the map's own sky band
+    /// uses, so the weather does not step at the edge of the map.
+    cloud_top: i32,
     top: String,
     bottom: String,
 }
@@ -250,7 +253,12 @@ impl Viewport {
     /// the map is the same sky the map hangs in. The tile is uploaded only
     /// when its key moved; the drift is applied at draw time, so a frame in
     /// which only the drift changed uploads nothing.
-    pub fn set_space_clouds(&mut self, layer: &crate::civ::clouds::CloudLayer, cfg: &crate::world::WorldConfig) {
+    pub fn set_space_clouds(
+        &mut self,
+        layer: &crate::civ::clouds::CloudLayer,
+        cfg: &crate::world::WorldConfig,
+        cloud_top: i32,
+    ) {
         if layer.px.is_empty() {
             self.space_clouds = None;
             return;
@@ -268,6 +276,7 @@ impl Viewport {
         self.space_clouds = Some(SpaceClouds {
             drift: layer.drift,
             sky_px: cfg.sky_px,
+            cloud_top,
             top: cfg.sky_top.clone(),
             bottom: cfg.sky_bottom.clone(),
         });
@@ -308,15 +317,24 @@ impl Viewport {
         ctx.save();
         ctx.translate(self.pan_x, self.pan_y).ok();
         ctx.scale(self.zoom, self.zoom).ok();
-        ctx.translate(-sc.drift as f64, 0.0).ok();
+        // The tile's first row lands on the cloud line rather than on the top
+        // of the world, which is where the map's own band anchors it too, so
+        // one shape carries on across the edge of the map.
+        ctx.translate(-sc.drift as f64, sc.cloud_top as f64).ok();
         ctx.set_fill_style_canvas_pattern(&pattern);
         if self.zoom > 0.0 {
-            ctx.fill_rect(
-                (-self.pan_x) / self.zoom + sc.drift as f64,
-                (-self.pan_y) / self.zoom,
-                rw / self.zoom,
-                rh / self.zoom,
-            );
+            // Local coordinates now count from the cloud line down; nothing
+            // above it is filled, so the sky over the weather stays clear.
+            let top = ((-self.pan_y) / self.zoom - sc.cloud_top as f64).max(0.0);
+            let bottom = (rh - self.pan_y) / self.zoom - sc.cloud_top as f64;
+            if bottom > top {
+                ctx.fill_rect(
+                    (-self.pan_x) / self.zoom + sc.drift as f64,
+                    top,
+                    rw / self.zoom,
+                    bottom - top,
+                );
+            }
         }
         ctx.restore();
     }

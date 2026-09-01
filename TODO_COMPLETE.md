@@ -3,6 +3,40 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A map editor, under the experiments switch: a third page of the sprite
+  editor where a map is drawn by hand instead of grown from noise. It is the
+  same pixel editor - the same pencil, fill, eraser, pick, line and mirror, and
+  one undo step per stroke - with a legend of what land is for a palette, so
+  picking a color is choosing water, rock, a rock face, grass, sand, a wood, a
+  meadow, ground where nothing seeds, or sky. A dropped picture is laid under
+  it to trace and is never part of the project; the drawing is. Apply stretches
+  it over the running map corner to corner and leaves every cell nothing was
+  painted on alone, and the sky colors can be read out of the picture where the
+  sky was painted.
+- (LLM) A rock face: the one kind of ground nobody crosses and nothing takes
+  root in. The terrain never generates one, so a cliff on a map is always
+  somewhere somebody drew it, by hand in the map editor or from a picture with
+  the Land panel's zone tool.
+- (LLM) Camp fires: the first build that takes itself away again. Somebody out
+  after dark, out of every light and further gone than the price of a lamp
+  post, stops walking and lights a fire where they stand out of what is lying
+  around. It costs the town nothing, throws a small light and a plume of smoke,
+  and burns down to nothing on its own. The lifetime behind it is general -
+  anything in the catalog with one stands for that long and then comes down -
+  and the threshold sits above the lamp's on purpose, or nobody would ever be
+  frightened enough to pay for a post.
+- (LLM) Copy and Save in every menu section that holds settings: the section is
+  read back out of the page it drew itself into, so no panel had to be told
+  about it, and what comes out is that section alone - the founding party, a
+  set of terrain numbers - as text on the clipboard or as a file.
+- (LLM) Menu sections arrive folded. A panel is longer than a window and the
+  map is what most of the window is for, so a tab opens as a list of headings;
+  which ones have been pulled open is remembered per browser, and Fold all
+  still pulls the whole panel either way.
+- (LLM) A start height for the clouds: how far down the sky the weather begins,
+  as a share of it, so there can be clear air over the top of the frame. The
+  same line is used past the map's edge, so a shape carries across the boundary
+  rather than stepping at it. The cloud and wind defaults were reset with it.
 - (LLM) A midground: hills, ridges and mountains standing in the sky band
   behind the map. With Place on and the placing menu holding scenery, a press
   on the sky puts one up and the same gesture drags it - sideways to move it,

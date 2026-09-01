@@ -33,6 +33,33 @@ page.on('console', (msg) => {
 });
 page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
 
+// Sections of a panel arrive folded, and nearly every check below reaches
+// into one. Pressing Unfold all after each of them would be a press after
+// everything that rebuilds a panel, which is most of what this file does, so
+// the page holds them open for itself instead - the state somebody who had
+// pressed it once would be working in. The switch is in local storage so it
+// survives the reload at the end, and it starts off, which is how the check
+// just below can see a panel arrive folded at all.
+await page.addInitScript(() => {
+  // A timer rather than a MutationObserver: this runs before the document
+  // exists, so there is nothing to observe yet, and a panel is rebuilt often
+  // enough that a tenth of a second is not worth being clever about.
+  setInterval(() => {
+    let on = false;
+    try {
+      on = localStorage.getItem('uicheck.folds') === 'open';
+    } catch {
+      return;
+    }
+    if (!on) return;
+    for (const group of document.querySelectorAll('#panel-body details.group')) {
+      if (!group.hasAttribute('open')) group.setAttribute('open', 'open');
+    }
+  }, 100);
+});
+const holdOpen = (on) =>
+  page.evaluate((on) => localStorage.setItem('uicheck.folds', on ? 'open' : 'leave'), on);
+
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'networkidle' });
 await page.waitForTimeout(400);
 if ((await page.locator('.tab').count()) === 0) {
@@ -52,6 +79,17 @@ if ((await page.getAttribute('.mode.active', 'data-mode')) !== 'settlement') {
 }
 if (!/day \d+/.test(await page.evaluate(() => document.getElementById('statusbar').textContent))) {
   problems.push('the settlement it opened on is not running');
+}
+// A panel arrives folded: a tab is a list of headings rather than a wall of
+// controls. Checked here, before the page is asked to hold them open.
+if ((await page.locator('#panel-body details.group[open]').count()) !== 0) {
+  problems.push('a panel did not arrive folded');
+}
+await holdOpen(true);
+await page.waitForTimeout(500);
+if ((await page.locator('#panel-body details.group[open]').count()) === 0) {
+  console.error('the run could not hold the menu sections open');
+  process.exit(1);
 }
 // Everything below works the lab over first, so go there by hand.
 await page.click('.mode:text-is("Plant lab")');
@@ -124,11 +162,17 @@ await page.selectOption('.group select', 'single');
 await page.waitForTimeout(800);
 await page.screenshot({ path: `${outDir}/05-shared-grid.png` });
 
-// The sections of a panel fold. The button over the panel pulls them all one
-// way and then offers the way back, a head folds its own section, and a fold
+// The sections of a panel fold. This is the one block the page is not holding
+// open for, so it starts from open and works both ways: the button folds them
+// all and then offers the way back, a head folds its own section, and a fold
 // survives the panel being rebuilt.
+await holdOpen(false);
+await page.waitForTimeout(200);
 const openGroups = () => page.locator('#panel-body details.group[open]').count();
-if ((await openGroups()) === 0) problems.push('every section starts folded');
+const allGroups = () => page.locator('#panel-body details.group').count();
+if ((await openGroups()) !== (await allGroups())) {
+  problems.push('Unfold all left sections folded');
+}
 await page.click('#btn-fold-groups');
 await page.waitForTimeout(300);
 if ((await openGroups()) !== 0) problems.push('Fold all left sections open');
@@ -137,7 +181,7 @@ if ((await page.locator('#btn-fold-groups').textContent()).trim() !== 'Unfold al
 }
 await page.click('#btn-fold-groups');
 await page.waitForTimeout(300);
-if ((await openGroups()) !== (await page.locator('#panel-body details.group').count())) {
+if ((await openGroups()) !== (await allGroups())) {
   problems.push('Unfold all left sections folded');
 }
 const firstHead = page.locator('#panel-body details.group summary').first();
@@ -153,6 +197,8 @@ if ((await firstGroup.getAttribute('open')) !== null) {
 }
 await firstGroup.locator('summary').click();
 await page.waitForTimeout(200);
+await holdOpen(true);
+await page.waitForTimeout(300);
 
 // Overlays on, then resize the world from the World panel (restarts the sim).
 // The switches live in the top bar dropdown.
@@ -1335,6 +1381,65 @@ if ((await page.locator('#take-over').count()) === 0) {
   await page.click('#take-over');
   await page.waitForTimeout(150);
 }
+
+// The map editor: a third page of the sprite editor, which only exists while
+// the experiment is on. It is the pixel editor with a legend for a palette, so
+// what is checked is that a press on the stage lands as a zone rather than as
+// a color.
+await page.click('.mode:text-is("Sprite editor")');
+await page.waitForTimeout(700);
+if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') {
+  problems.push('the map page is missing with the experiment on');
+} else {
+  await page.click('.tab[data-tab="map"]');
+  await page.waitForTimeout(600);
+  // The tally is one stat per brush, name and count. Read whole rows, and
+  // only the tally's own section: the "nothing yet" an empty page shows is a
+  // value rather than a name, and a loaded picture puts a stat of its own on
+  // the panel.
+  const painted = () =>
+    page.evaluate(() =>
+      [
+        ...document.querySelectorAll('#panel-body details.group[data-group="Applying it"] .stat'),
+      ]
+        .map((n) => n.textContent)
+        .join(' | '),
+    );
+  if (!/nothing yet/.test(await painted())) {
+    problems.push('the map page opened with something already painted on it');
+  }
+  await page.click('#panel-body .chip:has-text("Water")');
+  await page.waitForTimeout(200);
+  const canvas = await page.locator('#world-canvas').boundingBox();
+  await page.mouse.move(canvas.x + canvas.width * 0.45, canvas.y + canvas.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + canvas.width * 0.55, canvas.y + canvas.height * 0.55, {
+    steps: 12,
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  if (!/Water/.test(await painted())) {
+    problems.push(`a stroke on the map page painted nothing: ${await painted()}`);
+  }
+  await page.screenshot({ path: `${outDir}/19-map-editor.png` });
+  // Applying it to the running settlement should say how much it drew.
+  await page.click('#panel-body .btn:text-is("Apply to the map")');
+  await page.waitForTimeout(600);
+  const drew = (await page.textContent('#save-note')).trim();
+  if (!/cells drawn/.test(drew)) {
+    problems.push(`applying the drawn map said "${drew}"`);
+  }
+  await page.click('#panel-body .btn:text-is("Wipe the drawing")');
+  await page.waitForTimeout(400);
+  if (!/nothing yet/.test(await painted())) {
+    problems.push('wiping the drawing left something on it');
+  }
+}
+await page.click('.mode:text-is("Settlement")');
+await page.waitForTimeout(1500);
+await page.click('.tab[data-tab="experimental"]');
+await page.waitForTimeout(400);
+
 // Put the experiments back where they were.
 await page.click('#panel-body [data-find="let-a-person-be-taken-over"] .btn');
 await page.waitForTimeout(300);
@@ -1342,11 +1447,43 @@ await page.click('#panel-body [data-find="try-the-unfinished-things"] .btn');
 await page.waitForTimeout(300);
 await resume();
 
+// Copy and Save in a section head: a section of settings carries both, a
+// section that is only a readout carries neither, and Save writes a file of
+// that section alone. The press has to land on the button rather than on the
+// head it sits in, so the section is checked to be still open afterwards.
+// The Land panel has one of each: View is settings, This land is a readout.
+await page.click('.tab[data-tab="land"]');
+await page.waitForTimeout(500);
+const viewTools = '#panel-body details.group[data-group="View"] .group-tools';
+if ((await page.locator(`${viewTools} .btn`).count()) !== 2) {
+  problems.push('a section of settings has no copy and save buttons');
+}
+if ((await page.locator('#panel-body details.group[data-group="This land"] .group-tools').count()) !== 0) {
+  problems.push('a section with nothing but a readout in it offered to save it');
+}
+const sectionFile = await grab(`${viewTools} .btn:text-is("Save")`);
+if (!/\.json$/.test(sectionFile.name)) {
+  problems.push(`saving a section gave ${sectionFile.name}, which is not a json file`);
+}
+try {
+  const parsed = JSON.parse(sectionFile.bytes.toString());
+  if (parsed.section !== 'View') {
+    problems.push(`the saved section says it is "${parsed.section}"`);
+  }
+  const cover = (parsed.fields || []).find((f) => f.key === 'cloud-cover');
+  if (typeof cover?.value !== 'number') {
+    problems.push('the saved section does not carry the cloud cover as a number');
+  }
+} catch (err) {
+  problems.push(`the saved section is not readable json: ${err.message}`);
+}
+if ((await page.getAttribute('#panel-body details.group[data-group="View"]', 'open')) === null) {
+  problems.push('pressing Save in a section head folded the section');
+}
+
 // The sky past the map's edge: flip the space clouds on, let a few frames
 // draw the letterbox as sky, and flip them back. The console listener is what
 // fails this if the pattern path throws.
-await page.click('.tab[data-tab="land"]');
-await page.waitForTimeout(400);
 const spaceClouds = '#panel-body [data-find^="clouds-past"] .btn';
 await page.click(spaceClouds);
 await page.waitForTimeout(600);

@@ -294,7 +294,7 @@ pub fn paint_terrain(sim: &Settlement, state: &State, buf: &mut [u32]) {
                 // Fertile ground reads green, bare ground reads as soil, and
                 // the two are dithered into each other rather than tiled.
                 let fert = sim.terrain.fert[i] as f64;
-                let ramp = if kind == Cell::Rock as u8 {
+                let ramp = if kind == Cell::Rock as u8 || kind == Cell::Cliff as u8 {
                     &rock
                 } else if kind == Cell::Sand as u8 {
                     &sand
@@ -303,7 +303,13 @@ pub fn paint_terrain(sim: &Settlement, state: &State, buf: &mut [u32]) {
                 } else {
                     &soil
                 };
-                let t = clamp01(0.4 + far * fade * 2.0 + noise + (fert - 0.4) * 0.25);
+                let mut t = clamp01(0.4 + far * fade * 2.0 + noise + (fert - 0.4) * 0.25);
+                // A cliff is the same stone read from its dark end, and
+                // banded, so a face of it reads as standing up rather than as
+                // an unusually grey field.
+                if kind == Cell::Cliff as u8 {
+                    t = clamp01(t * 0.45 + ((row % 3) as f64) * 0.06);
+                }
                 // The back of the ground plane is the top of it as far as the
                 // box is concerned, so a soil box reads back to front.
                 ramp.pick(t, 1.0 - far)
@@ -454,6 +460,13 @@ fn building_key(
 ) -> SpriteKey {
     let stage = if !b.built {
         (((b.work_done / b.work.max(1.0)) * 8.0).floor() as i32).min(8)
+    } else if b.def.lifetime > 0.0 {
+        // A fire burning down, in whole steps for the same reason a house
+        // falling in is: the flame drops by a pixel a few times over its
+        // life, and a key that carried the raw clock would draw a new sprite
+        // every frame to say nothing.
+        20 + ((b.burnt_through(&state.civ.build) * BURN_STEPS as f64).floor() as i32)
+            .min(BURN_STEPS)
     } else if b.decay > 0.0 {
         // Past the finished stage, one number per visible step of falling in.
         // Quantized, because the picture is cached by this key and a house
@@ -585,6 +598,7 @@ pub fn building_sprite(
         Structure::Wall | Structure::Gate => wall_sprite(state, world, b),
         Structure::Stall => stall_sprite(state, world, b),
         Structure::Lamp => lamp_sprite(state, world, b, night),
+        Structure::Fire => fire_sprite(state, world, b),
         Structure::Building => house_sprite(state, world, b, night, detail),
     };
     cache.map.insert(key, sprite.clone());
@@ -593,6 +607,9 @@ pub fn building_sprite(
 
 /// Visible steps between a sound house and a heap on the ground.
 const RUIN_STEPS: i32 = 6;
+
+/// Visible steps between a fire just lit and one about to go out.
+const BURN_STEPS: i32 = 5;
 
 /// Which of those steps a house is on. Nothing about the shape changes below
 /// the first one, so a house that has only just started to go is still drawn
@@ -1015,6 +1032,67 @@ fn lamp_sprite(state: &State, world: &World, b: &Building, night: bool) -> Rc<Sp
                     pack_rgba(255, 214, 132, 255)
                 };
             }
+        }
+    }
+    wear_down(&mut px, w, h, b);
+    Rc::new(Sprite { w, h, px, ox: 0, oy: h })
+}
+
+/// A camp fire: a ring of stones, a few sticks leaning into each other, and a
+/// flame over them that sinks as the fire burns down.
+///
+/// Lit day or night, unlike a lamp, because it is not there to light a street:
+/// it is there because somebody is sitting at it. What changes as it goes is
+/// the height of the flame, which is quantized in the cache key so a fire
+/// redraws a handful of times over its whole life rather than every frame.
+fn fire_sprite(state: &State, world: &World, b: &Building) -> Rc<Sprite> {
+    let stick = ramp_of(&state.materials, b.def.palette.wall);
+    let stone = ramp_of(&state.materials, b.def.palette.trim);
+    let cell = world.cell_px;
+    let h = ((b.def.wall_h * cell as f64).round() as i32).max(4);
+    let w = (cell * 2 / 3).max(5);
+    let mut px = vec![0u32; (w * h) as usize];
+    let mid = w / 2;
+    // The ring is the bottom two rows, the sticks lean up out of it, and
+    // whatever is left over the sticks is flame.
+    let ring = (h - 2).max(1);
+    let wood = (ring - ((h as f64 * 0.3).round() as i32).max(1)).max(0);
+
+    for y in ring..h {
+        for x in 0..w {
+            // A gapped ring rather than a bar: stones, with the dark between
+            // them.
+            if (x + y) % 3 == 2 {
+                continue;
+            }
+            px[(y * w + x) as usize] = shade(&stone, 0.45 + (x % 2) as f64 * 0.12, y, h);
+        }
+    }
+    for y in wood..ring {
+        let spread = ((ring - y) as f64 * 0.7).round() as i32;
+        for x in (mid - spread).max(0)..=(mid + spread).min(w - 1) {
+            if (x - mid).abs() != spread && spread > 0 {
+                continue;
+            }
+            px[(y * w + x) as usize] = shade(&stick, 0.5, y, h);
+        }
+    }
+
+    // How much fire is left. The flame stands as tall as the sticks when it is
+    // lit and is a couple of embers by the end.
+    let left = 1.0 - b.burnt_through(&state.civ.build);
+    let flame = ((wood.max(1) as f64) * (0.25 + left * 0.75)).round() as i32;
+    for y in (wood - flame).max(0)..wood.max(1) {
+        let t = (wood - y) as f64 / flame.max(1) as f64;
+        let spread = if t > 0.6 { 0 } else { 1 };
+        for x in (mid - spread).max(0)..=(mid + spread).min(w - 1) {
+            px[(y * w + x) as usize] = if t > 0.55 {
+                pack_rgba(255, 246, 214, 255)
+            } else if t > 0.25 {
+                pack_rgba(255, 196, 96, 255)
+            } else {
+                pack_rgba(226, 108, 46, 255)
+            };
         }
     }
     wear_down(&mut px, w, h, b);
@@ -1904,14 +1982,21 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
     // horizon they blend into the sky instead of thinning pixel by pixel,
     // which is what makes the band read as depth rather than as static.
     let sky = sim.world().sky_px;
-    if !sim.clouds.px.is_empty() && view.y0 < sky {
+    // Where the weather is allowed to start. The tile is read from this line
+    // down, so the setting slides the band rather than cropping it.
+    let cloud_top = state.civ.view.cloud_start_px(sky);
+    if !sim.clouds.px.is_empty() && view.y0 < sky && cloud_top < sky {
         let clouds = &sim.clouds;
         let fade_rows = (sky as f64 * 0.35).max(1.0);
-        let mut y = first;
+        // Rows are on the upload's own grid, which is every multiple of the
+        // step from the origin; the first one at or below the cloud line is
+        // not a row anything reads.
+        let from = first.max(cloud_top);
+        let mut y = from + (step - from.rem_euclid(step)) % step;
         while y < view.y1.min(sky) {
             let row = y as usize * px_w;
             let fade = (((sky - y) as f64 / fade_rows).min(1.0) * 0.95).powi(2);
-            let sy = y.rem_euclid(clouds.h);
+            let sy = (y - cloud_top).rem_euclid(clouds.h);
             let srow = (sy * clouds.w) as usize;
             for x in view.x0..view.x1 {
                 let sx = (x + clouds.drift).rem_euclid(clouds.w);

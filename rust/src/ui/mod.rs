@@ -22,6 +22,7 @@ pub mod experimental_panel;
 pub mod find_box;
 pub mod grid_editor;
 pub mod land_panel;
+pub mod map_panel;
 pub mod materials_panel;
 pub mod paint;
 pub mod panel_resize;
@@ -34,6 +35,7 @@ pub mod sprite_drop;
 pub mod sprite_store;
 pub mod tech_panel;
 pub mod restart_bar;
+pub mod section_io;
 pub mod view_menu;
 pub mod world_panel;
 pub mod zone_paint;
@@ -674,21 +676,28 @@ pub fn note(text: &str) -> Element {
     el("p").class("note").text(text).get()
 }
 
-/// One titled block of a panel, folded by its own header. The fold is kept
-/// with the window preferences rather than on the node, because a panel is
-/// rebuilt whole on most changes and a fold that lived on the node would
-/// spring open every time.
+/// One titled block of a panel, folded by its own header.
+///
+/// Sections arrive folded: a panel is longer than a window and the map is what
+/// most of the window is for, so a tab opens as a list of headings rather than
+/// as a wall of controls. Which ones somebody has pulled open is kept with the
+/// window preferences rather than on the node, because a panel is rebuilt
+/// whole on most changes and a fold that lived on the node would shut again
+/// every time.
+///
+/// A section that holds settings also carries the two buttons that take it
+/// away with you, which read the section back out of the page it just drew.
 pub fn section(title: &str, children: Vec<Element>) -> Element {
+    let body = el("div").class("group-body").children(children).get();
+    let head = el("summary").class("group-head").child(&el("h3").text(title).get()).get();
+    if let Some(tools) = section_io::tools(title, &body) {
+        let _ = head.append_child(&tools);
+    }
     let node = el("details")
         .class("group")
         .attr("data-group", title)
-        .child(
-            &el("summary")
-                .class("group-head")
-                .child(&el("h3").text(title).get())
-                .get(),
-        )
-        .child(&el("div").class("group-body").children(children).get())
+        .child(&head)
+        .child(&body)
         .get();
     if !prefs::Prefs::load().is_folded(title) {
         let _ = node.set_attribute("open", "open");

@@ -254,7 +254,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("how much of the sky they take, wisps to overcast"),
             |app, v| { app.state.civ.view.cloud_cover = v; app.request_save(); }),
         app_num(h, "Cloud drift (px per s)", view.cloud_speed,
-            NumOpts { min: 0.0, max: 12.0, step: 0.2 },
+            NumOpts { min: 0.0, max: 12.0, step: 0.02 },
             Some("how fast they pass, in world pixels per simulated second"),
             |app, v| { app.state.civ.view.cloud_speed = v; app.request_save(); }),
         app_num(h, "Cloud edge wobble", view.cloud_wobble,
@@ -262,6 +262,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("how strongly the edges churn as they pass; zero freezes the shapes and \
                   leaves only the drift"),
             |app, v| { app.state.civ.view.cloud_wobble = v; app.request_save(); }),
+        app_num(h, "Cloud start height", view.cloud_top,
+            NumOpts { min: 0.0, max: 0.95, step: 0.05 },
+            Some("how far down the sky the weather begins, as a share of it; zero fills the \
+                  whole sky and raising it leaves clear air over the top of the frame"),
+            |app, v| { app.state.civ.view.cloud_top = v; app.request_save(); }),
         app_bool(h, "Clouds past the map's edge", view.cloud_space,
             Some("the empty space around the map becomes the same sky: the gradient carries \
                   on and the clouds repeat across it"),

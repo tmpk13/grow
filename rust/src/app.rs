@@ -21,7 +21,6 @@ use crate::render::Viewport;
 use crate::sim::{Env, Sim};
 use crate::state::{State, STORAGE_KEY};
 use crate::undo::History;
-use crate::ui::paint::Surface;
 use crate::ui::{self, by_id, clear, clear_scope, document, el, on, on_passive_false, window, Scope};
 use crate::util::{clamp, hex_to_packed, EMPTY_COLOR};
 
@@ -130,6 +129,9 @@ pub struct UiState {
     /// has been picked out of it. A tool rather than part of the project, so
     /// it lives for as long as the page is open and no longer.
     pub land: crate::ui::zone_paint::Landscape,
+    /// The picture laid under the map editor's drawing to trace. Held on the
+    /// same terms as the one above and for the same reason.
+    pub tracing: crate::ui::map_panel::Tracing,
     /// The stage puts down whatever the placing menu is holding. The fifth
     /// exclusive press switch.
     pub place: bool,
@@ -669,6 +671,15 @@ const SPRITE_TABS: &[TabDef] = &[
     TabDef { id: "sheet", label: "Sheet", build: ui::art_panel::build_sheet },
 ];
 
+/// The same two with the map editor after them. A separate list rather than a
+/// filter, because a tab list is static and the one thing that decides between
+/// these is a switch on another panel.
+const SPRITE_TABS_EXPERIMENTAL: &[TabDef] = &[
+    TabDef { id: "draw", label: "Draw", build: ui::art_panel::build_draw },
+    TabDef { id: "sheet", label: "Sheet", build: ui::art_panel::build_sheet },
+    TabDef { id: "map", label: "Map", build: ui::map_panel::build },
+];
+
 const CIV_TABS: &[TabDef] = &[
     TabDef { id: "land", label: "Land", build: ui::land_panel::build },
     TabDef { id: "people", label: "People", build: ui::people_panel::build },
@@ -680,16 +691,25 @@ const CIV_TABS: &[TabDef] = &[
 
 /// The tab of `mode` with this id, as the static string the tab machinery
 /// wants. Menu search carries ids as text, having read them out of the page.
+/// Every tab is looked up here, whether or not it is showing: a search hit on
+/// a page behind the experiments switch should say so by taking somebody
+/// there, not by silently landing them on the first tab.
 pub fn tab_id_of(mode: Mode, id: &str) -> Option<&'static str> {
-    tabs_for(mode).iter().find(|t| t.id == id).map(|t| t.id)
+    tabs_for(mode, true).iter().find(|t| t.id == id).map(|t| t.id)
 }
 
-fn tabs_for(mode: Mode) -> &'static [TabDef] {
+fn tabs_for(mode: Mode, experiments: bool) -> &'static [TabDef] {
     match mode {
         Mode::Lab => LAB_TABS,
+        Mode::Sprites if experiments => SPRITE_TABS_EXPERIMENTAL,
         Mode::Sprites => SPRITE_TABS,
         Mode::Settlement => CIV_TABS,
     }
+}
+
+/// The tabs the page is showing right now.
+fn tabs_now(app: &App) -> &'static [TabDef] {
+    tabs_for(app.mode, app.state.civ.experiments.on)
 }
 
 // ---- storage -------------------------------------------------------------
@@ -821,6 +841,7 @@ pub fn start() -> Result<(), JsValue> {
         playing: false,
         play_time: 0.0,
         move_people: false,
+        tracing: crate::ui::map_panel::Tracing { strength: 0.7, ..Default::default() },
         land: crate::ui::zone_paint::Landscape {
             threshold: 0.12,
             ..crate::ui::zone_paint::Landscape::default()
@@ -978,7 +999,7 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
     sync_grab_cursor(&sh.app);
     build_toolbar(sh, h);
     ui::view_menu::build(&mut sh.app, h);
-    let first = tabs_for(mode)[0].id;
+    let first = tabs_now(&sh.app)[0].id;
     show_tab(sh, h, first);
     fit_view(&mut sh.app);
     // The toolbar was built before the fit, so its slider is showing whatever
@@ -992,7 +1013,7 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
 /// through a small window.
 pub fn fill_view(app: &mut App) {
     let want = match app.mode {
-        Mode::Sprites => match app.sheet_dims() {
+        Mode::Sprites => match flat_dims(app) {
             Some((w, h)) => app.viewport.fit_flat_zoom(w, h),
             None => return,
         },
@@ -1008,7 +1029,7 @@ pub fn fill_view(app: &mut App) {
 /// stage.
 pub fn fit_view(app: &mut App) {
     if app.mode == Mode::Sprites {
-        if let Some((w, h)) = app.sheet_dims() {
+        if let Some((w, h)) = flat_dims(app) {
             app.viewport.fit_flat(w, h);
         }
         return;
@@ -1025,8 +1046,13 @@ fn active_world_size(app: &App) -> crate::world::World {
 }
 
 pub fn show_tab(sh: &mut Shell, h: &Handle, id: &'static str) {
-    let tabs = tabs_for(sh.app.mode);
+    let tabs = tabs_now(&sh.app);
     let tab = tabs.iter().find(|t| t.id == id).unwrap_or(&tabs[0]);
+    // A sheet is a dozen pixels across and a map is a hundred and twenty, so
+    // stepping onto or off the map page has to reframe the camera; stepping
+    // between the two drawing pages is the same buffer and must not, or a
+    // glance at the Sheet tab would throw away where somebody had zoomed to.
+    let swapped_surface = (sh.app.ui.tab == "map") != (tab.id == "map");
     sh.app.ui.tab = tab.id;
 
     let tabs_node = match by_id("tabs") {
@@ -1067,6 +1093,13 @@ pub fn show_tab(sh: &mut Shell, h: &Handle, id: &'static str) {
     clear_scope(Scope::List);
     sh.panel = Some((tab.build)(&body, &mut sh.app, h));
     sh.app.rebuild_panel = false;
+    if swapped_surface {
+        fit_view(&mut sh.app);
+        sync_zoom(&sh.app);
+        // A map has no frames and no sheet to pick, so the row over the stage
+        // is not the row the drawing pages want.
+        sh.app.rebuild_toolbar = true;
+    }
     // The panel was just rebuilt, so the stars in it have to be put back.
     ui::restart_bar::sync(&sh.app);
     ui::sync_fold_all();
@@ -1403,9 +1436,13 @@ fn build_toolbar(sh: &mut Shell, h: &Handle) {
 /// stepping through it, and the camera. No simulation, so no speed.
 fn sprite_toolbar(sh: &mut Shell, h: &Handle) -> Vec<Element> {
     let mut controls: Vec<Element> = Vec::new();
+    // The map page borrows the pixel editor but not the sheet: there is one
+    // picture, it has no frames, and playing it back would animate a sheet
+    // nobody is looking at.
+    let sheets = sh.app.ui.tab != "map";
 
     let options = sh.app.state.art.names();
-    if !options.is_empty() {
+    if sheets && !options.is_empty() {
         let picker = ui::select_bare(&sh.app.ui.selected_sheet, &options, {
             let h2 = h.clone();
             move |v| {
@@ -1427,39 +1464,41 @@ fn sprite_toolbar(sh: &mut Shell, h: &Handle) -> Vec<Element> {
         );
     }
 
-    let play = el("button")
-        .class("btn")
-        .attr("id", "btn-play")
-        .attr("type", "button")
-        .text(if sh.app.ui.playing { "Pause" } else { "Play" })
-        .get();
-    {
+    if sheets {
+        let play = el("button")
+            .class("btn")
+            .attr("id", "btn-play")
+            .attr("type", "button")
+            .text(if sh.app.ui.playing { "Pause" } else { "Play" })
+            .get();
+        {
+            let h2 = h.clone();
+            let play_node = play.clone();
+            on(play.unchecked_ref(), "click", Scope::Toolbar, move |_| {
+                let mut sh = h2.borrow_mut();
+                sh.app.ui.playing = !sh.app.ui.playing;
+                sh.app.ui.play_time = 0.0;
+                play_node.set_text_content(Some(if sh.app.ui.playing { "Pause" } else { "Play" }));
+                sh.app.redraw_panel = true;
+            });
+        }
+        controls.push(play);
+
+        for (label, delta) in [("Prev", -1), ("Next", 1)] {
+            let h2 = h.clone();
+            controls.push(ui::button(label, Scope::Toolbar, move || {
+                step_frame(&mut h2.borrow_mut().app, delta);
+            }));
+        }
+        controls.push(el("span").class("readout").attr("id", "frame-readout").get());
+
         let h2 = h.clone();
-        let play_node = play.clone();
-        on(play.unchecked_ref(), "click", Scope::Toolbar, move |_| {
-            let mut sh = h2.borrow_mut();
-            sh.app.ui.playing = !sh.app.ui.playing;
-            sh.app.ui.play_time = 0.0;
-            play_node.set_text_content(Some(if sh.app.ui.playing { "Pause" } else { "Play" }));
-            sh.app.redraw_panel = true;
+        let onion = ui::toggle_button("Onion", sh.app.ui.onion, Scope::Toolbar, move |on| {
+            h2.borrow_mut().app.ui.onion = on;
         });
+        let _ = onion.set_attribute("id", "onion");
+        controls.push(onion);
     }
-    controls.push(play);
-
-    for (label, delta) in [("Prev", -1), ("Next", 1)] {
-        let h2 = h.clone();
-        controls.push(ui::button(label, Scope::Toolbar, move || {
-            step_frame(&mut h2.borrow_mut().app, delta);
-        }));
-    }
-    controls.push(el("span").class("readout").attr("id", "frame-readout").get());
-
-    let h2 = h.clone();
-    let onion = ui::toggle_button("Onion", sh.app.ui.onion, Scope::Toolbar, move |on| {
-        h2.borrow_mut().app.ui.onion = on;
-    });
-    let _ = onion.set_attribute("id", "onion");
-    controls.push(onion);
 
     controls.push(zoom_control(sh, h));
     controls.push(ui::button("Fit", Scope::Toolbar, {
@@ -1635,7 +1674,8 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
             if !paints(&sh.app, pe) {
                 return;
             }
-            let cell = SHEET_SURFACE.locate(
+            let surface = stage_surface(&sh.app);
+            let cell = surface.locate(
                 &sh.app,
                 &sh.app.viewport.canvas.clone(),
                 pe.client_x() as f64,
@@ -1655,7 +1695,7 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                     sh.app.record("stroke", false);
                 }
                 let erase = pe.buttons() & 2 == 2;
-                ui::paint::apply(&mut sh.app, &SHEET_SURFACE, cell, erase);
+                ui::paint::apply(&mut sh.app, surface, cell, erase);
                 *stroke.borrow_mut() = Some(cell);
             }
         });
@@ -1703,7 +1743,8 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                 return;
             }
             if list.len() < 2 && stroke.borrow().is_some() {
-                let cell = SHEET_SURFACE.locate(
+                let surface = stage_surface(&sh.app);
+                let cell = surface.locate(
                     &sh.app,
                     &sh.app.viewport.canvas.clone(),
                     x,
@@ -1728,9 +1769,9 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                         let freehand = matches!(sh.app.ui.tool, Tool::Pencil | Tool::Eraser);
                         match was {
                             Some(prev) if freehand => {
-                                ui::paint::stroke_line(&mut sh.app, &SHEET_SURFACE, prev, cell, erase)
+                                ui::paint::stroke_line(&mut sh.app, surface, prev, cell, erase)
                             }
-                            _ => ui::paint::apply(&mut sh.app, &SHEET_SURFACE, cell, erase),
+                            _ => ui::paint::apply(&mut sh.app, surface, cell, erase),
                         }
                         *stroke.borrow_mut() = Some(cell);
                     }
@@ -2207,17 +2248,42 @@ fn set_holding(holding: bool) {
     let _ = if holding { list.add_1("holding") } else { list.remove_1("holding") };
 }
 
-/// The sheet, as something to draw on. Held as a constant because the stage
-/// shares one surface for as long as the mode is open, unlike a panel editor
-/// which is rebuilt with its canvas.
-const SHEET_SURFACE: ui::art_panel::SheetSurface = ui::art_panel::SheetSurface;
+/// How large the flat buffer on the stage is: a sheet on the drawing pages, a
+/// map on the map editor's. Everything that frames the stage or decides
+/// whether a press is a stroke asks this rather than the sheet.
+fn flat_dims(app: &App) -> Option<(i32, i32)> {
+    if app.mode == Mode::Sprites && app.ui.tab == "map" {
+        let d = &app.state.civ.map_draft;
+        return (d.cols > 0 && d.rows > 0).then_some((d.cols, d.rows));
+    }
+    app.sheet_dims()
+}
+
+/// The two things the stage can be drawn on. Statics rather than constants
+/// because `stage_surface` hands one back by reference and a constant is a
+/// fresh temporary at every use; the stage keeps whichever it picked for as
+/// long as the page is open, unlike a panel editor rebuilt with its canvas.
+static SHEET_SURFACE: ui::art_panel::SheetSurface = ui::art_panel::SheetSurface;
+static MAP_SURFACE: ui::map_panel::MapSurface = ui::map_panel::MapSurface;
+
+/// What the stage is drawing on. The sprite editor has two pages that are
+/// pixel editors - a sheet and a map - and everything between the pointer and
+/// the buffer is the same for both, so the one thing that differs is which
+/// buffer this hands back.
+fn stage_surface(app: &App) -> &'static dyn ui::paint::Surface {
+    if app.mode == Mode::Sprites && app.ui.tab == "map" {
+        &MAP_SURFACE
+    } else {
+        &SHEET_SURFACE
+    }
+}
 
 /// Whether this pointer press is a stroke rather than a drag. Only in the
 /// sprite editor, and only for a plain press: the middle button and a held
 /// control key are how the stage is dragged there, since the left one is busy.
 fn paints(app: &App, pe: &web_sys::PointerEvent) -> bool {
     app.mode == Mode::Sprites
-        && app.sheet_dims().is_some()
+        && flat_dims(app).is_some()
         && !pe.ctrl_key()
         && pe.button() != 1
         && pe.buttons() & 4 == 0
@@ -2235,7 +2301,8 @@ fn end_stroke(h: &Handle, stroke: &Rc<RefCell<Option<(i32, i32)>>>) {
         sh.app.rebuild_panel();
         return;
     }
-    SHEET_SURFACE.commit(&mut sh.app);
+    let surface = stage_surface(&sh.app);
+    surface.commit(&mut sh.app);
     sh.app.redraw_panel = true;
 }
 
@@ -3120,6 +3187,7 @@ fn draw(app: &mut App, budget: usize) {
     // fresh each frame when the switch asks for it.
     app.viewport.clear_space_clouds();
     match app.mode {
+        Mode::Sprites if app.ui.tab == "map" => ui::map_panel::draw(app),
         Mode::Sprites => draw_sheet(app),
         Mode::Lab => {
             {
@@ -3167,7 +3235,8 @@ fn draw(app: &mut App, budget: usize) {
                 civ.composite(&app.state);
             }
             if app.state.civ.view.cloud_space {
-                app.viewport.set_space_clouds(&civ.clouds, &app.state.civ.world);
+                let top = app.state.civ.view.cloud_start_px(app.state.civ.world.sky_px);
+                app.viewport.set_space_clouds(&civ.clouds, &app.state.civ.world, top);
             }
             let region = civ.view;
             let buffer = std::mem::take(&mut civ.buffer);
@@ -3379,12 +3448,30 @@ fn sheet_status(app: &App) -> String {
     .join("   ")
 }
 
+/// What the map page says it is showing. The sheet's line would name a sheet
+/// nobody is drawing on and a frame nobody is stepping through.
+fn map_status(app: &App) -> String {
+    let draft = &app.state.civ.map_draft;
+    let painted = draft.paint.iter().filter(|&&v| v != 0).count();
+    let brush = crate::civ::map_draft::Brush::from_color(app.ui.brush_color);
+    [
+        "map draft".to_string(),
+        format!("{}x{} cells", draft.cols, draft.rows),
+        format!("{painted} painted"),
+        format!("brush {}", brush.label().to_lowercase()),
+        format!("{:.0}x zoom", app.viewport.zoom),
+        format!("{:.0} fps", app.fps),
+    ]
+    .join("   ")
+}
+
 fn update_status(app: &App) {
     let status = match by_id("statusbar") {
         Some(n) => n,
         None => return,
     };
     let text = match app.mode {
+        Mode::Sprites if app.ui.tab == "map" => map_status(app),
         Mode::Sprites => sheet_status(app),
         Mode::Settlement => match &app.settlement {
             Some(civ) if civ.ready => settlement_status(app, civ),

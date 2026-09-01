@@ -174,6 +174,41 @@ middle button or a held ctrl drags, wheel or pinch zooms.
 * Resizing a sheet crops or pads it. Pixel art does not survive resampling, so
   the art keeps its place and the new room is empty.
 
+### The map page
+
+With the settlement's **Experimental** switch on, the sprite editor grows a
+third page: a map drawn by hand instead of grown from noise.
+
+It is the same pixel editor. The stage is one pixel per map cell, the tools are
+the ones already in the toolbar - pencil, fill, eraser, pick, line, mirror -
+and a stroke is one step of undo, because the drawing is kept with the project.
+The only thing the page adds is that the colors mean something: the palette is
+a legend of what land is, so choosing a color is choosing water, rock, a rock
+face, grass, sand, a wood, a meadow, ground where nothing seeds, or sky. The
+eraser, and any color that is not one of those, says nothing about a cell and
+leaves it to the map.
+
+* **Drop a picture** to trace and it is laid under the drawing, corner to
+  corner, at whatever strength the slider is at. It is never part of the
+  project and never part of a settlement: the picture goes when the page does,
+  and what is kept is what was painted on top of it.
+* **Apply to the map** stretches the draft over the running map, corner to
+  corner, whatever size either of them is. Cells nothing was painted on are
+  left alone, so one drawn coastline can be laid over a generated map without
+  flattening the rest of it, and anything already built on is left standing.
+* **Take the sky colors** reads the top and the bottom of whatever was painted
+  sky out of the picture under it and sets the world's sky gradient to them.
+* **Size** is the grid the map is drawn at, which does not have to match the
+  settlement's. Changing it wipes the drawing, because a map redrawn at another
+  size is a different map.
+
+**Rock face** is the one kind of ground that is new. Water is crossed by
+swimming and rock is walked on and built on; a face of rock is neither. Nobody
+crosses one, nothing takes root in one, and nothing is ever built on one. The
+terrain generator never makes one, so a cliff on a map is always somewhere
+somebody drew it - by hand here, or from a picture with the Land panel's
+**Zones from a picture**.
+
 ### Selecting part of a cel
 
 **Marquee (M)** drags a rectangle out on the stage instead of drawing. With one
@@ -281,6 +316,14 @@ The view section holds day and night, footpaths, chimney smoke, boats, current,
 building labels, the water and path colors, how long the map waits before taking
 the whole window on its own, and the two drawing controls: whether to draw only
 what is on screen, and the zoom below which detail starts being shed.
+
+**Weather** is in there too: whether clouds pass at all, how much of the sky
+they take, how fast they drift, how strongly their edges churn, and **Cloud
+start height** - how far down the sky they begin, as a share of it. Zero fills
+the sky to the top of the frame; raising it leaves clear air above the weather
+and slides the whole band down toward the horizon. The line is the same one the
+sky past the map's edge is drawn against, so with **Clouds past the map's edge**
+on a shape carries across the boundary rather than stepping at it.
 
 **Grow it instead** makes the map larger without starting the settlement over.
 The new land goes on the right and along the bottom, so every column and row
@@ -465,6 +508,10 @@ One switch, off by default, and everything under it. With it off nothing in
 here is asked anything: no balloon is built, nothing is spent on one, and the
 settlement is the settlement it has always been. It can be turned on while a
 town runs and turned off again.
+
+**The map editor** is the other thing this switch puts up, and it is not on
+this panel: with it on, the sprite editor grows a third page. See
+[Sprite editor](#sprite-editor) below.
 
 **Hot air balloons.** A town with a school and cloth to spare sews a canopy,
 burns charcoal under it and sends it up over itself. What can be seen from up
@@ -667,8 +714,35 @@ for everybody who passes under it. The Register shows how calm each person is,
 and the smoke run reports the town's fear of the dark beside its lamps.
 
 Turning **Start over if everyone dies** and the rest of the settlement's
-switches aside, this is the one place a building is raised by a person rather
-than by a plan - the other being a house rebuilt one rung larger by its owner.
+switches aside, this is one of the three places a building is raised by a
+person rather than by a plan - the others being a house rebuilt one rung larger
+by its owner, and a camp fire.
+
+### Camp fires
+
+A lamp post is the answer for anybody who can afford one. A camp fire is what
+is left after that: somebody further gone than the price of a post, out of
+every light, stops walking, gathers what is lying around and lights a fire
+where they stand. It costs the town nothing - it is deadfall, not timber out of
+the store - it throws a small light and a plume of smoke while it lasts, and
+then it burns down to nothing and is gone. Nothing is salvaged from one,
+because it burned.
+
+It is the only thing on the map that takes itself away again, and the machinery
+behind that is general: any building type with a lifetime stands for that many
+settlement seconds after it is finished and then comes down on its own. The
+camp fire is the only one that has one.
+
+The threshold sits **above** the one that buys a lamp, and it has to. A fire
+lights the cell it stands on, which settles the fear of whoever is at it the
+same way any other light does; put the fire first and nobody is ever frightened
+enough to pay for a post, and the town never lights a street. For the same
+reason a fire burning outside a house does not count as a lit street when the
+town is deciding whether that house wants a lamp: it will be ash by tomorrow,
+which is the whole reason somebody pays for a post instead. All four numbers -
+whether people light them at all, how frightened is frightened enough, how long
+one burns, and how many a town may have going at once - are in the Build
+panel.
 
 ### Farms and water
 
@@ -767,6 +841,12 @@ and are remembered separately from it:
   anyone who would rather say one than hunt for it.
 * **Hide menu** folds the panel away and gives the map the whole window. What
   was in the middle of the view stays there.
+* **Fold all** pulls every section of the showing panel one way and then offers
+  the way back. Sections arrive folded - a panel is longer than a window and
+  the map is what most of the window is for - so a tab opens as a list of
+  headings and you pull open the one you came for. Which ones you have opened
+  is remembered per browser, and a section that was open stays open when its
+  panel is rebuilt under it.
 * **Fullscreen** goes further: the top bar, the panel, the toolbar and the
   status line all go, leaving the world and one faint button in the corner to
   get back out. The browser is asked for the screen at the same time, so escape
@@ -782,6 +862,19 @@ cannot ask for the screen, the request needs a gesture behind it and would be
 refused. There is nothing to press to get out of it either, because anything at
 all gets out of it: a moved pointer, a key, a touch. It waits for the
 settlement only, and never while a question is on the screen.
+
+### Taking a section with you
+
+Every section of the menu that holds settings carries two small buttons in its
+head. **Copy** puts that section on the clipboard as text; **Save** writes the
+same text to a file named after the section. The file is a list of the
+section's controls - the slug each is addressed by, the name it is shown under,
+and what it is set to - which makes it a way to hand somebody the founding
+party you are using, or to keep a set of terrain numbers beside a screenshot.
+
+A section with nothing to save gets neither button: a roster, a graph and a
+list of the dead would all write an empty file. The buttons are dim until the
+head is under the pointer, so a column of sections reads as a column of names.
 
 ## Checks
 

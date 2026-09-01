@@ -76,6 +76,9 @@ pub enum Structure {
     /// A post with a light on it. Nothing happens at one; it is there to be
     /// seen by.
     Lamp,
+    /// Sticks in a ring of stones. Like a lamp in what it does and unlike
+    /// everything else in that it does not last: it burns down and goes out.
+    Fire,
 }
 
 impl Structure {
@@ -235,6 +238,10 @@ pub struct BuildingDef {
     /// How far a lamp throws its light, in cells. Nothing else lights the map,
     /// so anything above zero is a lamp.
     pub light: f64,
+    /// Settlement seconds this stands for once it is finished, after which it
+    /// comes down on its own and leaves nothing behind. Zero is everything
+    /// that is meant to last, which is almost everything.
+    pub lifetime: f64,
     pub note: Option<&'static str>,
 }
 
@@ -276,6 +283,7 @@ const BLANK: BuildingDef = BuildingDef {
     sells: &[],
     keeper_coin: 0.0,
     light: 0.0,
+    lifetime: 0.0,
     note: None,
 };
 
@@ -680,6 +688,33 @@ pub static BUILDINGS: &[BuildingDef] = &[
         ..BLANK
     },
     BuildingDef {
+        id: "campfire",
+        label: "Camp fire",
+        category: Category::Civic,
+        structure: Structure::Fire,
+        // Never planned and never sited: it is lit where whoever lit it was
+        // standing, which is the whole difference between one of these and a
+        // lamp post.
+        planned: false,
+        wall_h: 0.34,
+        roof_h: 0.0,
+        palette: Palette { wall: "mat-trunk", roof: "mat-stone", trim: "mat-stone" },
+        // Deadfall off the ground where they stood, not timber out of the town
+        // store: nobody hauls anything to a fire somebody is already sitting
+        // at, and the store may be a day's walk behind them.
+        cost: &[],
+        work: 4.0,
+        base: true,
+        light: 3.5,
+        smoke: 1,
+        lifetime: 300.0,
+        note: Some(
+            "An armful of sticks in a ring of stones, lit by somebody caught out after dark. \
+             It costs nothing, throws a small light, and burns down to nothing on its own.",
+        ),
+        ..BLANK
+    },
+    BuildingDef {
         id: "inn",
         label: "Inn",
         category: Category::Civic,
@@ -928,6 +963,23 @@ pub struct BuildConfig {
     /// Coin an owner puts up for one. The same for everybody, which is what
     /// makes it the rich who light their street first.
     pub lamp_coin: f64,
+    /// Whether somebody caught out in the dark, standing in no light at all,
+    /// gathers what is lying around and lights a fire where they are. Off
+    /// leaves them to walk home in the dark, which is how the town ran before
+    /// there were fires in it.
+    pub camp_fires: bool,
+    /// Fear at which they stop walking and light one. Above the lamp
+    /// threshold on purpose: a lamp post is the answer for anybody who can
+    /// afford one, and a fire is what is left for the night after that. Put
+    /// this under the lamp threshold and no town ever buys a post, because
+    /// nobody is ever frightened enough to want one.
+    pub camp_fire_fear: f64,
+    /// Multiplier on how long anything temporary stands, the camp fire
+    /// included. One is the burn time the catalog gives it.
+    pub camp_fire_burn: f64,
+    /// Fires one town may have going at once, so a bad night is a scatter of
+    /// lights rather than a forest fire.
+    pub camp_fires_at_once: i32,
     /// Whether a crowded colony sends people out to found another.
     pub expeditions: bool,
     pub max_colonies: i32,
@@ -1014,6 +1066,10 @@ impl Default for BuildConfig {
             max_home_rebuilds: 1,
             lamps_by_fear: true,
             lamp_coin: 5.0,
+            camp_fires: true,
+            camp_fire_fear: 0.75,
+            camp_fire_burn: 1.0,
+            camp_fires_at_once: 3,
             expeditions: true,
             max_colonies: 4,
             expedition_interval: 1800.0,

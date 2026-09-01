@@ -2724,16 +2724,28 @@ fn the_clouds_are_seamless_settable_and_on_the_clock() {
     assert_eq!(a.drift, b.drift);
 
     // Cover is coverage: an overcast sky holds far more cloud than wisps.
+    // Both ends are set here rather than leaning on whatever the default
+    // happens to be, which is a number that moves.
     let count = |layer: &CloudLayer| layer.px.iter().filter(|p| **p != 0).count();
-    let sparse = count(&a);
+    state.civ.view.cloud_cover = 0.2;
+    let mut thin = CloudLayer::default();
+    refresh(&mut thin, &state, 12.34);
+    let sparse = count(&thin);
     state.civ.view.cloud_cover = 1.0;
     let mut heavy = CloudLayer::default();
     refresh(&mut heavy, &state, 12.34);
     assert!(
         count(&heavy) > sparse * 2,
-        "full cover ({}) should dwarf the default ({sparse})",
+        "full cover ({}) should dwarf wisps ({sparse})",
         count(&heavy)
     );
+
+    // The start height is a line down the sky band, in whole world pixels,
+    // and it is the same line the space around the map is drawn against.
+    assert_eq!(state.civ.view.cloud_start_px(200), 0, "clouds start at the top by default");
+    state.civ.view.cloud_top = 0.5;
+    assert_eq!(state.civ.view.cloud_start_px(200), 100);
+    state.civ.view.cloud_top = 0.0;
 
     // Wobble is the edge movement: with it the shapes churn from step to
     // step, without it the same shapes drift whole and nothing regenerates.
@@ -2756,4 +2768,165 @@ fn the_clouds_are_seamless_settable_and_on_the_clock() {
     state.civ.view.clouds = false;
     refresh(&mut s0, &state, 12.0);
     assert!(s0.px.is_empty());
+}
+
+/// A camp fire is the only build that takes itself away again: it is placed
+/// finished, it burns for its lifetime, and then the map is as it was. What
+/// this checks is the going out, because that is the part nothing else in the
+/// settlement does.
+#[test]
+fn a_camp_fire_burns_down_and_leaves_nothing_behind() {
+    let mut state = State::new();
+    state.civ.world.cols = 40;
+    state.civ.world.rows = 20;
+    state.civ.terrain.warmup = 0.0;
+    // Nobody lights one of their own during the run, so what is measured is
+    // the one put down here.
+    state.civ.build.camp_fires = false;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+
+    let def = grow::civ::buildings::building_by_id("campfire").expect("no camp fire in the catalog");
+    assert!(def.lifetime > 0.0, "a camp fire that never goes out is not a camp fire");
+
+    let at = (0..sim.world().cols)
+        .flat_map(|c| (0..sim.world().rows).map(move |r| (c, r)))
+        .find(|&(c, r)| grow::civ::planner::fits(&sim, def, c, r, 0, 0))
+        .expect("nowhere on the map to light a fire");
+    let bi = sim
+        .place_building(&state, 0, "campfire", at.0, at.1, true)
+        .expect("the fire was not placed");
+    let id = sim.buildings[bi].id;
+    assert!(sim.buildings[bi].built, "a fire is lit, not staked out");
+    assert_ne!(sim.build_grid[sim.idx(at.0, at.1)], 0, "the fire claimed no ground");
+
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    let steps = ((def.lifetime * 0.5) / dt) as usize;
+    for _ in 0..steps {
+        sim.step(&state, dt);
+    }
+    let half = sim.building_index(id).expect("the fire went out early");
+    assert!(sim.buildings[half].burned > 0.0, "the fire is not burning down");
+
+    for _ in 0..steps + 2 {
+        sim.step(&state, dt);
+    }
+    assert!(sim.building_index(id).is_none(), "the fire is still standing past its life");
+    assert_eq!(
+        sim.build_grid[sim.idx(at.0, at.1)], 0,
+        "the ground the fire stood on is still claimed"
+    );
+}
+
+/// The other half of the same feature: with the switch on, a town that is out
+/// in the dark ends up with fires in it, and with the switch off it never
+/// does. Off has to be the settlement exactly as it ran before there were any.
+#[test]
+fn fires_are_lit_in_the_dark_and_only_with_the_switch_on() {
+    fn fires_over(days: i32, on: bool) -> usize {
+        let mut state = State::new();
+        state.civ.world.cols = 40;
+        state.civ.world.rows = 20;
+        state.civ.terrain.warmup = 0.0;
+        state.civ.build.camp_fires = on;
+        // Frightened sooner, so a handful of days is enough to see one lit.
+        // The default sits above the lamp threshold on purpose, which is a
+        // fortnight of nights away on a fresh map.
+        state.civ.build.camp_fire_fear = 0.05;
+        let mut sim = Settlement::new(&state);
+        sim.bootstrap(&state);
+        let dt = 1.0 / state.civ.sim.tick_hz;
+        let mut seen = 0;
+        let mut standing: Vec<i32> = Vec::new();
+        for _ in 0..(state.civ.people.day_length / dt) as usize * days as usize {
+            sim.step(&state, dt);
+            for b in &sim.buildings {
+                if b.def.id == "campfire" && !standing.contains(&b.id) {
+                    standing.push(b.id);
+                    seen += 1;
+                }
+            }
+        }
+        seen
+    }
+
+    assert_eq!(fires_over(6, false), 0, "a fire was lit with the switch off");
+    assert!(fires_over(6, true) > 0, "nobody lit a fire on six nights out");
+}
+
+/// The cloud start height is a line across the sky band: nothing is stamped
+/// above it, and the weather picks up from it downward. Read off a composited
+/// frame rather than off the tile, because the tile does not know where it is
+/// put and this is entirely about where it is put.
+#[test]
+fn no_cloud_is_drawn_above_the_start_height() {
+    let mut state = State::new();
+    state.civ.world.cols = 40;
+    state.civ.world.rows = 20;
+    state.civ.terrain.warmup = 0.0;
+    state.civ.view.clouds = true;
+    state.civ.view.cloud_cover = 1.0;
+    state.civ.view.cloud_wobble = 0.0;
+    state.civ.view.cull = false;
+    state.civ.view.cloud_top = 0.0;
+
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+    sim.process_raster_queue(&state, usize::MAX);
+    sim.composite(&state);
+    let px_w = sim.world().px_w as usize;
+    let sky = sim.world().sky_px;
+    assert!(sky > 8, "the sky band is too shallow to say anything about");
+
+    let cloudy = |sim: &Settlement, row: i32| -> bool {
+        let at = row as usize * px_w;
+        sim.buffer[at..at + px_w] != sim.ground[at..at + px_w]
+    };
+    assert!(
+        (0..sky / 4).any(|y| cloudy(&sim, y)),
+        "with the line at the top, the top of the sky should carry cloud"
+    );
+
+    state.civ.view.cloud_top = 0.5;
+    let line = state.civ.view.cloud_start_px(sky);
+    sim.ground_dirty = true;
+    sim.composite(&state);
+    for y in 0..line {
+        assert!(!cloudy(&sim, y), "row {y} carries cloud above the start height {line}");
+    }
+    assert!(
+        (line..sky).any(|y| cloudy(&sim, y)),
+        "nothing was drawn below the start height either"
+    );
+}
+
+/// A whole map laid down from a drawing is one call per cell, which is the
+/// scale nothing else in the tool paints at. This is a floor under that: it
+/// fails if painting the map ever goes quadratic again.
+#[test]
+fn painting_a_whole_map_is_not_quadratic() {
+    let mut state = State::new();
+    state.civ.world.cols = 128;
+    state.civ.world.rows = 64;
+    state.civ.terrain.warmup = 60.0;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+    let (cols, rows) = (sim.world().cols, sim.world().rows);
+    let cells: Vec<(i32, i32)> =
+        (0..cols).flat_map(|c| (0..rows).map(move |r| (c, r))).collect();
+
+    let started = std::time::Instant::now();
+    let done = sim.paint_cells(&cells, Cell::Water);
+    let took = started.elapsed();
+    assert!(done > cells.len() / 2, "only {done} of {} cells took the paint", cells.len());
+    assert!(
+        took < std::time::Duration::from_secs(4),
+        "painting {} cells took {took:?}",
+        cells.len()
+    );
+    assert_eq!(
+        sim.terrain.kind.iter().filter(|&&k| k == Cell::Water as u8).count(),
+        sim.terrain.water_cells,
+        "the running water count drifted from the grid"
+    );
 }
