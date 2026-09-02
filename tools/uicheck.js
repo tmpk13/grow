@@ -1383,9 +1383,9 @@ if ((await page.locator('#take-over').count()) === 0) {
 }
 
 // The map editor: a third page of the sprite editor, which only exists while
-// the experiment is on. It is the pixel editor with a legend for a palette, so
-// what is checked is that a press on the stage lands as a zone rather than as
-// a color.
+// the experiment is on. It paints the settlement's own map, so what is checked
+// is that a press on the stage changes the map under it, that a zone is drawn
+// over the ground rather than instead of it, and that a stroke can be put back.
 await page.click('.mode:text-is("Sprite editor")');
 await page.waitForTimeout(700);
 if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') {
@@ -1393,46 +1393,68 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
 } else {
   await page.click('.tab[data-tab="map"]');
   await page.waitForTimeout(600);
-  // The tally is one stat per brush, name and count. Read whole rows, and
-  // only the tally's own section: the "nothing yet" an empty page shows is a
-  // value rather than a name, and a loaded picture puts a stat of its own on
-  // the panel.
-  const painted = () =>
+  // The tally is one stat per kind of ground, name and count, plus the size of
+  // the map. Read whole rows, and only the tally's own section.
+  const tally = () =>
     page.evaluate(() =>
-      [
-        ...document.querySelectorAll('#panel-body details.group[data-group="Applying it"] .stat'),
-      ]
+      [...document.querySelectorAll('#panel-body details.group[data-group="The map"] .stat')]
         .map((n) => n.textContent)
         .join(' | '),
     );
-  if (!/nothing yet/.test(await painted())) {
-    problems.push('the map page opened with something already painted on it');
+  const count = async (name) => {
+    const hit = (await tally()).match(new RegExp(`${name}(\\d+) cells`));
+    return hit ? Number(hit[1]) : 0;
+  };
+  if (!/cells\d+ by \d+/.test(await tally())) {
+    problems.push(`the map page does not say how large the map is: ${await tally()}`);
   }
+  const stroke = async (fromX, fromY, toX, toY) => {
+    const canvas = await page.locator('#world-canvas').boundingBox();
+    await page.mouse.move(canvas.x + canvas.width * fromX, canvas.y + canvas.height * fromY);
+    await page.mouse.down();
+    await page.mouse.move(canvas.x + canvas.width * toX, canvas.y + canvas.height * toY, {
+      steps: 12,
+    });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+  };
+
+  // Ground: a stroke of water leaves more water on the map than there was.
+  const wasWet = await count('Water');
   await page.click('#panel-body .chip:has-text("Water")');
   await page.waitForTimeout(200);
-  const canvas = await page.locator('#world-canvas').boundingBox();
-  await page.mouse.move(canvas.x + canvas.width * 0.45, canvas.y + canvas.height * 0.5);
-  await page.mouse.down();
-  await page.mouse.move(canvas.x + canvas.width * 0.55, canvas.y + canvas.height * 0.55, {
-    steps: 12,
-  });
-  await page.mouse.up();
-  await page.waitForTimeout(400);
-  if (!/Water/.test(await painted())) {
-    problems.push(`a stroke on the map page painted nothing: ${await painted()}`);
+  await stroke(0.42, 0.5, 0.52, 0.55);
+  const nowWet = await count('Water');
+  if (!(nowWet > wasWet)) {
+    problems.push(`a stroke of water left ${nowWet} cells of it, against ${wasWet} before`);
+  }
+
+  // A zone: drawn over the ground, so it is counted as zoned and the ground
+  // under it is left as it was.
+  await page.click('#panel-body .chip:has-text("Trees only")');
+  await page.waitForTimeout(200);
+  const wasGrass = await count('Grass');
+  await stroke(0.6, 0.5, 0.7, 0.55);
+  const zoned = ((await tally()).match(/Trees only(\d+) zoned/) ?? [])[1];
+  if (!(Number(zoned) > 0)) {
+    problems.push(`a stroke of a zone zoned nothing: ${await tally()}`);
+  }
+  if ((await count('Grass')) !== wasGrass) {
+    problems.push('drawing a zone changed the ground under it');
   }
   await page.screenshot({ path: `${outDir}/19-map-editor.png` });
-  // Applying it to the running settlement should say how much it drew.
-  await page.click('#panel-body .btn:text-is("Apply to the map")');
-  await page.waitForTimeout(600);
-  const drew = (await page.textContent('#save-note')).trim();
-  if (!/cells drawn/.test(drew)) {
-    problems.push(`applying the drawn map said "${drew}"`);
+
+  // A stroke on this page is not in the project's history, so it keeps a way
+  // back of its own: undo has to take the zone off again.
+  await page.click('#btn-undo');
+  await page.waitForTimeout(500);
+  if (/Trees only/.test(await tally())) {
+    problems.push('undoing a stroke on the map left the zone on it');
   }
-  await page.click('#panel-body .btn:text-is("Wipe the drawing")');
+  await page.click('#panel-body .btn:text-is("Take every zone off")');
   await page.waitForTimeout(400);
-  if (!/nothing yet/.test(await painted())) {
-    problems.push('wiping the drawing left something on it');
+  if (/zoned/.test(await tally())) {
+    problems.push('taking every zone off left one on the map');
   }
 }
 await page.click('.mode:text-is("Settlement")');

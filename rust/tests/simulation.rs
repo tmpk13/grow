@@ -2,8 +2,9 @@
 //! These are the invariants the headless smoke binaries check on a long run,
 //! kept small enough to run on every `cargo test`.
 
+use grow::civ::buildings::Structure;
 use grow::civ::civ_render::Detail;
-use grow::civ::settlement::{Rect, Settlement};
+use grow::civ::settlement::{Rect, Settlement, PLANT_SHUT};
 use grow::civ::sprites::{motion_of, natural_cmp, Clip, Motion, PeopleSprites, MAX_FRAME_PX};
 use grow::civ::terrain::Cell;
 use grow::civ::balloons::research_lift as balloon_lift;
@@ -1319,13 +1320,14 @@ fn a_trunk_is_walked_round_rather_than_through() {
     let stem = (1..rows - 1)
         .flat_map(|r| (2..cols - 2).map(move |c| (c, r)))
         .find(|&(c, r)| {
-            sim.plant_block[(r * cols + c) as usize] != 0
+            let shut = |c: i32, r: i32| sim.plant_cover[(r * cols + c) as usize] == PLANT_SHUT;
+            shut(c, r)
                 && sim.walkable(c - 2, r)
                 && sim.walkable(c + 2, r)
                 && !sim.in_water(c - 1, r)
                 && !sim.in_water(c + 1, r)
-                && sim.plant_block[(r * cols + c - 1) as usize] == 0
-                && sim.plant_block[(r * cols + c + 1) as usize] == 0
+                && !shut(c - 1, r)
+                && !shut(c + 1, r)
         });
     let (c, r) = match stem {
         Some(at) => at,
@@ -1339,12 +1341,52 @@ fn a_trunk_is_walked_round_rather_than_through() {
     assert!(round.is_some(), "the two sides of a tree are not connected at all");
     assert!(!through(&round), "the way round a trunk went straight through it");
 
-    // Told that nothing is ever in the way, the same request takes the short
-    // line across the cell the tree is standing in.
+    // Told that nothing is ever in the way and that pushing through what is
+    // standing costs nothing, the same request takes the short line across the
+    // cell the tree is standing in.
     sim.block_mass = 0.0;
+    sim.plant_push = 0.0;
     sim.rebuild_plant_index();
     let across = sim.find_path(c - 2, r, c + 2, r);
     assert!(through(&across), "with nothing in the way the walk still went round");
+}
+
+/// Growth that is not a wall is still something people would rather not push
+/// through. The patch here is set by hand rather than grown: what is being
+/// checked is the price of crossing it, not what the wilderness happens to put
+/// in the way.
+#[test]
+fn a_stand_of_growth_is_walked_round_when_round_is_cheaper() {
+    let mut state = State::new();
+    state.civ.world.cols = 40;
+    state.civ.world.rows = 20;
+    let mut sim = Settlement::new(&state);
+    // Open dry ground everywhere, so nothing but the growth is in the way.
+    let (cols, rows) = (sim.world().cols, sim.world().rows);
+    let every: Vec<(i32, i32)> =
+        (0..rows).flat_map(|r| (0..cols).map(move |c| (c, r))).collect();
+    sim.paint_cells(&every, Cell::Grass);
+
+    // A single row of thick growth between two points ten cells apart.
+    let row = 10;
+    for c in 6..=14 {
+        sim.plant_cover[(row * cols + c) as usize] = 240;
+    }
+    let through = |path: &Option<Vec<(i32, i32)>>| {
+        path.as_ref()
+            .is_some_and(|p| p.iter().any(|&(c, r)| r == row && (6..=14).contains(&c)))
+    };
+
+    sim.plant_push = 1.5;
+    let round = sim.find_path(5, row, 15, row);
+    assert!(round.is_some(), "the two ends are not connected at all");
+    assert!(!through(&round), "a stand of growth was pushed through rather than walked round");
+
+    // The same growth with nothing charged for pushing through it: the short
+    // line is the one taken, which is what says the detour was about the price.
+    sim.plant_push = 0.0;
+    let straight = sim.find_path(5, row, 15, row);
+    assert!(through(&straight), "with growth costing nothing the walk still went round");
 }
 
 /// A town that has died out does not stand forever. This empties one rather
@@ -2852,6 +2894,87 @@ fn fires_are_lit_in_the_dark_and_only_with_the_switch_on() {
 
     assert_eq!(fires_over(6, false), 0, "a fire was lit with the switch off");
     assert!(fires_over(6, true) > 0, "nobody lit a fire on six nights out");
+}
+
+/// A fire is somewhere to be, not only a light on the map: whoever lights one
+/// sits down at it, others walk over and take a place, and sitting there
+/// settles the dark faster than standing in it.
+#[test]
+fn people_gather_at_a_fire_and_are_warmed_by_it() {
+    let mut state = State::new();
+    state.civ.world.cols = 40;
+    state.civ.world.rows = 20;
+    state.civ.terrain.warmup = 0.0;
+    state.civ.build.camp_fire_fear = 0.05;
+    // Anybody frightened at all would rather sit at one than walk home, which
+    // is what makes a handful of nights enough to see a ring form.
+    state.civ.build.camp_fire_gather = 0.02;
+    let mut sim = Settlement::new(&state);
+    sim.bootstrap(&state);
+
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    let mut most = 0;
+    let mut warmed = false;
+    for _ in 0..(state.civ.people.day_length / dt) as usize * 6 {
+        sim.step(&state, dt);
+        for b in &sim.buildings {
+            if b.def.structure != Structure::Fire {
+                continue;
+            }
+            most = most.max(b.guests.len());
+        }
+        // Somebody sitting at one, with the fire's own cell beside them.
+        for pi in sim.people.live_indices() {
+            let sitting = sim.people[pi]
+                .task
+                .as_ref()
+                .is_some_and(|t| t.label() == "at a fire" && !t.working());
+            if sitting && sim.people[pi].path.is_empty() {
+                warmed = true;
+            }
+        }
+    }
+    assert!(most > 0, "nobody ever took a place at a fire");
+    assert!(warmed, "nobody ever sat down at one");
+}
+
+/// The warmth is the whole reason a fire is worth walking to, so it has to be
+/// measurable: the same night, the same fear, with and without it.
+#[test]
+fn sitting_at_a_fire_settles_the_dark_faster_than_standing_in_it() {
+    fn fear_after(warmth: f64) -> f64 {
+        let mut state = State::new();
+        state.civ.world.cols = 40;
+        state.civ.world.rows = 20;
+        state.civ.terrain.warmup = 0.0;
+        state.civ.build.camp_fire_fear = 0.05;
+        state.civ.build.camp_fire_gather = 0.02;
+        state.civ.build.camp_fire_warmth = warmth;
+        let mut sim = Settlement::new(&state);
+        sim.bootstrap(&state);
+        let dt = 1.0 / state.civ.sim.tick_hz;
+        // The dark somebody carries over the whole run rather than what is
+        // left of it at the end: by morning everybody is settled either way,
+        // and what the warmth changes is how much of the night they spent
+        // frightened.
+        let mut carried = 0.0;
+        for _ in 0..(state.civ.people.day_length / dt) as usize * 6 {
+            sim.step(&state, dt);
+            let live = sim.people.live_indices();
+            let total: f64 = live.iter().map(|&pi| sim.people[pi].fear).sum();
+            carried += total / live.len().max(1) as f64;
+        }
+        carried
+    }
+
+    // At one, a fire is only a light; at ten it is worth sitting at. The same
+    // six nights either way.
+    let cold = fear_after(1.0);
+    let warm = fear_after(10.0);
+    assert!(
+        warm < cold,
+        "a warm fire left the town as frightened as a cold one: {warm} against {cold}"
+    );
 }
 
 /// The cloud start height is a line across the sky band: nothing is stamped

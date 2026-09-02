@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::civ::buildings::{Job, BUILDINGS};
+use crate::civ::buildings::{Job, Structure, BUILDINGS};
 use crate::civ::economy::{buy_food, pay_wage, stock_targets};
 use crate::civ::harvest::{lore_patience, lore_weight};
 use crate::civ::people::{carry_limit, is_work_time, Profession};
@@ -112,6 +112,12 @@ pub enum Task {
         full: bool,
         phase: Phase,
     },
+    /// Sitting at a fire somebody has lit. The walk is to a place at it, and
+    /// the sitting lasts until the fire is out or the sun is up.
+    Warm {
+        building_id: i32,
+        phase: Phase,
+    },
     /// Buying something over a counter, with this person's own coin, from
     /// another person.
     Shop {
@@ -154,6 +160,7 @@ impl Task {
             Task::PullDown { .. } => "pull down",
             Task::Station { .. } => "station",
             Task::Water { .. } => "water",
+            Task::Warm { .. } => "at a fire",
             Task::Shop { .. } => "shopping",
         }
     }
@@ -177,6 +184,7 @@ impl Task {
             | Task::Build { building_id, .. }
             | Task::PullDown { building_id, .. }
             | Task::Station { building_id, .. }
+            | Task::Warm { building_id, .. }
             | Task::Shop { building_id, .. } => *building_id == id,
             Task::Eat { to_id } | Task::Deliver { to_id } => *to_id == id,
             Task::Haul { from_id, to_id, .. } => *from_id == id || *to_id == id,
@@ -184,9 +192,17 @@ impl Task {
         }
     }
 
-    /// Work counts as work: sleeping and standing about do not.
+    /// Work counts as work: sleeping, standing about and sitting at a fire do
+    /// not.
     fn is_effort(&self) -> bool {
-        !matches!(self, Task::Sleep { .. } | Task::Idle { .. })
+        !matches!(self, Task::Sleep { .. } | Task::Idle { .. } | Task::Warm { .. })
+    }
+
+    /// Sitting at a fire, or on the way to one. Night leaves this alone the
+    /// way it leaves a bed alone: somebody at a fire has already answered the
+    /// question of where to be after dark.
+    pub fn is_warm(&self) -> bool {
+        matches!(self, Task::Warm { .. })
     }
 }
 
@@ -374,10 +390,15 @@ pub fn update_person(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
         && sim.people[pi]
             .task
             .as_ref()
-            .is_none_or(|t| !t.is_sleep() && !t.is_eat())
+            .is_none_or(|t| !t.is_sleep() && !t.is_eat() && !t.is_warm())
     {
         abandon_task(sim, pi);
-        start_sleep(sim, state, pi);
+        // A fire is asked about before a bed, because it is the answer for the
+        // people a bed is not an answer for: whoever is frightened, and
+        // whoever has no bed to walk to.
+        if !start_warm(sim, state, pi) {
+            start_sleep(sim, state, pi);
+        }
     }
     if sim.people[pi].task.is_none() {
         choose_task(sim, state, pi);
@@ -547,6 +568,14 @@ pub fn abandon_task(sim: &mut Settlement, pi: usize) {
                 sim.buildings[bi].guests.retain(|&g| g != id);
             }
         }
+        // A place at a fire is held only while somebody is in it or walking to
+        // it, so walking off frees it for whoever is still out there.
+        Task::Warm { building_id, .. } => {
+            if let Some(bi) = sim.building_index(building_id) {
+                let id = sim.people[pi].id;
+                sim.buildings[bi].guests.retain(|&g| g != id);
+            }
+        }
         _ => {}
     }
     sim.people[pi].clear_task();
@@ -628,6 +657,93 @@ pub fn start_sleep(sim: &mut Settlement, state: &State, pi: usize) {
         }
     }
     sleep_rough(sim, pi);
+}
+
+/// A place at a fire, for somebody the dark has got to or who has no bed to
+/// walk to at all.
+///
+/// This is the other half of what a fire is for. Lighting one is what a person
+/// on their own does when the night has worn them down; walking to one
+/// somebody else lit is what the rest of the town does, and it is why a fire
+/// ends up with people round it rather than standing alone in the dark. What
+/// makes it worth the walk is the warmth: sitting at one settles the fear far
+/// faster than standing in ordinary lamplight, which is the thing the walk is
+/// being paid for.
+///
+/// Nobody is made to go. A person with a bed and nothing much frightening them
+/// walks home, which is what keeps the houses full and the fires small.
+pub fn start_warm(sim: &mut Settlement, state: &State, pi: usize) -> bool {
+    let cfg = &state.civ.build;
+    if !cfg.camp_fires || cfg.camp_fire_seats <= 0 {
+        return false;
+    }
+    let homeless = sim
+        .building_index(sim.people[pi].home)
+        .is_none_or(|bi| !sim.buildings[bi].built || sim.buildings[bi].upgrading);
+    if sim.people[pi].fear < clamp01(cfg.camp_fire_gather) && !homeless {
+        return false;
+    }
+    let colony = sim.colonies[sim.colony_of(pi)].id;
+    let (cc, cr) = (sim.people[pi].cell_col(), sim.people[pi].cell_row());
+    let reach = cfg.camp_fire_reach.max(0.0);
+    // Nearest first: a fire further off than one somebody else is already
+    // sitting at is not worth the walk, and the near one fills up.
+    let mut fires: Vec<(f64, usize)> = sim
+        .buildings
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| {
+            b.colony == colony
+                && b.built
+                && b.def.structure == Structure::Fire
+                && (b.guests.len() as i32) < cfg.camp_fire_seats
+        })
+        .map(|(bi, b)| {
+            let d = (((b.col - cc).pow(2) + (b.row - cr).pow(2)) as f64).sqrt();
+            (d, bi)
+        })
+        .filter(|(d, _)| *d <= reach)
+        .collect();
+    fires.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+    for (_, bi) in fires {
+        let seat = match free_seat(sim, bi) {
+            Some(seat) => seat,
+            None => continue,
+        };
+        let id = sim.people[pi].id;
+        sim.buildings[bi].guests.push(id);
+        let building_id = sim.buildings[bi].id;
+        sim.people[pi].task = Some(Task::Warm { building_id, phase: Phase::Approach });
+        if path_to(sim, pi, seat.0, seat.1) {
+            return true;
+        }
+        // Could not get there: the place goes back and the next fire is tried.
+        sim.buildings[bi].guests.retain(|&g| g != id);
+        sim.people[pi].clear_task();
+    }
+    false
+}
+
+/// Somewhere to sit at a fire: a cell beside it that nobody has built on and
+/// nobody else is already sitting in. The ring is walked in a fixed order, so
+/// two people who arrive together do not take the same place.
+fn free_seat(sim: &Settlement, bi: usize) -> Option<(i32, i32)> {
+    let (col, row) = (sim.buildings[bi].col, sim.buildings[bi].row);
+    let taken: Vec<(i32, i32)> = sim.buildings[bi]
+        .guests
+        .iter()
+        .filter_map(|&id| sim.people.index_of(id))
+        .map(|pi| (sim.people[pi].cell_col(), sim.people[pi].cell_row()))
+        .collect();
+    for (dc, dr) in crate::civ::pathing::NEIGHBORS {
+        let (c, r) = (col + dc, row + dr);
+        if !sim.walkable(c, r) || taken.contains(&(c, r)) {
+            continue;
+        }
+        return Some((c, r));
+    }
+    None
 }
 
 /// Nobody with a roof and nothing at an inn still walks home. Lying down where
@@ -1460,6 +1576,41 @@ pub fn run_task(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
             }
             if sim.buildings[bi].def.indoor {
                 sim.enter_building(pi, bi);
+            }
+        }
+        Task::Warm { building_id, phase } => {
+            let bi = match sim.building_index(building_id) {
+                Some(bi) if sim.buildings[bi].built => bi,
+                // The fire burned out from under them. Nothing to sit at, and
+                // the night is still the night: whatever they do next is
+                // chosen again from scratch.
+                _ => {
+                    sim.people[pi].clear_task();
+                    return;
+                }
+            };
+            if phase == Phase::Approach {
+                if walk(sim, state, pi, dt, 1.0) {
+                    if let Some(Task::Warm { phase, .. }) = &mut sim.people[pi].task {
+                        *phase = Phase::Working;
+                    }
+                }
+                return;
+            }
+            // Sitting at it. The fire lights the cell, so the ordinary easing
+            // of the dark is already happening; this is the warmth on top of
+            // it, which is what makes one worth walking to rather than only
+            // worth standing near.
+            let cfg = &state.civ.build;
+            let extra = (cfg.camp_fire_warmth - 1.0).max(0.0);
+            let p = &mut sim.people[pi];
+            p.fear = clamp01(p.fear - state.civ.people.fear_ease * extra * dt);
+            p.happiness = clamp01(p.happiness + 0.01 * dt);
+            sim.buildings[bi].active = sim.time;
+            // Up with the light: a night at a fire ends where a night in a bed
+            // ends, and the day is chosen from scratch.
+            if is_work_time(sim.time, &state.civ.people) {
+                abandon_task(sim, pi);
             }
         }
         Task::Eat { .. } => {

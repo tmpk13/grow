@@ -1153,6 +1153,17 @@
     "tab": "draw",
     "tab_label": "Draw",
     "group": "Brush",
+    "label": "Picture pixels to a pixel",
+    "hint": "how much of a dropped picture goes to one pixel of the sheet; 0 works it out from the picture, and the default for every drop is on the Sheet tab",
+    "anchor": "picture-pixels-to-a-pixel",
+    "kind": "field"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "draw",
+    "tab_label": "Draw",
+    "group": "Brush",
     "label": "Nudge left",
     "anchor": "nudge-left",
     "kind": "button"
@@ -1517,6 +1528,17 @@
     "label": "Use for that",
     "anchor": "use-for-that",
     "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "sheet",
+    "tab_label": "Sheet",
+    "group": "Dropping pictures in",
+    "label": "Picture pixels to a pixel",
+    "hint": "what every drop starts at: 0 works it out from the picture, 1 takes it exactly as it is, 8 reads art drawn eight screen pixels to a pixel",
+    "anchor": "picture-pixels-to-a-pixel",
+    "kind": "field"
   },
   {
     "mode": "sprites",
@@ -2448,6 +2470,17 @@
     "tab": "people",
     "tab_label": "People",
     "group": "Person sprites",
+    "label": "Picture pixels to a pixel",
+    "hint": "how much of a dropped picture goes to one pixel of the person; 0 works it out from the picture",
+    "anchor": "picture-pixels-to-a-pixel",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "Person sprites",
     "label": "Draw people from dropped images",
     "hint": "off keeps every sheet and goes back to the generated person",
     "anchor": "draw-people-from-dropped-images",
@@ -2569,6 +2602,17 @@
     "label": "In the way above",
     "hint": "how much of a shrub, tree or vine has to be standing in a cell before it is walked round, in cells; a sapling below it is stepped over, and mats and tufts always are",
     "anchor": "in-the-way-above",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "people",
+    "tab_label": "People",
+    "group": "Body and day",
+    "label": "Cost of pushing through",
+    "hint": "what crossing the thickest growth a person can get through costs against walking round it; everything standing counts, so a meadow is slow and a worn path round it is what people end up taking",
+    "anchor": "cost-of-pushing-through",
     "kind": "field"
   },
   {
@@ -3549,6 +3593,50 @@
     "mode_label": "Settlement",
     "tab": "build",
     "tab_label": "Build",
+    "group": "Camp fires",
+    "label": "Places at a fire",
+    "hint": "the cells around it, so a fire in a corner has fewer than one in the open",
+    "anchor": "places-at-a-fire",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Camp fires",
+    "label": "Frightened enough to walk to one",
+    "hint": "below the fear that lights one: sitting at somebody else's fire is the cheaper answer and should be the one taken first. Anybody with no bed at all goes whatever their fear",
+    "anchor": "frightened-enough-to-walk-to-one",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Camp fires",
+    "label": "How far one is worth walking",
+    "hint": "in cells, measured from wherever the night caught them",
+    "anchor": "how-far-one-is-worth-walking",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Camp fires",
+    "label": "Warmth of one",
+    "hint": "how much faster the dark eases while sitting at a fire than while standing in ordinary light; at one a fire is only a light",
+    "anchor": "warmth-of-one",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
     "group": "Walls and gates",
     "label": "Towns wall themselves",
     "anchor": "towns-wall-themselves",
@@ -3670,6 +3758,17 @@
     "label": "Art pixels per cell",
     "hint": "art pixels to one map cell; a cell is 8 px on the map, so art drawn at 8 px per cell comes out at 1.00 of its own size",
     "anchor": "art-pixels-per-cell",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "build",
+    "tab_label": "Build",
+    "group": "Pictures for made things",
+    "label": "Picture pixels to a pixel",
+    "hint": "how much of a dropped picture goes to one pixel of the thing; 0 works it out from the picture",
+    "anchor": "picture-pixels-to-a-pixel",
     "kind": "field"
   },
   {

@@ -366,12 +366,31 @@ fn block_mass(state: &State) -> f64 {
     }
 }
 
-fn step_cost(kind: u8, traffic: f32, swim: f32, base: i32) -> i32 {
+/// Nothing gets through a cell marked this. Below it the number is how much
+/// is standing there, which is a price rather than a wall.
+pub const PLANT_SHUT: u8 = 255;
+
+/// How much of a cell of growth is in the way, as a fraction. Four cells of
+/// mass is as thick as it gets counted: past that it is a thicket either way,
+/// and the difference between a thicket and a denser thicket is not worth a
+/// longer walk.
+pub fn cover_of(mass: f64) -> u8 {
+    ((mass / 4.0).clamp(0.0, 1.0) * (PLANT_SHUT - 1) as f64).round() as u8
+}
+
+fn step_cost(kind: u8, traffic: f32, swim: f32, cover: u8, push: f32, base: i32) -> i32 {
     if kind == Cell::Water as u8 {
         return (base as f32 * swim.max(1.0)).round() as i32;
     }
     let worn = (traffic / 6.0).clamp(0.0, 1.0);
-    base - (base as f32 * worn * 0.3) as i32
+    let step = base - (base as f32 * worn * 0.3) as i32;
+    if cover == 0 || push <= 0.0 {
+        return step;
+    }
+    // Pushing through what is standing there, on top of the step itself: a
+    // person walks round a stand of growth when going round is shorter than
+    // going through it, and through it when it is not.
+    step + (base as f32 * (cover as f32 / PLANT_SHUT as f32) * push).round() as i32
 }
 
 pub struct Settlement {
@@ -386,6 +405,10 @@ pub struct Settlement {
     /// each tick, beside the swim cost and for the same reason. Zero lets
     /// everybody through everything.
     pub block_mass: f64,
+    /// What pushing through a cell of standing growth costs against walking
+    /// round it, at its thickest. Read from the configuration each tick beside
+    /// the two above, and for the same reason.
+    pub plant_push: f32,
     pub rng: Rng,
     pub blocked: Vec<u8>,
     pub build_grid: Vec<i32>,
@@ -395,11 +418,16 @@ pub struct Settlement {
     /// building lookup to answer it.
     pub gates: Vec<u8>,
     pub traffic: Vec<f32>,
-    /// Cells a standing plant is in the way in. Rebuilt with the coarse plant
-    /// index rather than on every growth step: it is read by the pathfinder,
-    /// which cannot afford to ask the plant list, and a second stale is a
-    /// person taking one step round a tree that has just come down.
-    pub plant_block: Vec<u8>,
+    /// How much standing growth is in the way in each cell, from nothing at
+    /// zero to `PLANT_SHUT` for a trunk nobody gets past. Everything between
+    /// is walked through at a price, which is what makes a meadow something
+    /// people drift round rather than something they cannot cross.
+    ///
+    /// Rebuilt with the coarse plant index rather than on every growth step:
+    /// it is read by the pathfinder, which cannot afford to ask the plant
+    /// list, and a second stale is a person taking one step round a tree that
+    /// has just come down.
+    pub plant_cover: Vec<u8>,
     pub paths: PathGrid,
     pub water_paths: PathGrid,
     pub buildings: Vec<Building>,
@@ -520,12 +548,13 @@ impl Settlement {
             terrain,
             swim_cost: state.civ.people.swim_cost as f32,
             block_mass: block_mass(state),
+            plant_push: state.civ.people.plant_push.max(0.0) as f32,
             rng: Rng::new(state.civ.seed),
             blocked: vec![0; n],
             build_grid: vec![0; n],
             gates: vec![0; n],
             traffic: vec![0.0; n],
-            plant_block: vec![0; n],
+            plant_cover: vec![0; n],
             paths: PathGrid::default(),
             water_paths: PathGrid::default(),
             buildings: Vec::new(),
@@ -614,7 +643,7 @@ impl Settlement {
         self.build_grid = vec![0; n];
         self.gates = vec![0; n];
         self.traffic = vec![0.0; n];
-        self.plant_block = vec![0; n];
+        self.plant_cover = vec![0; n];
         self.paths.resize(cols, rows);
         self.water_paths.resize(cols, rows);
         self.plant_index.resize(cols, rows);
@@ -713,7 +742,7 @@ impl Settlement {
         let mut build_grid = vec![0i32; n];
         let mut gates = vec![0u8; n];
         let mut traffic = vec![0.0f32; n];
-        let mut plant_block = vec![0u8; n];
+        let mut plant_cover = vec![0u8; n];
         for r in 0..rows {
             for c in 0..cols {
                 let to = (r * cols + c) as usize;
@@ -723,7 +752,7 @@ impl Settlement {
                     build_grid[to] = self.build_grid[from];
                     gates[to] = self.gates[from];
                     traffic[to] = self.traffic[from];
-                    plant_block[to] = self.plant_block[from];
+                    plant_cover[to] = self.plant_cover[from];
                 } else if Cell::from_u8(self.terrain.kind[to]).bare() {
                     blocked[to] = 1;
                 }
@@ -733,7 +762,7 @@ impl Settlement {
         self.build_grid = build_grid;
         self.gates = gates;
         self.traffic = traffic;
-        self.plant_block = plant_block;
+        self.plant_cover = plant_cover;
         self.paths.resize(cols, rows);
         self.water_paths.resize(cols, rows);
         self.plant_index.resize(cols, rows);
@@ -1241,18 +1270,20 @@ impl Settlement {
         let build = &self.build_grid;
         let gates = &self.gates;
         let traffic = &self.traffic;
-        let plants = &self.plant_block;
+        let plants = &self.plant_cover;
         let passable = |c: i32, r: i32| {
             if c < 0 || c >= cols || r < 0 || r >= rows {
                 return false;
             }
             let i = (r * cols + c) as usize;
             (build[i] == 0 || gates[i] != 0)
-                && plants[i] == 0
+                && plants[i] != PLANT_SHUT
                 && kind[i] != Cell::Cliff as u8
         };
         let swim = swim_cost;
-        let cost = |i: usize, base: i32| step_cost(kind[i], traffic[i], swim, base);
+        let push = self.plant_push;
+        let cost =
+            |i: usize, base: i32| step_cost(kind[i], traffic[i], swim, plants[i], push, base);
         let out = grid.find((sc, sr), (tc, tr), 24_000, passable, cost);
         self.paths = grid;
         out
@@ -1289,7 +1320,9 @@ impl Settlement {
             let i = (r * cols + c) as usize;
             Cell::from_u8(kind[i]).walkable() && (build[i] == 0 || gates[i] != 0)
         };
-        let cost = |i: usize, base: i32| step_cost(Cell::Grass as u8, traffic[i], 1.0, base);
+        // Nothing about growth here: this asks whether a way out exists at
+        // all, and a way out through a meadow is a way out.
+        let cost = |i: usize, base: i32| step_cost(Cell::Grass as u8, traffic[i], 1.0, 0, 0.0, base);
         let out = grid.find(from, to, 24_000, passable, cost);
         self.paths = grid;
         out.is_some()
@@ -2081,7 +2114,8 @@ impl Settlement {
     }
 
     /// Somebody caught out after dark, out of every light and with the fear to
-    /// show for it, stops walking and lights a fire where they stand.
+    /// show for it, stops walking, lights a fire where they stand, and sits
+    /// down at it.
     ///
     /// The rule is deliberately the lamp's rule with the money taken out of
     /// it. A lamp is bought by whoever can afford one and stands outside their
@@ -2145,14 +2179,18 @@ impl Settlement {
                 if self.place_building(state, ci, def.id, at.0, at.1, true).is_none() {
                     continue;
                 }
-                // The fear is not wiped, only lit against: sitting by a fire
-                // eases it at the rate any other light does, through the same
-                // path, and what is left of it is still what eventually buys a
-                // lamp post. A town that lights fires has to be a town that
-                // ends up with lamps.
+                // The fear is not wiped, only lit against: what is left of it
+                // is still what eventually buys a lamp post, and a town that
+                // lights fires has to be a town that ends up with lamps. What
+                // the fire is worth beyond its light is the warmth, and that
+                // is had by sitting at it: whoever lit it stops walking and
+                // does, which is what gives everybody else something to walk
+                // to.
                 let day = self.day;
                 self.fires_lit += 1;
                 self.people[pi].log(day, "lit a fire out in the dark".to_string());
+                crate::civ::tasks::abandon_task(self, pi);
+                crate::civ::tasks::start_warm(self, state, pi);
                 break;
             }
         }
@@ -3061,6 +3099,7 @@ impl Settlement {
         let cfg = &state.civ;
         self.swim_cost = cfg.people.swim_cost as f32;
         self.block_mass = block_mass(state);
+        self.plant_push = cfg.people.plant_push.max(0.0) as f32;
         self.plant_sim.fall_time = cfg.work.fall_time.max(0.05);
         self.time += dt;
         self.ticks += 1;
@@ -4161,10 +4200,10 @@ impl Settlement {
         if self.plant_index.cols == 0 || self.plant_index.buckets.is_empty() {
             self.plant_index.resize(cols, rows);
         }
-        if self.plant_block.len() != (cols * rows) as usize {
-            self.plant_block = vec![0; (cols * rows) as usize];
+        if self.plant_cover.len() != (cols * rows) as usize {
+            self.plant_cover = vec![0; (cols * rows) as usize];
         } else {
-            self.plant_block.fill(0);
+            self.plant_cover.fill(0);
         }
         let block_mass = self.block_mass;
         let mut index = std::mem::take(&mut self.plant_index);
@@ -4201,16 +4240,23 @@ impl Settlement {
             });
             index.slot_of.insert(plant.id, (b, slot));
             // Only the cell the stem is in: a canopy is walked under, and a
-            // wood that shut every cell it shaded would be a wall. Only
-            // something with a stem, either: a mat or a tuft is trodden over,
-            // however much of it there is.
+            // wood that shut every cell it shaded would be a wall.
+            let i = (plant.row * cols + plant.col) as usize;
+            // What is standing here to push through. Everything counts, a mat
+            // and a tuft included: they are trodden over rather than walked
+            // round, and treading over them is slower than open ground.
+            if self.plant_cover[i] != PLANT_SHUT {
+                let cover = cover_of(mass as f64);
+                self.plant_cover[i] = self.plant_cover[i].saturating_add(cover).min(PLANT_SHUT - 1);
+            }
+            // A trunk is not a price but a wall. Only something with a stem,
+            // and only past the mass the setting names.
             let woody = matches!(
                 plant.size_class,
                 SizeClass::Shrub | SizeClass::Tree | SizeClass::Vine
             );
             if woody && block_mass > 0.0 && mass as f64 >= block_mass {
-                let i = (plant.row * cols + plant.col) as usize;
-                self.plant_block[i] = 1;
+                self.plant_cover[i] = PLANT_SHUT;
             }
         }
         self.plant_index = index;

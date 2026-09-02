@@ -3,6 +3,27 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) The map editor paints the settlement's own map instead of a draft that
+  is applied to it. Ground goes on the map under the pointer, a zone is drawn
+  nowhere but on that page, and sky is a mark on the page alone saying where to
+  read a sky out of the picture. A stroke is put back by the page's own history,
+  since the map is not in the project for an undo step to restore.
+- (LLM) A picture used as the whole map: how many of its pixels go to one of
+  its own is guessed when it is dropped, the map takes the picture's size at
+  that scale with no ceiling on it, every cell is read as the nearest thing in
+  the legend, and the town is founded again on the coastline that was drawn.
+- (LLM) Pictures dropped anywhere in the tool are read back down to the size
+  they were drawn at. Every drop target carries the number and one default in
+  the browser's own settings covers the ones nobody has set.
+- (LLM) Growth is a price rather than only a wall: a trunk still shuts its cell,
+  and everything else standing costs more to push through than open ground, so
+  people drift round a thicket and a worn path through a meadow beats going
+  round it.
+- (LLM) Camp fires are somewhere to sit. Whoever lights one sits down at it,
+  anybody else out in the dark takes a place at the ring, and sitting there
+  settles the dark far faster than standing under a lamp - which is what makes
+  it worth the walk. The company is free: the people at a fire are standing
+  near each other, which is how the town's bonds are already made.
 - (LLM) A map editor, under the experiments switch: a third page of the sprite
   editor where a map is drawn by hand instead of grown from noise. It is the
   same pixel editor - the same pencil, fill, eraser, pick, line and mirror, and

@@ -45,6 +45,19 @@ pub enum Slot {
     Made(String),
 }
 
+impl Slot {
+    /// Which drop target's pixel size this slot reads. People are drawn at one
+    /// size and the things they build at another, so the two kinds of slot
+    /// keep separate answers; every motion shares one, because a person's
+    /// motions are one set of art.
+    pub fn scale_key(&self) -> &'static str {
+        match self {
+            Slot::Motion(_) => "motion",
+            Slot::Made(_) => "made",
+        }
+    }
+}
+
 pub fn sprites_section(app: &App, h: &Handle) -> Element {
     let sprites = &app.state.civ.sprites;
     let mut rows = vec![
@@ -58,6 +71,13 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
              of them uses.",
         ),
         art_scale_row(app, h),
+        crate::ui::decode::scale_field(
+            app,
+            h,
+            "motion",
+            "how much of a dropped picture goes to one pixel of the person; 0 works it out \
+             from the picture",
+        ),
         app_bool(
             h,
             "Draw people from dropped images",
@@ -126,6 +146,13 @@ pub fn made_section(app: &App, h: &Handle) -> Element {
              one state only is drawn from it in that state and generated the rest of the time.",
         ),
         art_scale_row(app, h),
+        crate::ui::decode::scale_field(
+            app,
+            h,
+            "made",
+            "how much of a dropped picture goes to one pixel of the thing; 0 works it out \
+             from the picture",
+        ),
         app_bool(
             h,
             "Draw made things from pictures",
@@ -676,6 +703,12 @@ fn load_files(h: &Handle, slot: Slot, files: FileList) {
 
 fn apply(h: &Handle, slot: Slot, frames: Vec<Frame>, strip: bool, source: &str) {
     let mut sh = h.borrow_mut();
+    // Read down to the size it was drawn at first: everything below counts
+    // pixels - the columns a strip is cut into, how many cells the art covers
+    // - and all of it is about the art rather than about how large a copy of
+    // it was handed over.
+    let want = crate::ui::decode::scale_of(&sh.app, slot.scale_key());
+    let (frames, n) = crate::ui::decode::scaled(frames, want);
     // A person's motion is an animation, so a single image is read as a strip
     // of equal frames. A thing people make stands still and is drawn from its
     // first frame, so guessing at columns there would only cut a wide picture
@@ -690,7 +723,12 @@ fn apply(h: &Handle, slot: Slot, frames: Vec<Frame>, strip: bool, source: &str) 
         Clip::from_frames(frames, source.to_string())
     };
     match built {
-        Some(clip) => apply_to(&mut sh.app, &slot, clip),
+        Some(clip) => {
+            apply_to(&mut sh.app, &slot, clip);
+            if n > 1 {
+                sh.app.set_note(&format!("{source} read at {n} px per pixel"));
+            }
+        }
         None => sh.app.set_note("nothing readable in that drop"),
     }
     sh.app.rebuild_panel = true;

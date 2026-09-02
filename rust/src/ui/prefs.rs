@@ -49,6 +49,12 @@ pub struct Prefs {
     /// proportion when the text is rescaled. Zero means the stylesheet's own
     /// width, which is also what a double press on the handle goes back to.
     pub panel_rem: f64,
+    /// How many pixels of a dropped picture go to one pixel of the art, for
+    /// every drop that has not been told otherwise. Zero means look at the
+    /// picture and work it out, which is what art drawn large wants; one means
+    /// take it exactly as it is. A property of how somebody works rather than
+    /// of the project, so it is here rather than in the file.
+    pub import_px: i32,
 }
 
 impl Default for Prefs {
@@ -59,6 +65,7 @@ impl Default for Prefs {
             keep_sprites: true,
             unfolded: Vec::new(),
             panel_rem: 0.0,
+            import_px: 0,
         }
     }
 }
@@ -74,6 +81,7 @@ impl Prefs {
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_default();
         prefs.scale = prefs.scale.clamp(SCALE_MIN, SCALE_MAX);
+        prefs.import_px = prefs.import_px.max(0);
         if prefs.panel_rem != 0.0 {
             prefs.panel_rem = prefs.panel_rem.clamp(PANEL_REM_MIN, PANEL_REM_MAX);
         }

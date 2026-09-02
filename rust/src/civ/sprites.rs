@@ -514,6 +514,94 @@ fn fit_sheet(w: i32, h: i32, px: &[u32], frames: i32) -> (i32, i32, Vec<u32>, f6
     (nw, nh, out, ratio.clamp(MIN_SCALE, MAX_SCALE))
 }
 
+/// The largest block of one color a picture is drawn in, which for art drawn
+/// at eight screen pixels to a pixel is eight.
+///
+/// Runs of a single color are measured along rows and down columns and their
+/// lengths reduced to a common divisor. The run at each end of a line is left
+/// out: it is cut off by the edge of the picture and is as likely to be half a
+/// block as a whole one. A photograph has runs of every length, so the divisor
+/// falls to one, which is the answer that means "this is not drawn in blocks".
+///
+/// The answer has to divide the picture as well. A picture whose runs share a
+/// divisor that does not tile it was measured on a pattern rather than on a
+/// scale, and the largest divisor that does tile it is the honest one.
+pub fn pixel_size(w: i32, h: i32, px: &[u32]) -> i32 {
+    if w <= 1 || h <= 1 || px.len() < (w * h) as usize {
+        return 1;
+    }
+    fn gcd(a: i32, b: i32) -> i32 {
+        if b == 0 {
+            a
+        } else {
+            gcd(b, a % b)
+        }
+    }
+    // Every line of a small picture and a sample of a large one: the answer is
+    // the same and the walk stays bounded.
+    let (step_y, step_x) = ((h / 64).max(1) as usize, (w / 64).max(1) as usize);
+    let mut common = 0;
+    let mut runs = 0;
+    for y in (0..h).step_by(step_y) {
+        let mut run = 1;
+        for x in 1..w {
+            if px[(y * w + x) as usize] == px[(y * w + x - 1) as usize] {
+                run += 1;
+                continue;
+            }
+            if x - run > 0 {
+                common = gcd(common, run);
+                runs += 1;
+            }
+            run = 1;
+        }
+    }
+    for x in (0..w).step_by(step_x) {
+        let mut run = 1;
+        for y in 1..h {
+            if px[(y * w + x) as usize] == px[((y - 1) * w + x) as usize] {
+                run += 1;
+                continue;
+            }
+            if y - run > 0 {
+                common = gcd(common, run);
+                runs += 1;
+            }
+            run = 1;
+        }
+    }
+    // Nothing changed color anywhere: one flat rectangle says nothing about
+    // the scale it was drawn at.
+    if runs < 4 || common <= 1 {
+        return 1;
+    }
+    let mut n = common.min(w).min(h);
+    while n > 1 && (w % n != 0 || h % n != 0) {
+        n -= 1;
+    }
+    n.max(1)
+}
+
+/// A picture at one pixel per block of `n` by `n`. The top left of each block
+/// is taken rather than an average of it: art drawn large is one color across
+/// a block, and an average would soften every edge where it is not.
+pub fn shrink(frame: Frame, n: i32) -> Frame {
+    let (w, h, px) = frame;
+    if n <= 1 || w <= 0 || h <= 0 {
+        return (w, h, px);
+    }
+    let (ow, oh) = ((w / n).max(1), (h / n).max(1));
+    let mut out = Vec::with_capacity((ow * oh) as usize);
+    for y in 0..oh {
+        for x in 0..ow {
+            let sx = (x * n).min(w - 1);
+            let sy = (y * n).min(h - 1);
+            out.push(px.get((sy * w + sx) as usize).copied().unwrap_or(0));
+        }
+    }
+    (ow, oh, out)
+}
+
 /// How many frames a strip most likely holds. A sheet whose width is a whole
 /// number of its height is read as that many square frames, which is how nearly
 /// every strip is cut; anything else is one frame until it is told otherwise.

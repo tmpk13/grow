@@ -980,6 +980,19 @@ pub struct BuildConfig {
     /// Fires one town may have going at once, so a bad night is a scatter of
     /// lights rather than a forest fire.
     pub camp_fires_at_once: i32,
+    /// How many people can sit at one fire. The places are the cells around
+    /// it, so this is a cap on a ring rather than a number out of nowhere.
+    pub camp_fire_seats: i32,
+    /// Fear at which somebody would rather walk to a fire than to their own
+    /// bed. Below the fear that lights one: sitting at somebody else's fire is
+    /// the cheaper answer, and it should be the one taken first.
+    pub camp_fire_gather: f64,
+    /// How far somebody will walk to a fire, in cells.
+    pub camp_fire_reach: f64,
+    /// How much faster the dark eases while sitting at one, against standing
+    /// in ordinary light. This is the whole reason a fire is worth the walk;
+    /// at one it is only a light like any other.
+    pub camp_fire_warmth: f64,
     /// Whether a crowded colony sends people out to found another.
     pub expeditions: bool,
     pub max_colonies: i32,
@@ -1070,6 +1083,10 @@ impl Default for BuildConfig {
             camp_fire_fear: 0.75,
             camp_fire_burn: 1.0,
             camp_fires_at_once: 3,
+            camp_fire_seats: 5,
+            camp_fire_gather: 0.4,
+            camp_fire_reach: 24.0,
+            camp_fire_warmth: 5.0,
             expeditions: true,
             max_colonies: 4,
             expedition_interval: 1800.0,

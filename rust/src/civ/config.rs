@@ -399,10 +399,6 @@ pub struct CivConfig {
     /// How many dead people stay on file. The register keeps a slot per
     /// person ever born; this is where a very long run stops growing.
     pub people_archive: usize,
-    /// A map drawn by hand in the map editor, waiting to be applied. Part of
-    /// the project rather than of the settlement: it is a drawing of a place,
-    /// and it outlives any one town founded on it.
-    pub map_draft: crate::civ::map_draft::MapDraft,
 }
 
 impl Default for CivConfig {
@@ -427,7 +423,6 @@ impl Default for CivConfig {
             scenery: Vec::new(),
             art_px_per_cell: crate::civ::sprites::DEFAULT_ART_PX_PER_CELL,
             people_archive: 400,
-            map_draft: Default::default(),
         }
     }
 }

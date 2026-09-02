@@ -361,6 +361,36 @@ pub struct NumOpts {
     pub step: f64,
 }
 
+/// A number box on its own, with a floor and no ceiling. A slider needs two
+/// ends to be a slider, and some numbers - how many cells a map is, how many
+/// picture pixels go to one of them - have a smallest sensible value and no
+/// largest one at all.
+pub fn count_field(
+    label: &str,
+    value: f64,
+    min: f64,
+    step: f64,
+    hint: Option<&str>,
+    mut on_input: impl FnMut(f64) + 'static,
+) -> Element {
+    let box_ = input_el("number");
+    let _ = box_.set_attribute("min", &num(min));
+    let _ = box_.set_attribute("step", &num(step));
+    box_.set_value(&num(value));
+    box_.set_class_name("num");
+    on(box_.unchecked_ref(), "change", Scope::Panel, move |e| {
+        // On change rather than on input: a box somebody is typing a four
+        // digit number into passes through 1, 12 and 123 on the way, and every
+        // one of those would be acted on.
+        let v: f64 = match value_of(&e).parse() {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        on_input(v.max(min));
+    });
+    row(label, box_.unchecked_ref::<Element>().clone(), hint)
+}
+
 /// A slider and a number box that stay in step with each other.
 pub fn number_field(
     label: &str,
@@ -965,9 +995,11 @@ pub fn app_danger_button(h: &Handle, label: &str, apply: impl Fn(&mut App) + 'st
 /// covers the whole project rather than whichever editor is open. Nothing
 /// rebuilds it, so it is told when the history moves.
 pub fn sync_undo_buttons(app: &App) {
+    // The map editor's strokes are not in the project's history, so what the
+    // two buttons offer on that page is what it is holding.
     for (id, enabled) in [
-        ("btn-undo", app.history.can_undo()),
-        ("btn-redo", app.history.can_redo()),
+        ("btn-undo", app.history.can_undo() || map_panel::can_undo(app)),
+        ("btn-redo", app.history.can_redo() || map_panel::can_redo(app)),
     ] {
         if let Some(node) = by_id(id) {
             let _ = if enabled {

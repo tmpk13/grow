@@ -129,9 +129,11 @@ pub struct UiState {
     /// has been picked out of it. A tool rather than part of the project, so
     /// it lives for as long as the page is open and no longer.
     pub land: crate::ui::zone_paint::Landscape,
-    /// The picture laid under the map editor's drawing to trace. Held on the
-    /// same terms as the one above and for the same reason.
-    pub tracing: crate::ui::map_panel::Tracing,
+    /// What the map editor holds that the map does not: the picture laid under
+    /// it to trace, the cells marked sky on it, and the strokes that can be
+    /// put back. Held on the same terms as the one above and for the same
+    /// reason.
+    pub map_edit: crate::ui::map_panel::MapTools,
     /// The stage puts down whatever the placing menu is holding. The fifth
     /// exclusive press switch.
     pub place: bool,
@@ -185,6 +187,11 @@ pub struct UiState {
     pub zip_skip: Vec<String>,
     /// Put every frame in the zip as its own image as well as the strip.
     pub zip_frames: bool,
+    /// How many pixels of a dropped picture go to one pixel of the art, per
+    /// drop target, for the targets somebody has said. Everything not in here
+    /// is at the default this browser is set to. How somebody is working
+    /// rather than anything about the project, so it is not saved with it.
+    pub import_px: Vec<(String, i32)>,
     pub shade_preview_sampler: String,
     pub shade_preview_tones: i32,
     pub shade_preview_core: f64,
@@ -217,6 +224,11 @@ pub struct App {
     /// wilderness onto the new ground blocks the thread, and the note saying
     /// so has to paint first.
     pub pending_expand: Option<(i32, i32)>,
+    /// A map read out of a picture, one brush id per cell, waiting for the
+    /// settlement it belongs to be made. Laid down between the map being made
+    /// and the town being founded on it, so the wilderness grows on the
+    /// painted ground rather than under it.
+    pub pending_map: Option<Vec<u8>>,
     pub save_deadline: Option<f64>,
     /// When the running settlement is next written down, and whether anything
     /// has happened in it since the last time. It changes every tick and is
@@ -292,11 +304,21 @@ impl App {
         ui::sync_undo_buttons(self);
     }
 
+    /// A stroke on the map editor is not in the project, so it keeps a way
+    /// back of its own; while there is one to take, it is what undo means.
     pub fn undo(&mut self) {
+        if crate::ui::map_panel::undo_stroke(self) {
+            crate::ui::sync_undo_buttons(self);
+            return;
+        }
         self.take_step(false);
     }
 
     pub fn redo(&mut self) {
+        if crate::ui::map_panel::redo_stroke(self) {
+            crate::ui::sync_undo_buttons(self);
+            return;
+        }
         self.take_step(true);
     }
 
@@ -841,7 +863,7 @@ pub fn start() -> Result<(), JsValue> {
         playing: false,
         play_time: 0.0,
         move_people: false,
-        tracing: crate::ui::map_panel::Tracing { strength: 0.7, ..Default::default() },
+        map_edit: Default::default(),
         land: crate::ui::zone_paint::Landscape {
             threshold: 0.12,
             ..crate::ui::zone_paint::Landscape::default()
@@ -866,6 +888,7 @@ pub fn start() -> Result<(), JsValue> {
         made_meaning: false,
         zip_skip: Vec::new(),
         zip_frames: false,
+        import_px: Vec::new(),
         shade_preview_sampler: state
             .materials
             .samplers
@@ -894,6 +917,7 @@ pub fn start() -> Result<(), JsValue> {
         pending_bootstrap: false,
         pending_civ_reset: false,
         pending_expand: None,
+        pending_map: None,
         save_deadline: None,
         civ_save_at: ui::now() + CIV_SAVE_INTERVAL_MS,
         civ_stepped: false,
@@ -1692,7 +1716,10 @@ fn bind_canvas(h: &Handle, canvas: &HtmlCanvasElement) {
                     return;
                 }
                 if sh.app.ui.tool != Tool::Pick {
-                    sh.app.record("stroke", false);
+                    // What one stroke back means is the surface's to say: the
+                    // sheet is in the project and takes a step of its history,
+                    // the map is not and keeps its own.
+                    surface.begin(&mut sh.app);
                 }
                 let erase = pe.buttons() & 2 == 2;
                 ui::paint::apply(&mut sh.app, surface, cell, erase);
@@ -2253,8 +2280,10 @@ fn set_holding(holding: bool) {
 /// whether a press is a stroke asks this rather than the sheet.
 fn flat_dims(app: &App) -> Option<(i32, i32)> {
     if app.mode == Mode::Sprites && app.ui.tab == "map" {
-        let d = &app.state.civ.map_draft;
-        return (d.cols > 0 && d.rows > 0).then_some((d.cols, d.rows));
+        // The map editor draws the settlement's own map, so with no
+        // settlement there is nothing on the stage to press on.
+        let world = app.settlement.as_ref()?.world();
+        return (world.cols > 0 && world.rows > 0).then_some((world.cols, world.rows));
     }
     app.sheet_dims()
 }
@@ -3014,6 +3043,15 @@ fn frame(h: &Handle, ts: f64) {
                 sh.app.settlement = Some(Settlement::new(&sh.app.state));
             }
         }
+        // A map read out of a picture is laid on the fresh land before
+        // anybody is put on it: the town is founded on the coastline that was
+        // drawn, and the wilderness warms onto it rather than being painted
+        // over afterwards.
+        if let Some(cells) = sh.app.pending_map.take() {
+            if let Some(civ) = &mut sh.app.settlement {
+                crate::civ::map_brush::lay_cells(civ, &cells);
+            }
+        }
         if let Some(civ) = &mut sh.app.settlement {
             // A settlement left running is picked up where it was; only a
             // world with nothing saved for it is founded from scratch.
@@ -3451,13 +3489,20 @@ fn sheet_status(app: &App) -> String {
 /// What the map page says it is showing. The sheet's line would name a sheet
 /// nobody is drawing on and a frame nobody is stepping through.
 fn map_status(app: &App) -> String {
-    let draft = &app.state.civ.map_draft;
-    let painted = draft.paint.iter().filter(|&&v| v != 0).count();
-    let brush = crate::civ::map_draft::Brush::from_color(app.ui.brush_color);
+    let brush = crate::civ::map_brush::Brush::from_color(app.ui.brush_color);
+    let world = match app.settlement.as_ref() {
+        Some(civ) => civ.world(),
+        None => return "no map yet: enter the settlement to make one".to_string(),
+    };
+    let zoned = app
+        .settlement
+        .as_ref()
+        .map(|civ| civ.terrain.zone.iter().filter(|&&z| z != 0).count())
+        .unwrap_or(0);
     [
-        "map draft".to_string(),
-        format!("{}x{} cells", draft.cols, draft.rows),
-        format!("{painted} painted"),
+        "map editor".to_string(),
+        format!("{}x{} cells", world.cols, world.rows),
+        format!("{zoned} zoned"),
         format!("brush {}", brush.label().to_lowercase()),
         format!("{:.0}x zoom", app.viewport.zoom),
         format!("{:.0} fps", app.fps),

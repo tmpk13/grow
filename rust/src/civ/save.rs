@@ -29,7 +29,7 @@ use crate::state::State;
 /// Bumped whenever the shape below changes in a way an older file cannot be
 /// read into. There is no upgrade path: a settlement is a thing being watched,
 /// not a document, and starting a fresh one costs a moment.
-pub const SNAPSHOT_VERSION: u32 = 4;
+pub const SNAPSHOT_VERSION: u32 = 5;
 
 /// The world a saved settlement grew on, as one string. Everything the map is
 /// built from is in here, so two settlements with the same key stand on the
@@ -77,12 +77,12 @@ pub struct Snapshot {
     pub next_balloon_id: i32,
     /// Where the ground has been walked into paths.
     pub traffic: Vec<f32>,
-    /// Which cells a plant is standing in the way in. Worked out from the
-    /// plants, but only on a timer, and the pathfinder reads it: a restored
-    /// settlement that rebuilt it a second early would walk round a tree the
-    /// saved one had not noticed yet, and come apart from there.
+    /// How much growth is standing in the way in each cell. Worked out from
+    /// the plants, but only on a timer, and the pathfinder reads it: a
+    /// restored settlement that rebuilt it a second early would walk round a
+    /// tree the saved one had not noticed yet, and come apart from there.
     #[serde(default)]
-    pub plant_block: Vec<u8>,
+    pub plant_cover: Vec<u8>,
     /// The ground as it stands, where a hand has changed it. The map is made
     /// again from the seed on the way in, so anything drawn on it - a lake cut
     /// where the generator put none, a zone saying what may take root - would
@@ -144,7 +144,7 @@ struct SnapshotRef<'a> {
     balloons: &'a [Balloon],
     next_balloon_id: i32,
     traffic: &'a [f32],
-    plant_block: &'a [u8],
+    plant_cover: &'a [u8],
     kind_paint: String,
     zone_paint: String,
     deposits: Vec<f64>,
@@ -191,7 +191,7 @@ pub fn capture(sim: &Settlement, state: &State) -> String {
         balloons: &sim.balloons,
         next_balloon_id: sim.next_balloon_id,
         traffic: &sim.traffic,
-        plant_block: &sim.plant_block,
+        plant_cover: &sim.plant_cover,
         kind_paint: if sim.terrain_painted {
             crate::civ::save::bytes_rle(&sim.terrain.kind)
         } else {
@@ -341,8 +341,8 @@ pub fn restore(sim: &mut Settlement, state: &State, snap: Snapshot) -> Result<()
     sim.plant_index.timer = snap.plant_index_timer;
     // After the rebuild, which would otherwise have worked out a fresher one
     // than the settlement was saved with.
-    if snap.plant_block.len() == sim.plant_block.len() {
-        sim.plant_block = snap.plant_block;
+    if snap.plant_cover.len() == sim.plant_cover.len() {
+        sim.plant_cover = snap.plant_cover;
     }
     sim.refresh_colonies();
     sim.ready = true;

@@ -10,8 +10,11 @@ use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, Event, File, FileList, HtmlCanvasElement, HtmlImageElement};
+use web_sys::{
+    CanvasRenderingContext2d, Element, Event, File, FileList, HtmlCanvasElement, HtmlImageElement,
+};
 
+use crate::app::{App, Handle};
 use crate::civ::sprites::{natural_cmp, Frame, ALPHA_CUT, MAX_FRAMES};
 use crate::ui::document;
 use crate::util::pack_rgba;
@@ -161,3 +164,95 @@ fn image_pixels(img: &HtmlImageElement) -> Option<Frame> {
     Some((w, h, px))
 }
 
+
+// ---- how large a dropped picture was drawn -------------------------------
+
+/// What every drop is read at until it is told otherwise, from this browser's
+/// own settings. Zero means work it out from the picture.
+pub fn default_scale() -> i32 {
+    crate::ui::prefs::Prefs::load().import_px.max(0)
+}
+
+/// What one drop target is set to. Each of them keeps its own answer, because
+/// people are drawn at one size and the things they build at another, and
+/// neither of them is the size a reference photograph was scanned at.
+pub fn scale_of(app: &App, key: &str) -> i32 {
+    app.ui
+        .import_px
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|&(_, n)| n)
+        .unwrap_or_else(default_scale)
+}
+
+pub fn set_scale(app: &mut App, key: &str, n: i32) {
+    let n = n.max(0);
+    match app.ui.import_px.iter_mut().find(|(k, _)| k == key) {
+        Some(slot) => slot.1 = n,
+        None => app.ui.import_px.push((key.to_string(), n)),
+    }
+}
+
+/// What was dropped, at one pixel per block it was drawn in. The scale used
+/// comes back with it, since it may have been guessed and the note says so.
+///
+/// Guessed from the first picture and applied to all of them: a set of frames
+/// dropped together was drawn together, and reading one of them at a different
+/// scale from the rest would leave a walk cycle that changes size as it plays.
+pub fn scaled(frames: Vec<Frame>, want: i32) -> (Vec<Frame>, i32) {
+    let n = if want > 0 {
+        want
+    } else {
+        match frames.first() {
+            Some((w, h, px)) => crate::civ::sprites::pixel_size(*w, *h, px),
+            None => 1,
+        }
+    };
+    if n <= 1 {
+        return (frames, 1);
+    }
+    (frames.into_iter().map(|f| crate::civ::sprites::shrink(f, n)).collect(), n)
+}
+
+/// The number box beside a drop target.
+pub fn scale_field(app: &App, h: &Handle, key: &str, hint: &str) -> Element {
+    let h2 = h.clone();
+    let key2 = key.to_string();
+    let value = scale_of(app, key) as f64;
+    crate::ui::count_field(
+        "Picture pixels to a pixel",
+        value,
+        0.0,
+        1.0,
+        Some(hint),
+        move |v| {
+            let mut sh = h2.borrow_mut();
+            set_scale(&mut sh.app, &key2, v as i32);
+            sh.app.rebuild_panel = true;
+        },
+    )
+}
+
+/// The one every drop target starts from, kept with this browser rather than
+/// with the project.
+pub fn default_scale_field(h: &Handle) -> Element {
+    let h2 = h.clone();
+    crate::ui::count_field(
+        "Picture pixels to a pixel",
+        default_scale() as f64,
+        0.0,
+        1.0,
+        Some(
+            "what every drop starts at: 0 works it out from the picture, 1 takes it exactly \
+             as it is, 8 reads art drawn eight screen pixels to a pixel",
+        ),
+        move |v| {
+            let mut prefs = crate::ui::prefs::Prefs::load();
+            prefs.import_px = (v as i32).max(0);
+            prefs.save();
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.import_px.clear();
+            sh.app.rebuild_panel = true;
+        },
+    )
+}

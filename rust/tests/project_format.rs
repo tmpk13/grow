@@ -77,36 +77,12 @@ fn an_exported_project_is_stamped_with_the_build() {
     assert_eq!(state.app, grow::VERSION, "the stamp is rewritten, not carried over");
 }
 
-/// A hand drawn map travels with the project, as runs rather than as a list of
-/// eight thousand numbers, and a project written before there was one still
-/// loads.
+/// The map editor used to keep a draft in the project and lay it over the map
+/// on Apply. It paints the map itself now, and a project written while the
+/// draft existed still loads: an unknown field is ignored rather than refused.
 #[test]
-fn a_map_draft_survives_a_round_trip_and_an_old_project_has_none() {
-    use grow::civ::map_draft::Brush;
-
-    let mut state = State::new();
-    let draft = &mut state.civ.map_draft;
-    draft.cols = 32;
-    draft.rows = 16;
-    draft.ensure();
-    for c in 0..8 {
-        draft.set(c, 3, Brush::Water);
-    }
-    draft.set(0, 0, Brush::Sky);
-    draft.set(31, 15, Brush::Cliff);
-
-    let raw = serde_json::to_string(&state).expect("write");
-    // Runs, not numbers: the whole grid is a short string.
-    assert!(raw.len() < 400_000, "the project got very large: {} bytes", raw.len());
-    let back: State = serde_json::from_str(&raw).expect("read");
-    assert_eq!(back.civ.map_draft.cols, 32);
-    assert_eq!(back.civ.map_draft.rows, 16);
-    assert_eq!(back.civ.map_draft.paint, state.civ.map_draft.paint);
-    assert_eq!(back.civ.map_draft.at(4, 3), Brush::Water);
-    assert_eq!(back.civ.map_draft.at(0, 0), Brush::Sky);
-    assert_eq!(back.civ.map_draft.at(31, 15), Brush::Cliff);
-    assert_eq!(back.civ.map_draft.at(4, 4), Brush::Clear);
-
-    let old: State = serde_json::from_str("{}").expect("an empty project is a default one");
-    assert!(old.civ.map_draft.nothing_painted(), "a project with no drawing came back with one");
+fn a_project_carrying_an_old_map_draft_still_loads() {
+    let raw = r#"{"version":3,"app":"0.0.1","civ":{"seed":9,"mapDraft":{"cols":32,"rows":16,"paint":"1x8,0x504"}}}"#;
+    let state = State::from_json(raw).expect("a project with a draft in it loads");
+    assert_eq!(state.civ.seed, 9, "the rest of the settlement came through");
 }

@@ -177,30 +177,44 @@ middle button or a held ctrl drags, wheel or pinch zooms.
 ### The map page
 
 With the settlement's **Experimental** switch on, the sprite editor grows a
-third page: a map drawn by hand instead of grown from noise.
+third page: the settlement's own map, drawn by hand instead of grown from
+noise.
 
 It is the same pixel editor. The stage is one pixel per map cell, the tools are
 the ones already in the toolbar - pencil, fill, eraser, pick, line, mirror -
-and a stroke is one step of undo, because the drawing is kept with the project.
-The only thing the page adds is that the colors mean something: the palette is
-a legend of what land is, so choosing a color is choosing water, rock, a rock
-face, grass, sand, a wood, a meadow, ground where nothing seeds, or sky. The
-eraser, and any color that is not one of those, says nothing about a cell and
-leaves it to the map.
+and the map changes under the pointer: there is no draft and nothing to apply.
+What the page adds is that the colors mean something. The palette is a legend
+of what land is, and it covers three different questions:
 
-* **Drop a picture** to trace and it is laid under the drawing, corner to
-  corner, at whatever strength the slider is at. It is never part of the
-  project and never part of a settlement: the picture goes when the page does,
-  and what is kept is what was painted on top of it.
-* **Apply to the map** stretches the draft over the running map, corner to
-  corner, whatever size either of them is. Cells nothing was painted on are
-  left alone, so one drawn coastline can be laid over a generated map without
-  flattening the rest of it, and anything already built on is left standing.
-* **Take the sky colors** reads the top and the bottom of whatever was painted
-  sky out of the picture under it and sets the world's sky gradient to them.
-* **Size** is the grid the map is drawn at, which does not have to match the
-  settlement's. Changing it wipes the drawing, because a map redrawn at another
-  size is a different map.
+* **The ground** - water, rock, a rock face, grass, sand - is the map itself. A
+  cell somebody has already built on keeps what it has.
+* **A zone** - trees only, low growth only, nothing grows - says what may take
+  root there, and is drawn nowhere but on this page. The settlement never shows
+  one: it is a thing about what a cell will become rather than about how it
+  looks. The eraser takes one off again.
+* **Sky** is not on the map at all. It is a mark on this page, kept only while
+  the page is open, saying which part of the picture underneath is sky.
+
+A stroke can be taken back with undo, the same button and the same keys as
+everywhere else, though these strokes are not part of the project's own history
+- the map is not in the project - and the last two dozen of them are what is
+kept.
+
+* **Drop a picture** and it is laid under the map, corner to corner, to trace
+  over. It is never part of the project and never part of a settlement: the
+  picture goes when the page does, and what is kept is the map painted with it
+  there.
+* **Picture pixels to a cell** is how much of the picture goes to one cell. It
+  is guessed when the picture arrives - art drawn eight screen pixels to a pixel
+  comes back as eight - and it is what decides how large a map the picture makes.
+* **Use it as the map** reads the whole picture in: every cell becomes the
+  nearest thing in the legend, the map takes the picture's own size at that
+  scale, and the settlement is founded again on it. There is no ceiling on the
+  size. A very large map costs memory and a long wilderness warmup, and the
+  panel says so rather than refusing.
+* **Take the sky colors** reads the top and the bottom of whatever is marked
+  sky out of the picture and sets the world's sky gradient to them.
+* **Take every zone off** clears the zones and leaves the ground alone.
 
 **Rock face** is the one kind of ground that is new. Water is crossed by
 swimming and rock is walked on and built on; a face of rock is neither. Nobody
@@ -208,6 +222,20 @@ crosses one, nothing takes root in one, and nothing is ever built on one. The
 terrain generator never makes one, so a cliff on a map is always somewhere
 somebody drew it - by hand here, or from a picture with the Land panel's
 **Zones from a picture**.
+
+### Pictures dropped in
+
+Art drawn large - eight screen pixels to a pixel, or sixteen - is read back
+down to the pixels it was drawn in on the way in, so a sheet holds what was
+drawn rather than a magnified copy of it.
+
+**Picture pixels to a pixel** on the Sheet tab is the default for every drop
+target in the tool. Zero works it out from the picture, one takes it exactly as
+it is, and anything else is taken as given. Each drop target - the sheet, a
+person's motions, the things people make - carries the same number beside it
+and can be set to something of its own, since people are drawn at one size and
+the things they build at another. It is kept with the browser rather than with
+the project.
 
 ### Selecting part of a cel
 
@@ -592,11 +620,17 @@ air right now and where.
   map once it is lying down. The ground it stood on is free from the moment of
   the cut, because something else may start growing there. Ground cover, which
   is cut back rather than pulled up, has nothing to tip.
-* **Trees are in the way.** A shrub, tree or vine with enough of itself grown
-  shuts the one cell its stem is in, so people walk round it rather than
-  through it. Only the stem: a canopy is walked under, and a wood is walked
-  through rather than round. Both the switch and how much of a plant counts are
-  in the People panel, and turning it off is how it used to be.
+* **Trees are in the way, and growth is slow going.** A shrub, tree or vine
+  with enough of itself grown shuts the one cell its stem is in, so people walk
+  round it rather than through it. Only the stem: a canopy is walked under, and
+  a wood is walked through rather than round. Everything else standing is a
+  price rather than a wall - pushing through a meadow costs more than crossing
+  open ground, in proportion to how much is standing there, so people drift
+  round a thicket when going round is not much further and cut straight through
+  when it is. A route taken often enough wears into a path, and a worn path is
+  cheap again: that is how a road ends up through the meadow rather than around
+  it. The switch, how much of a plant is a wall, and what pushing through costs
+  are all in the People panel; turning the cost to zero is how it used to be.
 * **A house nobody lives in falls in.** Past a wait, an empty home loses its
   roof from the ridge outward and then its walls from the top down, weathering
   as it goes. When there is nothing left the ground comes back and a share of
@@ -739,10 +773,27 @@ same way any other light does; put the fire first and nobody is ever frightened
 enough to pay for a post, and the town never lights a street. For the same
 reason a fire burning outside a house does not count as a lit street when the
 town is deciding whether that house wants a lamp: it will be ash by tomorrow,
-which is the whole reason somebody pays for a post instead. All four numbers -
-whether people light them at all, how frightened is frightened enough, how long
-one burns, and how many a town may have going at once - are in the Build
-panel.
+which is the whole reason somebody pays for a post instead.
+
+**Somewhere to sit.** Whoever lights a fire sits down at it rather than walking
+on, and anybody else out in the dark within walking distance comes over and
+takes a place at the ring. The places are the cells around the fire, so a fire
+lit in a corner holds fewer people than one lit in the open, and a place is
+held only while somebody is in it. Sitting there settles the dark far faster
+than standing under a lamp does, and that is the whole reason the walk is worth
+taking: turn the warmth down to one and a fire is only a light again.
+
+Nobody is made to go. A person with a bed and nothing much frightening them
+walks home, which is what keeps the houses full; the ones who gather are the
+ones the night has got to and the ones with no bed to walk to at all. What
+comes of it is not only warmth - the people sitting round a fire are standing
+near each other, which is how the town's bonds are made, so a bad night out is
+also where friendships and feuds come from.
+
+Every number - whether people light them at all, how frightened is frightened
+enough to light one, how long one burns, how many a town may have going at
+once, how many can sit at one, how frightened is frightened enough to walk to
+one, how far one is worth walking, and how warm it is - is in the Build panel.
 
 ### Farms and water
 

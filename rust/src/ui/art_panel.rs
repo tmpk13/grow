@@ -149,6 +149,13 @@ pub fn build_draw(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     rows.push(mirror_row(app, h));
     rows.push(swatches.clone());
     rows.push(image_drop(h));
+    rows.push(crate::ui::decode::scale_field(
+        app,
+        h,
+        "sheet",
+        "how much of a dropped picture goes to one pixel of the sheet; 0 works it out from \
+         the picture, and the default for every drop is on the Sheet tab",
+    ));
     rows.push(nudge_row(h));
     rows.push(btn_row(vec![
         app_button(h, "Clear frame", |app| {
@@ -220,9 +227,28 @@ pub fn build_sheet(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> 
     if selected(app).is_some() {
         append(root, use_section(app, h));
     }
+    append(root, imports_section(h));
     append(root, zip_section(app, h));
     append(root, store_section(app, h));
     Box::new(crate::app::StaticPanel)
+}
+
+/// How pictures are read on the way in, for every drop target in the tool.
+/// Kept with the browser rather than with the project: it is about the art
+/// somebody has on their disk, not about the thing being built.
+fn imports_section(h: &Handle) -> Element {
+    section(
+        "Dropping pictures in",
+        vec![
+            note(
+                "Art drawn large - eight screen pixels to a pixel, or sixteen - is read back \
+                 down to the pixels it was drawn in, so a sheet holds what was drawn rather \
+                 than a magnified copy of it. Every drop target starts at this and can be set \
+                 to something else beside the target itself.",
+            ),
+            crate::ui::decode::default_scale_field(h),
+        ],
+    )
 }
 
 // ---- sections ------------------------------------------------------------
@@ -446,6 +472,11 @@ fn place_images(h: &Handle, images: Vec<crate::civ::sprites::Frame>) {
         sh.app.set_note("nothing readable in that drop");
         return;
     }
+    // Read down to the size it was drawn at before anything measures it: the
+    // frame grows to hold what was dropped, and a picture handed over at eight
+    // screen pixels to a pixel would grow it eight times too far.
+    let want = crate::ui::decode::scale_of(&sh.app, "sheet");
+    let (images, read_at) = crate::ui::decode::scaled(images, want);
     sh.app.record("drop", false);
     let start = sh.app.ui.sheet_frame;
     let layer = sh.app.ui.sheet_layer;
@@ -479,11 +510,14 @@ fn place_images(h: &Handle, images: Vec<crate::civ::sprites::Frame>) {
         }
     });
     sh.app.ui.sheet_frame = landed;
-    let placed = if count == 1 {
+    let mut placed = if count == 1 {
         "dropped onto this layer".to_string()
     } else {
         format!("{count} images across {} frames", landed - start + 1)
     };
+    if read_at > 1 {
+        placed.push_str(&format!(" at {read_at} px per pixel"));
+    }
     sh.app.set_note(&match grew {
         Some((w, h)) => format!("{placed}; the frame grew to {w}x{h}"),
         None => placed,

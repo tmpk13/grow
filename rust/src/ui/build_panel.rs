@@ -169,6 +169,25 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("a bad night should read as a scatter of lights, not as the wilderness \
                   alight"),
             |c, v| c.camp_fires_at_once = v as i32),
+        note("Whoever lights one sits down at it, and anybody else out in the dark walks over \
+              and takes a place at the ring. Sitting there settles the dark far faster than \
+              standing under a lamp does, which is what makes the walk worth taking; being sat \
+              together is also how the people at a fire come to know each other."),
+        build_num(h, "Places at a fire", cfg.camp_fire_seats as f64, 0.0, 8.0, 1.0,
+            Some("the cells around it, so a fire in a corner has fewer than one in the open"),
+            |c, v| c.camp_fire_seats = v as i32),
+        build_num(h, "Frightened enough to walk to one", cfg.camp_fire_gather, 0.0, 1.0, 0.05,
+            Some("below the fear that lights one: sitting at somebody else's fire is the \
+                  cheaper answer and should be the one taken first. Anybody with no bed at \
+                  all goes whatever their fear"),
+            |c, v| c.camp_fire_gather = v),
+        build_num(h, "How far one is worth walking", cfg.camp_fire_reach, 1.0, 80.0, 1.0,
+            Some("in cells, measured from wherever the night caught them"),
+            |c, v| c.camp_fire_reach = v),
+        build_num(h, "Warmth of one", cfg.camp_fire_warmth, 1.0, 20.0, 0.5,
+            Some("how much faster the dark eases while sitting at a fire than while standing \
+                  in ordinary light; at one a fire is only a light"),
+            |c, v| c.camp_fire_warmth = v),
     ]));
 
     append(root, section("Walls and gates", vec![

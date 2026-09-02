@@ -22,6 +22,12 @@ pub trait Surface: 'static {
     fn dims(&self, app: &App) -> Option<(i32, i32)>;
     fn get(&self, app: &App, x: i32, y: i32) -> u32;
     fn set(&self, app: &mut App, x: i32, y: i32, v: u32);
+    /// Once per stroke, before the first cell of it is painted. The default
+    /// is one step of the project's history; a surface whose buffer is not in
+    /// the project keeps its own way back instead.
+    fn begin(&self, app: &mut App) {
+        app.record("stroke", false);
+    }
     /// Once per stroke, after the pointer lifts.
     fn commit(&self, app: &mut App);
     /// Where a pointer at these client coordinates lands in the buffer. The
@@ -161,7 +167,7 @@ pub fn attach(canvas: &HtmlCanvasElement, h: &Handle, surface: Rc<dyn Surface>, 
                 // nothing to put back and should not push real edits off the
                 // stack.
                 if sh.app.ui.tool != Tool::Pick {
-                    sh.app.record("stroke", false);
+                    surface.begin(&mut sh.app);
                 }
                 let erase = pe.buttons() & 2 == 2;
                 apply(&mut sh.app, surface.as_ref(), cell, erase);

@@ -153,6 +153,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                   walked round, in cells; a sapling below it is stepped over, and mats and \
                   tufts always are"),
             |c, v| c.avoid_mass = v),
+        people_num(h, "Cost of pushing through", p.plant_push, 0.0, 6.0, 0.1,
+            Some("what crossing the thickest growth a person can get through costs against \
+                  walking round it; everything standing counts, so a meadow is slow and a \
+                  worn path round it is what people end up taking"),
+            |c, v| c.plant_push = v),
         people_num(h, "Carry capacity", p.carry_capacity, 1.0, 80.0, 1.0, Some("one load; the rest is left where it fell"), |c, v| c.carry_capacity = v),
         people_num(h, "Work rate", p.work_rate, 0.1, 4.0, 0.1, Some("global multiplier on every kind of work"), |c, v| c.work_rate = v),
         people_num(h, "Laborer share", p.laborer_share, 0.0, 0.9, 0.05, Some("adults kept out of workplaces to haul and build"), |c, v| c.laborer_share = v),

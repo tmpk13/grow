@@ -210,6 +210,12 @@ pub struct PeopleConfig {
     /// mats and tufts are stepped over whatever they weigh: what is in the way
     /// is a trunk, not foliage.
     pub avoid_mass: f64,
+    /// What pushing through the thickest growth a person can get through costs
+    /// against walking round it, as a multiple of the step itself. Everything
+    /// standing counts here, foliage included: a meadow is crossed, slowly,
+    /// and a path worn round it is the one people end up taking. Zero is the
+    /// way it was, with growth costing nothing to walk through.
+    pub plant_push: f64,
 }
 
 impl Default for PeopleConfig {
@@ -248,6 +254,7 @@ impl Default for PeopleConfig {
             marry_age: 17.0,
             avoid_plants: true,
             avoid_mass: 2.0,
+            plant_push: 1.5,
         }
     }
 }

@@ -10,7 +10,7 @@ pub mod config;
 pub mod control;
 pub mod economy;
 pub mod harvest;
-pub mod map_draft;
+pub mod map_brush;
 pub mod names;
 pub mod people;
 pub mod pathing;

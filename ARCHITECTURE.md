@@ -54,7 +54,7 @@ flowchart TD
 
   subgraph artpanels [Sprite editor panels]
     artp["ui/art_panel.rs<br/>brush, layers, frames, sheets, downloads"]
-    mapp["ui/map_panel.rs<br/>a map drawn by hand, over a picture"]
+    mapp["ui/map_panel.rs<br/>the settlement map, painted by hand over a picture"]
   end
 
   subgraph civpanels [Settlement panels]
@@ -94,7 +94,7 @@ flowchart TD
     social["civ/social.rs<br/>who has met whom, and what they made of it"]
     csprites["civ/sprites.rs<br/>clips per person motion and per made thing's state"]
     cclouds["civ/clouds.rs<br/>one seamless tile of weather"]
-    draft["civ/map_draft.rs<br/>a hand drawn map, one brush per cell"]
+    brush["civ/map_brush.rs<br/>what a stroke on the map means"]
     boats["civ/boats.rs<br/>hulls, cargoes, voyages"]
     ball["civ/balloons.rs<br/>canopies aloft, and what they are worth"]
     path["civ/pathing.rs<br/>A* over land and water"]
@@ -172,10 +172,11 @@ flowchart TD
   lndp --> zpaint
   lndp --> scene
   zpaint --> terrain
-  mapp --> draft
+  mapp --> brush
   mapp --> pnt
   mapp --> dec
-  draft --> terrain
+  mapp --> sett
+  brush --> terrain
   ctl --> secio
   place --> scene
   ctl --> tasks
@@ -1515,39 +1516,128 @@ can afford one and a fire is what is left for the night after that. Putting the
 fire's threshold under the lamp's pins the whole town's fear at the fire's
 number and no lamp is ever bought.
 
+A third threshold sits under both of them. `camp_fire_gather`, at 0.4, is the
+fear at which somebody would rather walk to a fire that is already burning than
+walk home, and it has to be the lowest of the three: sitting at somebody else's
+fire costs nothing and lights nothing new, so it should be the first answer
+anybody reaches for. Whoever has no bed at all goes whatever their fear.
+
+### Somewhere to sit
+
+A fire is a place rather than a light. `Task::Warm` is the walk to one and the
+sitting at it; the places are the cells around the fire, `Building::guests`
+holds who has claimed one - the same field an inn uses for its rooms, for the
+same reason - and `tasks::free_seat` hands out the first cell of the ring
+nobody is standing in. Giving up the task gives up the place, so somebody who
+walks off frees it for whoever is still out there, and `remove_building`
+already abandons the tasks that named a building, which is what happens to
+everybody sitting at a fire when it burns out.
+
+Two things make the walk worth taking:
+
+**The warmth.** A fire lights the cell it stands on, so the ordinary easing of
+the dark is already happening to anybody near it. Sitting at one eases it
+`camp_fire_warmth` times faster again, and that multiplier is the entire reason
+to walk rather than to keep going. At one, a fire is only a light.
+
+**The company.** Nothing was added for this. `social_tick` finds who is
+standing near whom and skips anybody indoors, so a ring of people sitting round
+a fire is a ring of people meeting each other; the bonds and the feuds that
+come out of a bad night are the ordinary ones.
+
+Whoever lights a fire sits down at it, which is what gives everybody else
+something to walk to: `light_camp_fires` ends by abandoning that person's task
+and calling `start_warm`, and the fire they just lit is the nearest one with a
+place free.
+
 ## A map drawn by hand
 
-The map editor is the pixel editor with a legend instead of a palette. The
-draft is `civ::map_draft::MapDraft` - a grid of brush ids and nothing else -
-and `ui::map_panel::MapSurface` implements the same `paint::Surface` the sheet
-editor draws through, so the pencil, the fill, the eraser, the pick, the line,
-the mirror and the one-undo-step-per-stroke are all the code that was already
+The map editor is the pixel editor with a legend instead of a palette, pointed
+at the settlement's own map. `ui::map_panel::MapSurface` implements the same
+`paint::Surface` the sheet editor draws through, so the pencil, the fill, the
+eraser, the pick, the line and the mirror are all the code that was already
 there. `stage_surface(app)` picks between the two by the tab, and `flat_dims`
 answers for whichever is showing, which is what frames the camera and what
 decides that a press is a stroke rather than a drag.
 
-What the page adds is meaning: `Brush::color` is what a brush paints with and
-`Brush::from_color` reads a press back, so a color the legend does not know -
-the eraser's, or one off the wheel - is read as "say nothing about this cell".
+What the page adds is meaning. `civ::map_brush::Brush` is one list of answers
+about a cell: `Brush::color` is what it paints with and `Brush::from_color`
+reads a press back. The list covers three different questions, and which one a
+press is asking is decided by the brush that is selected rather than by a mode
+switch:
 
-Two things live in different places for different reasons. The paint is in the
-project, because it is small, because that puts it on the undo stack, and
-because a drawing of a place outlives any one town founded on it; it is stored
-as the run encoding `civ/save.rs` uses for cell grids, since a map is mostly
-the same answer over and over. The picture being traced is in `app.ui`, on the
-same terms as the landscape dropped on the Land panel: a photograph is
-megabytes and the drawing over it is what is worth keeping.
+- **Ground** - water, rock, a rock face, grass, sand - goes through
+  `paint_cell`, which is the same call the picture tool on the Land panel makes.
+  There is nothing to erase here: every cell is some kind of ground.
+- **A zone** - trees only, low growth only, nothing grows - goes through
+  `Terrain::set_zone`, and is drawn *nowhere but this page*. A zone says what
+  may take root, which is a thing about the future of a cell rather than about
+  how it looks, so the settlement never draws one and the editor draws it over
+  the ground rather than instead of it.
+- **Sky** is not on the map at all. It is a mark in `app.ui.map_edit`, kept for
+  as long as the page is open, and all it does is say which rows of the picture
+  underneath to read the sky gradient out of.
 
-Applying it walks the running map's own cells, asks the draft what each should
-be by stretching it corner to corner, and batches the answers by kind, because
-`paint_cells` and `zone_cells` each do one expensive pass at the end of a batch
-rather than one per cell.
+There used to be a draft in the project that was applied to the map on a press.
+Painting the map itself is fewer moving parts and one less thing to be out of
+date, and it costs one thing: the map is not in the project, so the project's
+undo stack cannot put a stroke back. The page keeps its own instead.
+`MapSurface::begin` - a method on the surface, defaulting to
+`app.record("stroke")` for the sheet - opens a step, `set` pushes the cell as
+it was before it changed it, and `commit` closes it. `App::undo` asks
+`map_panel::undo_stroke` first and falls through to the project's history when
+there is nothing on this page to take back. Twenty four strokes are kept: one
+of them can be every cell of the map, since the fill tool is one stroke.
 
-One kind of ground came with it. `Cell::Cliff` is the only ground nobody
-crosses and nothing roots in, which is what "somewhere people cannot walk"
-needed: water was the only unwalkable ground the map had, and water is crossed
-by swimming. The terrain generator never produces one, so every generated map
-is bit for bit the map it was, and the change is two predicates -
+Because the strokes land on the running map, the expensive passes are batched
+by the stroke rather than by the cell: `rebuild_plant_index` and `sync_zones`
+run once when the pointer lifts, not once per cell the pointer walked over.
+
+### A picture as the map
+
+The picture being traced is in `app.ui`, on the same terms as the landscape
+dropped on the Land panel: a photograph is megabytes and the map painted with
+it there is what is worth keeping. One number decides everything else about it.
+`civ::sprites::pixel_size` guesses how many of its pixels go to one pixel it
+was drawn in, by measuring runs of one color along rows and down columns and
+reducing their lengths to a common divisor - a photograph has runs of every
+length, so the divisor falls to one, and art drawn eight to a pixel comes back
+as eight. The runs at the ends of a line are left out, being as likely to be
+half a block as a whole one, and the answer has to divide the picture or it was
+measured on a pattern rather than on a scale.
+
+That number is what "Use it as the map" is built on: the picture is worth
+`width / n` by `height / n` cells, `map_brush::read_picture` reads every cell as
+the nearest thing in the legend, and the settlement is founded again at that
+size on what comes out. There is no ceiling on it. A drawing of a coastline is
+worth however many cells it was drawn with, and the panel says so rather than
+refusing: a very large map costs memory for its pixel buffers and a long
+wilderness warmup, and both of those are the person's to spend.
+
+The laying down happens in `frame`, between the settlement being made and
+`bootstrap` being called on it - `App::pending_map` carries the cells across
+the frame boundary the same way `pending_bootstrap` carries the founding. That
+order is the whole trick: the town is sited on the coastline that was drawn,
+and the wilderness warms onto the painted ground rather than being painted over
+afterwards.
+
+### The same number, on the way in
+
+Every drop target in the tool reads its pictures the same way.
+`ui::decode::scaled` shrinks what was dropped by `civ::sprites::shrink`, taking
+the top left pixel of each block rather than an average of it, because art
+drawn large is one color across a block and an average would soften every edge
+where it is not. The scale is guessed when the target is set to zero and taken
+as given otherwise; `Prefs::import_px` is the default for every target and
+`app.ui.import_px` holds the ones that have been told something else. Person
+motions, made things and the sheet each keep their own, since people are drawn
+at one size and the things they build at another.
+
+One kind of ground came with the editor. `Cell::Cliff` is the only ground
+nobody crosses and nothing roots in, which is what "somewhere people cannot
+walk" needed: water was the only unwalkable ground the map had, and water is
+crossed by swimming. The terrain generator never produces one, so every
+generated map is bit for bit the map it was, and the change is two predicates -
 `Cell::walkable` for standing on and `Cell::bare` for what the wilderness
 leaves alone - replacing the places that spelled out "water" when they meant
 one of those.
@@ -1902,6 +1992,28 @@ then prefer.
 
 The same grid, with water as the passable set instead of land, is what the boats
 use.
+
+### What growth costs to cross
+
+`Settlement::plant_cover` is one byte per cell saying how much is standing
+there, filled by `rebuild_plant_index` on the same timer as the coarse plant
+buckets. It answers two questions at once, which is why it is a number rather
+than a flag:
+
+- `PLANT_SHUT`, the top of the range, is a trunk. `passable` refuses it, and
+  only something woody past `avoid_mass` is ever marked with it.
+- Anything below it is a price. `step_cost` adds `plant_push` of a step for a
+  cell entirely full of growth and proportionally less for less, so a meadow is
+  crossed slowly and a way round it that is a little longer is the way people
+  take. Everything standing counts here, mats and tufts included: they are
+  trodden over rather than walked round, and treading over them is slower than
+  open ground.
+
+The pair is what "prefer to avoid walking through plants" means: the trunk is a
+wall, the undergrowth is a toll, and the paths that wear in are the ones that
+skirt it. Traffic works the other way on the same number - a cell that has been
+walked over is cheaper - so a route taken often enough beats the growth on it
+and becomes a road through the meadow rather than around it.
 
 ## Asking what is growing nearby
 
