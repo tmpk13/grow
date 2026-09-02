@@ -1538,7 +1538,14 @@ Two things make the walk worth taking:
 **The warmth.** A fire lights the cell it stands on, so the ordinary easing of
 the dark is already happening to anybody near it. Sitting at one eases it
 `camp_fire_warmth` times faster again, and that multiplier is the entire reason
-to walk rather than to keep going. At one, a fire is only a light.
+to walk rather than to keep going. At one, a fire is only a light. Sitting also
+dozes: a third of what a bed is worth, which is what keeps a night at a fire
+from being a day spent worn out.
+
+A place is given up when the fire has done what it was walked to for. Once the
+fear is down to half the gathering threshold, anybody with a bed goes to it,
+and anybody without stays where the light is - which is the whole reason they
+were the ones who came.
 
 **The company.** Nothing was added for this. `social_tick` finds who is
 standing near whom and skips anybody indoors, so a ring of people sitting round

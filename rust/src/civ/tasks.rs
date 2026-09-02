@@ -1602,14 +1602,30 @@ pub fn run_task(sim: &mut Settlement, state: &State, pi: usize, dt: f64) {
             // it, which is what makes one worth walking to rather than only
             // worth standing near.
             let cfg = &state.civ.build;
+            let pcfg = &state.civ.people;
             let extra = (cfg.camp_fire_warmth - 1.0).max(0.0);
+            let settled = clamp01(cfg.camp_fire_gather) * 0.5;
             let p = &mut sim.people[pi];
-            p.fear = clamp01(p.fear - state.civ.people.fear_ease * extra * dt);
+            p.fear = clamp01(p.fear - pcfg.fear_ease * extra * dt);
             p.happiness = clamp01(p.happiness + 0.01 * dt);
+            // Dozing rather than sleeping: a third of what a bed is worth, and
+            // enough that a night at a fire is not a day spent worn out.
+            p.energy = clamp01(p.energy + pcfg.sleep_rate * 0.35 * dt);
+            let calm = p.fear <= settled;
             sim.buildings[bi].active = sim.time;
             // Up with the light: a night at a fire ends where a night in a bed
             // ends, and the day is chosen from scratch.
-            if is_work_time(sim.time, &state.civ.people) {
+            if is_work_time(sim.time, pcfg) {
+                abandon_task(sim, pi);
+                return;
+            }
+            // The fire has done what it was walked to for. Anybody with a bed
+            // goes to it; anybody without stays where the light is, which is
+            // the whole reason they were the ones who came.
+            let has_bed = sim
+                .building_index(sim.people[pi].home)
+                .is_some_and(|bi| sim.buildings[bi].built && !sim.buildings[bi].upgrading);
+            if calm && has_bed {
                 abandon_task(sim, pi);
             }
         }

@@ -783,9 +783,13 @@ held only while somebody is in it. Sitting there settles the dark far faster
 than standing under a lamp does, and that is the whole reason the walk is worth
 taking: turn the warmth down to one and a fire is only a light again.
 
-Nobody is made to go. A person with a bed and nothing much frightening them
-walks home, which is what keeps the houses full; the ones who gather are the
-ones the night has got to and the ones with no bed to walk to at all. What
+Nobody is made to go, and nobody stays longer than they need to. A person with
+a bed and nothing much frightening them walks home in the first place, which is
+what keeps the houses full; the ones who gather are the ones the night has got
+to and the ones with no bed to walk to at all. Once the fire has settled the
+dark, whoever has a bed goes to it and whoever has not stays by the light.
+Sitting there is a doze rather than a night's sleep - worth about a third of a
+bed - so a night out is still a night out. What
 comes of it is not only warmth - the people sitting round a fire are standing
 near each other, which is how the town's bonds are made, so a bad night out is
 also where friendships and feuds come from.

@@ -39,6 +39,13 @@ use crate::world::Zone;
 /// the coastline through it.
 const OVER_PICTURE: f64 = 0.55;
 
+/// The smallest map a picture is allowed to make. There is no ceiling on the
+/// size - a drawing is worth however many cells it was drawn with - but there
+/// is a floor, because a town cannot be founded on a map of nine cells and a
+/// picture dropped by mistake should not be the thing that finds that out.
+const MIN_COLS: i32 = 16;
+const MIN_ROWS: i32 = 8;
+
 /// How many strokes can be put back. A stroke holds a cell for every cell it
 /// touched, and a fill over a large map is every cell there is, so this is
 /// deliberately short.
@@ -103,7 +110,7 @@ impl MapTools {
     pub fn picture_cells(&self) -> Option<(i32, i32)> {
         let (w, h, _) = self.image.as_ref()?;
         let n = self.scale();
-        Some(((w / n).max(1), (h / n).max(1)))
+        Some(((w / n).max(MIN_COLS), (h / n).max(MIN_ROWS)))
     }
 
     pub fn marked_sky(&self) -> usize {
