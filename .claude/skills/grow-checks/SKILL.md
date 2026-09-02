@@ -23,7 +23,7 @@ and everything under `ui/` are compiled **only** for wasm, so a host-target
 clippy or check says nothing about them. A change to those files that has not
 been built for wasm has not been checked at all.
 
-## The four traps
+## The five traps
 
 **1. The browser checks cannot find a browser on their own.**
 
@@ -74,6 +74,30 @@ press that would have closed it. The failure reads as an endless
 some unrelated button. In `tools/uicheck.js`, any block that opens the
 dropdown must close it again itself (`openView` / `closeView`); never rely on
 the next click closing it implicitly.
+
+**5. `page.fill` does not finish an edit.**
+
+Every typed field in the tool - the box beside a slider, a low/high pair, a
+count, a name - applies on `change` rather than on `input`, because what is
+typed passes through 1 and 12 on the way to 128. Playwright's `fill()`
+dispatches **only** `input`: it puts the value in the box and nothing acts on
+it. A check that sets a setting that way and then presses the button that
+depends on it fails somewhere else entirely - the button is disabled, or the
+restart bar never appeared, and the failure names the button rather than the
+field.
+
+Finish the edit the way a person does, which is what `setNum` in
+`tools/uicheck.js` is for:
+
+```js
+await page.fill(selector, value);
+await page.locator(selector).press('Enter');   // or click something else
+```
+
+`page.type` / `pressSequentially` have the same shape: they fire `input` per
+key and no `change` until the return key or a blur. The two search boxes are
+the exception - they filter as they are typed and `fill` alone is right for
+them.
 
 ## What each check is for
 

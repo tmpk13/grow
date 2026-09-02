@@ -1743,7 +1743,22 @@ about eighty kilobytes of answers instead.
 
 ## What a panel gives you back
 
-Two things about a section of the menu are worth writing down.
+Three things about a section of the menu are worth writing down.
+
+A control reports when what it says is what somebody meant, and that is a
+different moment for the two kinds. A slider is a gesture: it is dragged
+through its values, all of them are meant, so it reports every one on `input`
+and the undo stack coalesces the burst into one step. A box is typed into, and
+what is typed passes through 1 and 12 on the way to 128; none of those were
+asked for. So every typed field - the box beside a slider, the low/high pair,
+a count with no ceiling, a name, a hex color - reports on `change`, which the
+browser fires when the edit is finished: the return key, or the pointer going
+somewhere else. Anything that reads a field on a button press gets the
+committed value for free, since pressing a button takes the focus off the box
+first.
+
+The exceptions are the two search boxes, which are not settings: what is typed
+into them filters a list as it is typed, and there is nothing to commit.
 
 Sections arrive folded. `Prefs` keeps the ones somebody has pulled open rather
 than the ones they have shut, which is the whole of the change: with a list of

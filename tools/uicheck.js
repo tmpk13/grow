@@ -28,6 +28,14 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 }, acceptDownloads: true });
 
 const problems = [];
+
+// Setting a number box. A box reports a finished edit rather than every value
+// typed on the way to one, and `fill` only dispatches `input`, so the return
+// key is what a person pressing one of these does and what this has to do.
+const setNum = async (selector, value) => {
+  await page.fill(selector, value);
+  await page.locator(selector).press('Enter');
+};
 page.on('console', (msg) => {
   if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
 });
@@ -215,8 +223,7 @@ await closeView();
 await page.click('.tab:text-is("World")');
 await page.waitForTimeout(400);
 const cols = '#panel-body [data-find="columns-x"] input[type=number]';
-await page.fill(cols, '90');
-await page.dispatchEvent(cols, 'input');
+await setNum(cols, '90');
 await page.waitForTimeout(400);
 if (await page.evaluate(() => document.getElementById('restart-bar').hasAttribute('hidden'))) {
   problems.push('a setting the world is built from changed and nothing said a rebuild was waiting');
@@ -254,8 +261,7 @@ await page.waitForTimeout(400);
 if ((await page.inputValue(cols)) === '90') problems.push('discard left the change in place');
 
 // Apply rebuilds and clears the bar.
-await page.fill(cols, '90');
-await page.dispatchEvent(cols, 'input');
+await setNum(cols, '90');
 await page.waitForTimeout(300);
 await page.click('#restart-bar [data-do="apply"]');
 await page.waitForTimeout(1500);
@@ -263,6 +269,40 @@ if (!(await page.evaluate(() => document.getElementById('restart-bar').hasAttrib
   problems.push('applying left the bar up');
 }
 if ((await page.inputValue(cols)) !== '90') problems.push('applying did not keep the change');
+
+// A box is typed into, and what is typed passes through values nobody asked
+// for on the way. Nothing is acted on until the edit is finished: keystrokes
+// alone change nothing, and the return key - or the pointer going somewhere
+// else - is what commits it.
+await page.click(cols);
+await page.keyboard.press('Control+a');
+await page.locator(cols).pressSequentially('120', { delay: 30 });
+await page.waitForTimeout(400);
+if (!(await page.evaluate(() => document.getElementById('restart-bar').hasAttribute('hidden')))) {
+  problems.push('a half typed number was acted on before the edit was finished');
+}
+await page.keyboard.press('Enter');
+await page.waitForTimeout(400);
+if (await page.evaluate(() => document.getElementById('restart-bar').hasAttribute('hidden'))) {
+  problems.push('a typed number was not acted on when the edit was finished');
+}
+// The same again, committed by going somewhere else rather than by the key.
+await page.click('#restart-bar [data-do="discard"]');
+await page.waitForTimeout(400);
+await page.click(cols);
+await page.keyboard.press('Control+a');
+await page.locator(cols).pressSequentially('110', { delay: 30 });
+await page.waitForTimeout(300);
+if (!(await page.evaluate(() => document.getElementById('restart-bar').hasAttribute('hidden')))) {
+  problems.push('typing into a box acted on it before the pointer left');
+}
+await page.click('#panel-body [data-find="rows-depth"] input[type=number]');
+await page.waitForTimeout(400);
+if (await page.evaluate(() => document.getElementById('restart-bar').hasAttribute('hidden'))) {
+  problems.push('leaving a box did not commit what was typed into it');
+}
+await page.click('#restart-bar [data-do="discard"]');
+await page.waitForTimeout(500);
 await page.screenshot({ path: `${outDir}/08-resized.png` });
 
 const stats = await page.evaluate(() => document.getElementById('statusbar').textContent);
@@ -388,7 +428,7 @@ await page.screenshot({ path: `${outDir}/08g-sheet-moved-on.png` });
 // size its own pixels say. The panel says what the frame is worth in cells.
 const widthField = '#panel-body [data-find="frame-width"] input.num';
 const wasWide = await page.inputValue(widthField);
-await page.fill(widthField, '160');
+await setNum(widthField, '160');
 await page.waitForTimeout(700);
 const nowWide = await page.inputValue(widthField);
 if (nowWide !== '160') {
@@ -400,7 +440,7 @@ const cellNote = await page.$$eval('#panel-body .note', (n) =>
 if (!/stands [\d.]+ by [\d.]+ cells/.test(cellNote ?? '')) {
   problems.push(`the sheet does not say what it is worth in cells: "${cellNote}"`);
 }
-await page.fill(widthField, wasWide);
+await setNum(widthField, wasWide);
 await page.waitForTimeout(700);
 
 // Downloads: one frame as a PNG, and the ticked sheets as a zip.
@@ -693,8 +733,7 @@ const townBefore = await page.evaluate(() =>
   document.getElementById('statusbar').textContent.split('   ')[0]
 );
 const addCols = '#panel-body [data-find="add-columns"] input[type=number]';
-await page.fill(addCols, '24');
-await page.dispatchEvent(addCols, 'input');
+await setNum(addCols, '24');
 await page.click('#panel-body .btn:text-is("Grow the map")');
 // The wilderness warmup on the new ground blocks the thread for a moment.
 await page.waitForTimeout(12000);
@@ -718,8 +757,7 @@ await page.screenshot({ path: `${outDir}/11b-grown.png` });
 // folding its own chrome away, which is the only kind an untouched window can
 // have.
 const idleBox = '#panel-body [data-find="fullscreen-when-idle-s"] input[type=number]';
-await page.fill(idleBox, '2');
-await page.dispatchEvent(idleBox, 'input');
+await setNum(idleBox, '2');
 // The move is what re-arms the wait with the value just typed, and is the last
 // thing that touches the page before it is left alone.
 await page.mouse.move(900, 500);
@@ -736,8 +774,7 @@ await page.waitForTimeout(600);
 if (await page.evaluate(() => document.body.classList.contains('settled'))) {
   problems.push('moving the pointer did not hand the menus back');
 }
-await page.fill(idleBox, '0');
-await page.dispatchEvent(idleBox, 'input');
+await setNum(idleBox, '0');
 await page.mouse.move(710, 410);
 
 await page.click('.mode[data-mode="sprites"]');
@@ -1483,7 +1520,7 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
   // the whole map: the threshold is what was being checked, not the press.
   await page.click('#btn-undo');
   await page.waitForTimeout(500);
-  await page.fill('#panel-body [data-find="how-near-the-color"] input.num', '1');
+  await setNum('#panel-body [data-find="how-near-the-color"] input.num', '1');
   await page.waitForTimeout(200);
   await page.mouse.click(canvas.x + canvas.width * 0.5, canvas.y + canvas.height * 0.5);
   await page.waitForTimeout(600);

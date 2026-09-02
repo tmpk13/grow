@@ -679,7 +679,9 @@ fn layers_section(root: &Element, app: &App, h: &Handle) -> Vec<(HtmlCanvasEleme
         name.set_value(&layer.name);
         {
             let h2 = h.clone();
-            on(name.unchecked_ref(), "input", Scope::Panel, move |e| {
+            // On change rather than on input, like every other typed field:
+            // a name is meant when it is finished being typed.
+            on(name.unchecked_ref(), "change", Scope::Panel, move |e| {
                 let text = crate::ui::value_of(&e);
                 let mut sh = h2.borrow_mut();
                 sh.app.record("layer name", true);

@@ -3,6 +3,13 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A typed field applies when the edit is finished - the return key, or
+  the pointer going somewhere else - rather than at every letter or digit typed
+  on the way to it. Sliders are unchanged: every value one is dragged through
+  is meant.
+- (LLM) A button to wipe the map to the ground the legend has selected, and a
+  fill that spreads over the picture underneath by color rather than over what
+  is painted, with a threshold saying how near is near enough.
 - (LLM) The map editor paints the settlement's own map instead of a draft that
   is applied to it. Ground goes on the map under the pointer, a zone is drawn
   nowhere but on that page, and sky is a mark on the page alone saying where to

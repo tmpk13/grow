@@ -379,9 +379,9 @@ pub fn count_field(
     box_.set_value(&num(value));
     box_.set_class_name("num");
     on(box_.unchecked_ref(), "change", Scope::Panel, move |e| {
-        // On change rather than on input: a box somebody is typing a four
-        // digit number into passes through 1, 12 and 123 on the way, and every
-        // one of those would be acted on.
+        // On change rather than on input, like every other box: what is typed
+        // passes through 1, 12 and 123 on the way to 1284, and none of those
+        // were asked for.
         let v: f64 = match value_of(&e).parse() {
             Ok(v) => v,
             Err(_) => return,
@@ -392,6 +392,14 @@ pub fn count_field(
 }
 
 /// A slider and a number box that stay in step with each other.
+///
+/// The two halves are answered differently on purpose. A slider is a gesture:
+/// it is dragged through its values and everything it passes through is meant,
+/// so it reports every one of them and the undo stack coalesces the burst. A
+/// box is typed into, and what is typed passes through 1 and 12 on the way to
+/// 128; those are not values anybody asked for. So the box reports when the
+/// edit is finished - on the way out of it, or on the return key - which is
+/// what `change` means and `input` does not.
 pub fn number_field(
     label: &str,
     value: f64,
@@ -425,7 +433,7 @@ pub fn number_field(
     {
         let other = slider.clone();
         let sink = sink.clone();
-        on(box_.unchecked_ref(), "input", Scope::Panel, move |e| {
+        on(box_.unchecked_ref(), "change", Scope::Panel, move |e| {
             let v: f64 = match value_of(&e).parse() {
                 Ok(v) => v,
                 Err(_) => return,
@@ -484,8 +492,10 @@ pub fn range_field(
             (sink.borrow_mut())(lo, hi);
         }
     };
-    on(a.unchecked_ref(), "input", Scope::Panel, emit.clone());
-    on(b.unchecked_ref(), "input", Scope::Panel, emit);
+    // Both are boxes, so both report a finished edit rather than every value
+    // typed on the way to it.
+    on(a.unchecked_ref(), "change", Scope::Panel, emit.clone());
+    on(b.unchecked_ref(), "change", Scope::Panel, emit);
 
     let pair = el("span")
         .class("range-pair")
@@ -557,6 +567,8 @@ pub fn bool_field(
     row(label, check_button(value, label, Scope::Panel, on_input), hint)
 }
 
+/// A line of text, reported when the edit is finished rather than at every
+/// letter of it: a name half typed is not a name anybody meant.
 pub fn text_field(
     label: &str,
     value: &str,
@@ -565,7 +577,7 @@ pub fn text_field(
 ) -> Element {
     let input = input_el("text");
     input.set_value(value);
-    on(input.unchecked_ref(), "input", Scope::Panel, move |e| {
+    on(input.unchecked_ref(), "change", Scope::Panel, move |e| {
         on_input(value_of(&e));
     });
     row(label, input.unchecked_into(), hint)
