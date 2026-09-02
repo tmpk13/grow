@@ -204,6 +204,10 @@ kept.
   over. It is never part of the project and never part of a settlement: the
   picture goes when the page does, and what is kept is the map painted with it
   there.
+* **How strongly it shows** is how much of the picture reads through the map
+  drawn over it. All the way down is the map on its own; all the way up takes
+  the map off and leaves the picture, which is what tracing a coastline wants.
+  Zones and sky marks stay legible either way.
 * **Picture pixels to a cell** is how much of the picture goes to one cell. It
   is guessed when the picture arrives - art drawn eight screen pixels to a pixel
   comes back as eight - and it is what decides how large a map the picture makes.

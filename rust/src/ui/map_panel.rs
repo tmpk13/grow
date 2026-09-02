@@ -17,7 +17,9 @@
 //!
 //! A picture can be laid under the map to trace, or read straight in as the
 //! map. What decides between them is one number - how many of the picture's
-//! pixels go to one cell - which is guessed when the picture arrives.
+//! pixels go to one cell - which is guessed when the picture arrives. A second
+//! says how strongly the picture shows through the map drawn over it, which is
+//! a matter of what somebody is looking for rather than of what the map is.
 
 use wasm_bindgen::JsCast;
 use web_sys::{DragEvent, Element, Event, HtmlCanvasElement};
@@ -27,17 +29,19 @@ use crate::civ::map_brush::{Brush, BRUSHES};
 use crate::civ::terrain::Cell;
 use crate::ui::paint::Surface;
 use crate::ui::{
-    app_button, append, btn_row, button, count_field, danger_button, el, input_el, note, on,
-    section, stat, Scope, Tap,
+    app_button, append, btn_row, button, count_field, danger_button, el, input_el, note,
+    number_field, on, section, stat, NumOpts, Scope, Tap,
 };
 use crate::util::EMPTY_COLOR;
 use crate::world::Zone;
 
-/// How much of the map's own color is laid over the picture being traced.
-/// There is no slider for it: with nothing underneath the map is drawn as
-/// itself, and with a picture underneath it is drawn far enough back to read
-/// the coastline through it.
-const OVER_PICTURE: f64 = 0.55;
+/// How strongly a picture laid under the map shows through it to begin with.
+/// Nothing is the map drawn as itself; all the way is the picture alone, with
+/// the map taken off it entirely. The middle is what tracing wants, and the
+/// slider is there because which way somebody wants it changes with what they
+/// are doing: reading a coastline off a photograph, or reading back what they
+/// have drawn over it.
+const TRACE_SHOWS: f64 = 0.45;
 
 /// The smallest map a picture is allowed to make. There is no ceiling on the
 /// size - a drawing is worth however many cells it was drawn with - but there
@@ -69,13 +73,15 @@ pub type Step = Vec<Was>;
 /// into is what is worth keeping; the sky marks say where to read that
 /// photograph and mean nothing without it; and the strokes are a way back out
 /// of the last few minutes rather than a history of the town.
-#[derive(Default)]
 pub struct MapTools {
     pub image: Option<(i32, i32, Vec<u32>)>,
     pub name: String,
     /// Picture pixels to one map cell. Zero means nobody has said, which is
     /// read as one.
     pub px: i32,
+    /// How strongly the picture shows through the map over it, nothing to
+    /// fully. Only ever asked while there is a picture.
+    pub trace: f64,
     /// Cells marked sky, one byte each, at the size of the map they were
     /// marked on.
     pub sky: Vec<u8>,
@@ -88,7 +94,33 @@ pub struct MapTools {
     ground_dirty: bool,
 }
 
+impl Default for MapTools {
+    fn default() -> Self {
+        MapTools {
+            image: None,
+            name: String::new(),
+            px: 0,
+            trace: TRACE_SHOWS,
+            sky: Vec::new(),
+            sky_dims: (0, 0),
+            steps: Vec::new(),
+            redone: Vec::new(),
+            open: None,
+            ground_dirty: false,
+        }
+    }
+}
+
 impl MapTools {
+    /// How much of the map's own color goes over the picture: the other side
+    /// of what the slider says, and one with nothing under it at all.
+    pub fn over(&self) -> f64 {
+        if self.image.is_none() {
+            return 1.0;
+        }
+        1.0 - self.trace.clamp(0.0, 1.0)
+    }
+
     /// The sky marks, grown to the map they are being drawn on. A map that has
     /// changed size loses them, because a mark is a cell and those cells are
     /// not the same cells.
@@ -391,7 +423,7 @@ pub fn draw(app: &mut App) {
         Some(sim) => sim,
         None => return draw_empty(app),
     };
-    let over = if tools.image.is_some() { OVER_PICTURE } else { 1.0 };
+    let over = tools.over();
     let mut buf = vec![0u32; (w * h) as usize];
     for y in 0..h {
         for x in 0..w {
@@ -604,6 +636,19 @@ fn picture_section(app: &App, h: &Handle) -> Element {
                 let mut sh = h2.borrow_mut();
                 sh.app.ui.map_edit.px = (v as i32).max(1);
                 sh.app.rebuild_panel = true;
+            },
+        ));
+        let h2 = h.clone();
+        rows.push(number_field(
+            "How strongly it shows",
+            tools.trace,
+            NumOpts { min: 0.0, max: 1.0, step: 0.05 },
+            Some("turn it down to read the map, up to read the picture"),
+            move |v| {
+                let mut sh = h2.borrow_mut();
+                // The stage redraws every frame in this mode, so changing what
+                // it shows needs nothing said to it.
+                sh.app.ui.map_edit.trace = v;
             },
         ));
         if let Some((cols, rows_n)) = tools.picture_cells() {
