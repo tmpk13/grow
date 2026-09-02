@@ -3062,7 +3062,15 @@ fn frame(h: &Handle, ts: f64) {
             let world = civ.world().clone();
             let name = civ.name.clone();
             let day = civ.day;
-            sh.app.viewport.fit(&world);
+            // The map editor is looking at the same map through the flat
+            // camera rather than through the projection, so a settlement
+            // founded from that page is framed the way that page frames it.
+            if sh.app.mode == Mode::Sprites {
+                fit_view(&mut sh.app);
+                sync_zoom(&sh.app);
+            } else {
+                sh.app.viewport.fit(&world);
+            }
             sh.app.set_note(&if picked_up {
                 format!("{name}, day {day}")
             } else {
