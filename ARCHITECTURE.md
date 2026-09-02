@@ -1585,6 +1585,22 @@ switch:
   as long as the page is open, and all it does is say which rows of the picture
   underneath to read the sky gradient out of.
 
+The fill tool has a second way to decide what it covers. `Surface::fill_from`
+is asked first and answers false everywhere but here; with **Fill by color in
+the picture** on, `color_region` floods over the picture underneath instead -
+every cell whose color stays within the threshold of the one pressed - and the
+cells it finds are painted through `set` like any other stroke. It needs a
+visited grid of its own, unlike the ordinary flood: what a cell is painted does
+not change what the picture shows there, so a flood that decided by the picture
+alone would go round forever.
+
+Wiping is the same machinery pointed at every cell at once: the ground the
+legend has selected, no zones, no sky marks, and one step of the page's history
+holding whatever actually moved. That is also why the history is trimmed by how
+many cells it holds rather than only by how many strokes - a wipe or a fill is
+one step of the whole map, and a map read out of a picture has no ceiling on
+how large that is.
+
 There used to be a draft in the project that was applied to the map on a press.
 Painting the map itself is fewer moving parts and one less thing to be out of
 date, and it costs one thing: the map is not in the project, so the project's

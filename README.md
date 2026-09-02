@@ -218,6 +218,17 @@ kept.
   panel says so rather than refusing.
 * **Take the sky colors** reads the top and the bottom of whatever is marked
   sky out of the picture and sets the world's sky gradient to them.
+* **Fill by color in the picture** turns the fill tool into a magic wand over
+  the picture rather than over the map: press on the sea in a photograph and
+  every cell whose color stays near enough to that one, spreading out from
+  where you pressed, becomes whatever the legend has selected. **How near the
+  color** is how far "near enough" goes - 0 takes that exact color only, 1
+  takes the whole map whatever it looks like.
+* **Wipe the map to ...** turns every cell into the ground the legend has
+  selected and takes every zone and sky mark off with it: a blank sheet to draw
+  on. Wipe to water and draw the land in, or wipe to grass and draw the sea.
+  The button says which it would use, and it is one step back like any other
+  stroke.
 * **Take every zone off** clears the zones and leaves the ground alone.
 
 **Rock face** is the one kind of ground that is new. Water is crossed by

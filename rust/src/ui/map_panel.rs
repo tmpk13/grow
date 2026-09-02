@@ -43,6 +43,18 @@ use crate::world::Zone;
 /// have drawn over it.
 const TRACE_SHOWS: f64 = 0.45;
 
+/// How near a color has to be to the one pressed to begin with. Wide enough
+/// that a photographed sea is one press and narrow enough that the shore is
+/// not part of it.
+const NEAR_ENOUGH: f64 = 0.12;
+
+/// How many cells the strokes on this page may hold between them before the
+/// oldest are dropped. A fill or a wipe is one step of every cell on the map,
+/// and a map read out of a picture has no ceiling on how many that is; this is
+/// what keeps a page open all afternoon from holding a map twenty four times
+/// over.
+const CELLS_KEPT: usize = 2_000_000;
+
 /// The smallest map a picture is allowed to make. There is no ceiling on the
 /// size - a drawing is worth however many cells it was drawn with - but there
 /// is a floor, because a town cannot be founded on a map of nine cells and a
@@ -56,7 +68,7 @@ const MIN_ROWS: i32 = 8;
 const STEPS_KEPT: usize = 24;
 
 /// One cell as it was before a stroke touched it.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Was {
     at: usize,
     kind: u8,
@@ -82,6 +94,12 @@ pub struct MapTools {
     /// How strongly the picture shows through the map over it, nothing to
     /// fully. Only ever asked while there is a picture.
     pub trace: f64,
+    /// The fill tool spreads over the picture rather than over the map.
+    pub by_color: bool,
+    /// How near a cell's color in the picture has to be to the one pressed for
+    /// the fill to run through it, as a fraction of the furthest two colors
+    /// can be.
+    pub threshold: f64,
     /// Cells marked sky, one byte each, at the size of the map they were
     /// marked on.
     pub sky: Vec<u8>,
@@ -101,6 +119,8 @@ impl Default for MapTools {
             name: String::new(),
             px: 0,
             trace: TRACE_SHOWS,
+            by_color: false,
+            threshold: NEAR_ENOUGH,
             sky: Vec::new(),
             sky_dims: (0, 0),
             steps: Vec::new(),
@@ -143,6 +163,18 @@ impl MapTools {
         let (w, h, _) = self.image.as_ref()?;
         let n = self.scale();
         Some(((w / n).max(MIN_COLS), (h / n).max(MIN_ROWS)))
+    }
+
+    /// Drops the oldest strokes until the history is worth keeping: not too
+    /// many of them, and not too much held between them.
+    fn trim(&mut self) {
+        while self.steps.len() > STEPS_KEPT {
+            self.steps.remove(0);
+        }
+        let mut held: usize = self.steps.iter().map(|s| s.len()).sum();
+        while held > CELLS_KEPT && self.steps.len() > 1 {
+            held -= self.steps.remove(0).len();
+        }
     }
 
     pub fn marked_sky(&self) -> usize {
@@ -273,6 +305,29 @@ impl Surface for MapSurface {
         }
     }
 
+    /// The fill tool, when it is set to spread over the picture rather than
+    /// over the map. Every cell the region covers is painted through `set`, so
+    /// it lands on whichever layer the brush belongs to and goes onto the same
+    /// step of the page's own history as any other stroke.
+    fn fill_from(&self, app: &mut App, cell: (i32, i32), value: u32) -> bool {
+        if !app.ui.map_edit.by_color || app.ui.map_edit.image.is_none() {
+            return false;
+        }
+        // A fill re-runs on every cell the pointer is dragged over, and this
+        // one walks the map rather than the painted region. Once the cell
+        // pressed already says what the brush says, there is nothing left for
+        // it to find.
+        if self.get(app, cell.0, cell.1) == value {
+            return true;
+        }
+        let cells = color_region(app, cell);
+        for (c, r) in &cells {
+            self.set(app, *c, *r, value);
+        }
+        app.set_note(&format!("{} cells filled from the picture", cells.len()));
+        true
+    }
+
     /// A stroke on this page is not a step of the project's history: the map
     /// is not in the project. It is a step of its own, kept here.
     fn begin(&self, app: &mut App) {
@@ -284,9 +339,7 @@ impl Surface for MapSurface {
         if let Some(step) = app.ui.map_edit.open.take() {
             if !step.is_empty() {
                 app.ui.map_edit.steps.push(step);
-                if app.ui.map_edit.steps.len() > STEPS_KEPT {
-                    app.ui.map_edit.steps.remove(0);
-                }
+                app.ui.map_edit.trim();
             }
         }
         settle(app);
@@ -304,6 +357,57 @@ impl Surface for MapSurface {
         let (w, h) = self.dims(app)?;
         app.viewport.flat_cell_at(client_x, client_y, w, h)
     }
+}
+
+/// The cells a fill by color covers: everywhere the picture underneath stays
+/// near enough to the color it was pressed on, spreading from that cell.
+///
+/// It walks the picture rather than the map, so it needs a visited grid of its
+/// own: what a cell is painted does not change what the picture shows there,
+/// and a flood that decided by the picture alone would go round forever.
+fn color_region(app: &App, from: (i32, i32)) -> Vec<(i32, i32)> {
+    let tools = &app.ui.map_edit;
+    let (iw, ih, px) = match tools.image.as_ref() {
+        Some(image) => image,
+        None => return Vec::new(),
+    };
+    let (cols, rows) = match MapSurface::size(app) {
+        Some(size) => size,
+        None => return Vec::new(),
+    };
+    // The picture is stretched over the map corner to corner, the same way it
+    // is drawn on the stage, so the color over a cell is the color under it.
+    let at = |c: i32, r: i32| -> u32 {
+        let x = (((c as f64 + 0.5) / cols as f64) * *iw as f64).floor() as i32;
+        let y = (((r as f64 + 0.5) / rows as f64) * *ih as f64).floor() as i32;
+        px.get((y.clamp(0, ih - 1) * iw + x.clamp(0, iw - 1)) as usize).copied().unwrap_or(0)
+    };
+    if from.0 < 0 || from.1 < 0 || from.0 >= cols || from.1 >= rows {
+        return Vec::new();
+    }
+    let target = at(from.0, from.1);
+    let mut seen = vec![false; (cols * rows) as usize];
+    let mut stack = vec![from];
+    let mut out = Vec::new();
+    while let Some((c, r)) = stack.pop() {
+        if c < 0 || r < 0 || c >= cols || r >= rows {
+            continue;
+        }
+        let i = (r * cols + c) as usize;
+        if seen[i] {
+            continue;
+        }
+        seen[i] = true;
+        if !crate::ui::zone_paint::near(at(c, r), target, tools.threshold) {
+            continue;
+        }
+        out.push((c, r));
+        stack.push((c - 1, r));
+        stack.push((c + 1, r));
+        stack.push((c, r - 1));
+        stack.push((c, r + 1));
+    }
+    out
 }
 
 /// One cell as it stands. Read before a press and again after it, which is how
@@ -542,6 +646,29 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                     }])
                 },
                 tally.clone(),
+                btn_row(vec![{
+                    // A plain button rather than one that records: wiping the
+                    // map changes nothing in the project for a snapshot to
+                    // put back, and the page's own history covers it.
+                    let h2 = h.clone();
+                    let ground = Brush::from_color(app.ui.brush_color)
+                        .ground()
+                        .unwrap_or(Cell::Grass);
+                    let label = format!(
+                        "Wipe the map to {}",
+                        Brush::of_ground(ground).label().to_lowercase()
+                    );
+                    danger_button(&label, Scope::Panel, move || {
+                        let mut sh = h2.borrow_mut();
+                        wipe(&mut sh.app);
+                    })
+                }]),
+                note(
+                    "Wiping turns every cell to the ground the legend has selected and takes \
+                     every zone and sky mark off with it, which is a blank sheet to draw a map \
+                     on. Wipe to water and draw the land in, or wipe to grass and draw the sea; \
+                     it is one step back like any other stroke.",
+                ),
                 danger_button("Take every zone off", Scope::Panel, {
                     let h2 = h.clone();
                     move || {
@@ -597,7 +724,14 @@ fn brushes_section(app: &App, h: &Handle) -> Element {
             .on("click", Scope::Panel, move |_| {
                 let mut sh = h2.borrow_mut();
                 crate::ui::color_wheel::set_brush(&mut sh.app, brush.color());
-                sh.app.ui.tool = crate::app::Tool::Pencil;
+                // Choosing a color is choosing what to paint with, not how:
+                // somebody filling by the picture's colors is still filling
+                // when they pick what to fill with.
+                sh.app.ui.tool = if sh.app.ui.map_edit.by_color {
+                    crate::app::Tool::Fill
+                } else {
+                    crate::app::Tool::Pencil
+                };
                 sh.app.rebuild_panel = true;
             })
             .get();
@@ -651,6 +785,38 @@ fn picture_section(app: &App, h: &Handle) -> Element {
                 sh.app.ui.map_edit.trace = v;
             },
         ));
+        let h2 = h.clone();
+        rows.push(crate::ui::bool_field(
+            "Fill by color in the picture",
+            tools.by_color,
+            Some(
+                "the fill tool spreads over the picture underneath rather than over the map, \
+                 so a photographed sea is one press",
+            ),
+            move |v| {
+                let mut sh = h2.borrow_mut();
+                sh.app.ui.map_edit.by_color = v;
+                if v {
+                    sh.app.ui.tool = crate::app::Tool::Fill;
+                }
+                sh.app.rebuild_panel = true;
+            },
+        ));
+        if tools.by_color {
+            let h2 = h.clone();
+            rows.push(number_field(
+                "How near the color",
+                tools.threshold,
+                NumOpts { min: 0.0, max: 1.0, step: 0.01 },
+                Some(
+                    "0 spreads over that exact color only; 1 takes the whole map whatever it \
+                     looks like",
+                ),
+                move |v| {
+                    h2.borrow_mut().app.ui.map_edit.threshold = v;
+                },
+            ));
+        }
         if let Some((cols, rows_n)) = tools.picture_cells() {
             let cells = cols as f64 * rows_n as f64;
             let mut text = format!(
@@ -684,6 +850,59 @@ fn picture_section(app: &App, h: &Handle) -> Element {
         }));
     }
     section("A picture to trace", rows)
+}
+
+/// Every cell of the map turned to one kind of ground, every zone taken off
+/// and every sky mark with them: a blank sheet to draw a map on.
+///
+/// Which ground is whichever the legend has selected, so wiping to water and
+/// drawing the land in is the same press as wiping to grass and drawing the
+/// sea. It is one step back like any other stroke, and cells somebody has
+/// built on keep what they have, the same as every other press on this page.
+fn wipe(app: &mut App) {
+    let brush = Brush::from_color(app.ui.brush_color);
+    let kind = brush.ground().unwrap_or(Cell::Grass);
+    let (cols, rows) = match MapSurface::size(app) {
+        Some(size) => size,
+        None => {
+            app.set_note("no map to wipe: enter the settlement first");
+            return;
+        }
+    };
+    app.ui.map_edit.ensure(cols, rows);
+    let was: Vec<Was> = (0..(cols * rows) as usize).map(|at| held(app, at)).collect();
+    let every: Vec<(i32, i32)> =
+        (0..rows).flat_map(|r| (0..cols).map(move |c| (c, r))).collect();
+    let done = match app.settlement.as_mut() {
+        Some(sim) => {
+            let done = sim.paint_cells(&every, kind);
+            sim.terrain.zone.fill(0);
+            sim.sync_zones();
+            done
+        }
+        None => 0,
+    };
+    app.ui.map_edit.sky.fill(0);
+    // The step is the cells that actually moved, which on a map with a town on
+    // it is not all of them.
+    let step: Step = was.into_iter().filter(|w| held(app, w.at) != *w).collect();
+    if !step.is_empty() {
+        app.ui.map_edit.steps.push(step);
+        app.ui.map_edit.redone.clear();
+        app.ui.map_edit.trim();
+    }
+    let refused = (cols * rows) as usize - done;
+    app.set_note(&format!(
+        "the map is {}{}",
+        brush.label().to_lowercase(),
+        if refused > 0 {
+            format!("; {refused} cells were already that or built on")
+        } else {
+            String::new()
+        }
+    ));
+    settle(app);
+    app.rebuild_panel();
 }
 
 /// The picture as the whole map. The map takes the picture's own size at the

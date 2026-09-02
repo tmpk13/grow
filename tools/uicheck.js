@@ -1456,6 +1456,67 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
   if (/zoned/.test(await tally())) {
     problems.push('taking every zone off left one on the map');
   }
+
+  // Filling by the picture's color: a picture is laid under the map and the
+  // fill tool spreads over that rather than over what is painted, so how far
+  // it runs is the threshold's to decide.
+  const RED_AND_BLUE =
+    'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFUlEQVR4nGO4YGAARAYJF4CIgTgOABDSFIGliA40AAAAAElFTkSuQmCC';
+  await page.locator('#panel-body .dropzone input[type=file]').setInputFiles({
+    name: 'trace.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(RED_AND_BLUE, 'base64'),
+  });
+  await page.waitForTimeout(900);
+  await page.click('#panel-body [data-find="fill-by-color-in-the-picture"] .btn');
+  await page.waitForTimeout(400);
+  await page.click('#panel-body .chip:has-text("Rock face")');
+  await page.waitForTimeout(200);
+  const canvas = await page.locator('#world-canvas').boundingBox();
+  await page.mouse.click(canvas.x + canvas.width * 0.5, canvas.y + canvas.height * 0.5);
+  await page.waitForTimeout(600);
+  const tight = await count('Rock face');
+  if (!(tight > 1)) {
+    problems.push(`a fill by the picture's color took ${tight} cells, which is not a region`);
+  }
+  // Anything is near enough to anything at one, so the same press runs over
+  // the whole map: the threshold is what was being checked, not the press.
+  await page.click('#btn-undo');
+  await page.waitForTimeout(500);
+  await page.fill('#panel-body [data-find="how-near-the-color"] input.num', '1');
+  await page.waitForTimeout(200);
+  await page.mouse.click(canvas.x + canvas.width * 0.5, canvas.y + canvas.height * 0.5);
+  await page.waitForTimeout(600);
+  const loose = await count('Rock face');
+  if (!(loose > tight)) {
+    problems.push(`a loose threshold took ${loose} cells against ${tight} for a tight one`);
+  }
+  await page.click('#btn-undo');
+  await page.waitForTimeout(600);
+  await page.click('#panel-body [data-find="fill-by-color-in-the-picture"] .btn');
+  await page.waitForTimeout(300);
+  await page.click('#panel-body .btn:text-is("Forget the picture")');
+  await page.waitForTimeout(300);
+
+  // Wiping: every cell becomes the ground the legend has selected, and the
+  // button says which. One step back, like any other stroke.
+  await page.click('#panel-body .chip:has-text("Water")');
+  await page.waitForTimeout(200);
+  const wipe = '#panel-body .btn.danger:has-text("Wipe the map to")';
+  if (!/water/.test((await page.textContent(wipe)) ?? '')) {
+    problems.push('the wipe button does not say what it would wipe the map to');
+  }
+  await page.click(wipe);
+  await page.waitForTimeout(800);
+  if (!/Water\d+ cells, 100%/.test(await tally())) {
+    problems.push(`wiping the map left ${await tally()}`);
+  }
+  await page.screenshot({ path: `${outDir}/19b-map-wiped.png` });
+  await page.click('#btn-undo');
+  await page.waitForTimeout(900);
+  if (/Water\d+ cells, 100%/.test(await tally())) {
+    problems.push('undoing the wipe left the map wiped');
+  }
 }
 await page.click('.mode:text-is("Settlement")');
 await page.waitForTimeout(1500);

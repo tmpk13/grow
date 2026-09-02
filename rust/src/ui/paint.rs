@@ -22,6 +22,12 @@ pub trait Surface: 'static {
     fn dims(&self, app: &App) -> Option<(i32, i32)>;
     fn get(&self, app: &App, x: i32, y: i32) -> u32;
     fn set(&self, app: &mut App, x: i32, y: i32, v: u32);
+    /// The fill tool, for a surface that fills by something other than what is
+    /// already painted where it was pressed. False means it did nothing and
+    /// the ordinary flood should run instead.
+    fn fill_from(&self, _app: &mut App, _cell: (i32, i32), _value: u32) -> bool {
+        false
+    }
     /// Once per stroke, before the first cell of it is painted. The default
     /// is one step of the project's history; a surface whose buffer is not in
     /// the project keeps its own way back instead.
@@ -103,7 +109,11 @@ pub fn apply(app: &mut App, s: &dyn Surface, cell: (i32, i32), erase: bool) {
         }
         Tool::Fill => {
             let value = if erase { EMPTY_COLOR } else { app.ui.brush_color };
-            flood_fill(app, s, cell.0, cell.1, value);
+            // A surface that has a fill of its own does it; everything else
+            // floods over its own cells.
+            if !s.fill_from(app, cell, value) {
+                flood_fill(app, s, cell.0, cell.1, value);
+            }
         }
         // The marquee is dragged out by whoever owns the pointer, not stamped
         // a cell at a time, so there is nothing to do per cell.
