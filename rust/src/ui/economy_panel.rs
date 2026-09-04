@@ -46,8 +46,9 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
 
     let cfg = app.state.civ.economy;
     append(root, section("Prices and money", vec![
-        note("Nothing sets a price directly. Each resource has a target stock that grows with the \
-              population, and its price is the base price scaled by how far the store is from it."),
+        note("Nothing sets a price directly. Each resource has a target stock that grows with \
+              the population; its price is the base price scaled by how far the store is from \
+              that target."),
         econ_num(h, "Stock target per person", cfg.stock_per_person, 0.5, 20.0, 0.5, None, |c, v| c.stock_per_person = v),
         econ_num(h, "Raw weight", cfg.raw_weight, 0.1, 4.0, 0.1, None, |c, v| c.raw_weight = v),
         econ_num(h, "Made weight", cfg.made_weight, 0.1, 4.0, 0.1, None, |c, v| c.made_weight = v),
@@ -65,8 +66,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let boats = app.state.civ.boats;
     append(root, section("Boats", vec![
         note("A colony with a dock builds boats there and sends them to the other colonies with \
-              whatever it has too much of. They sell into the far town's store at the far town's \
-              prices and come home with what this one is short of."),
+              whatever it has too much of. They sell into the far town's store at its prices and \
+              come home with what this one is short of."),
         boat_num(h, "Boats per dock", boats.per_dock as f64, 0.0, 8.0, 1.0, None, |c, v| c.per_dock = v as i32),
         boat_num(h, "Hold", boats.capacity, 10.0, 400.0, 10.0, Some("units of cargo"), |c, v| c.capacity = v),
         boat_num(h, "Speed", boats.speed, 0.5, 12.0, 0.1, Some("cells per second"), |c, v| c.speed = v),
@@ -79,8 +80,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     ]));
 
     append(root, section("Caravans", vec![
-        note("A market brings caravans. They buy whatever the town has too much of and sell \
-              it what it is short of, both at the town's price shifted by the margin."),
+        note("A market brings caravans. They buy what the town has too much of and sell it what \
+              it is short of, both at the town's price shifted by the margin."),
         econ_num(h, "Days between visits", cfg.trade_interval, 10.0, 600.0, 5.0, Some("in simulated seconds"), |c, v| c.trade_interval = v),
         econ_num(h, "Units per visit", cfg.trade_volume, 1.0, 400.0, 1.0, None, |c, v| c.trade_volume = v),
         econ_num(h, "Trade margin", cfg.trade_margin, 0.0, 0.9, 0.05, None, |c, v| c.trade_margin = v),

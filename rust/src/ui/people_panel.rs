@@ -142,21 +142,19 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         people_num(h, "Swimming speed", p.swim_speed, 0.05, 1.0, 0.05,
             Some("against walking speed, once somebody is in the water"), |c, v| c.swim_speed = v),
         people_num(h, "Cost of a swim", p.swim_cost, 1.0, 40.0, 0.5,
-            Some("how much dearer a step into water is than one onto ground: high enough and \
+            Some("how much dearer a step into water is than one onto ground; high enough and \
                   a river is only ever walked round"), |c, v| c.swim_cost = v),
         app_bool(h, "Walk round plants", p.avoid_plants,
-            Some("a trunk is something to go round rather than through; off is the way it was, \
-                  with people passing straight through trees"),
+            Some("a trunk is something to go round rather than through; off lets people pass \
+                  straight through a tree"),
             |app, v| { app.state.civ.people.avoid_plants = v; app.request_save(); }),
         people_num(h, "In the way above", p.avoid_mass, 0.5, 12.0, 0.5,
-            Some("how much of a shrub, tree or vine has to be standing in a cell before it is \
-                  walked round, in cells; a sapling below it is stepped over, and mats and \
-                  tufts always are"),
+            Some("plant mass standing in a cell before it is walked round; less is stepped \
+                  over, and mats and tufts always are"),
             |c, v| c.avoid_mass = v),
         people_num(h, "Cost of pushing through", p.plant_push, 0.0, 6.0, 0.1,
-            Some("what crossing the thickest growth a person can get through costs against \
-                  walking round it; everything standing counts, so a meadow is slow and a \
-                  worn path round it is what people end up taking"),
+            Some("what crossing the thickest passable growth costs against walking round it; \
+                  a meadow is slow, so people wear a path around it"),
             |c, v| c.plant_push = v),
         people_num(h, "Carry capacity", p.carry_capacity, 1.0, 80.0, 1.0, Some("one load; the rest is left where it fell"), |c, v| c.carry_capacity = v),
         people_num(h, "Work rate", p.work_rate, 0.1, 4.0, 0.1, Some("global multiplier on every kind of work"), |c, v| c.work_rate = v),
@@ -190,10 +188,10 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
 
     let s = app.state.civ.social;
     append(root, section("Company", vec![
-        note("Everyone a person has stood near for long enough keeps a slot in their \
-              memory. What the two of them make of each other follows from how alike \
-              they are, plus a draw that belongs to the pair, and it decides who they \
-              marry, whose counter they buy from, and how content they are."),
+        note("Everyone a person stands near for long enough keeps a slot in their memory. What \
+              the two make of each other follows from how alike they are, plus a draw belonging \
+              to the pair, and it decides who they marry, whose counter they buy from, and how \
+              content they are."),
         app_bool(h, "People keep track of each other", s.enabled, None,
             |app, v| { app.state.civ.social.enabled = v; app.request_save(); }),
         social_num(h, "Meeting pass (s)", s.interval, 0.25, 20.0, 0.25,
@@ -209,15 +207,15 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         social_num(h, "Worth of good company", s.company, 0.0, 0.6, 0.02,
             Some("how much friends nearby lift contentment"), |c, v| c.company = v),
         social_num(h, "Courtship weight", s.courtship, 0.0, 6.0, 0.1,
-            Some("how much affinity decides between two matches of a like age; it has \
-                  no say across a generation"), |c, v| c.courtship = v),
+            Some("how much affinity decides between two matches of a like age; no say across \
+                  a generation"), |c, v| c.courtship = v),
         social_num(h, "Meetings per pass", s.max_meetings as f64, 1.0, 24.0, 1.0,
             Some("what bounds the cost of a crowd"), |c, v| c.max_meetings = v as usize),
     ]));
 
     append(root, section("Money and lodging", vec![
-        note("Wages are only paid once a town has a market. What a person keeps of one is what \
-              eventually buys a bigger house; the rest is spent back into the town the same day."),
+        note("Wages are paid only once a town has a market. What a person keeps is what buys a \
+              bigger house in the end; the rest is spent back into the town the same day."),
         people_num(h, "Kept from a wage", p.savings_share, 0.0, 1.0, 0.05,
             Some("the rest returns to the treasury"), |c, v| c.savings_share = v),
         people_num(h, "A night at an inn", p.inn_price, 0.0, 40.0, 0.5,
@@ -230,15 +228,15 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         work_num(h, "Mining rate", w.mine_rate, 0.1, 12.0, 0.1, None, |c, v| c.mine_rate = v),
         work_num(h, "Building rate", w.build_rate, 0.1, 12.0, 0.1, None, |c, v| c.build_rate = v),
         work_num(h, "Crafting rate", w.craft_rate, 0.1, 12.0, 0.1, None, |c, v| c.craft_rate = v),
-        work_num(h, "Farming rate", w.farm_rate, 0.05, 4.0, 0.05, Some("multiplied by the fertility under the fields and by how wet they are"), |c, v| c.farm_rate = v),
+        work_num(h, "Farming rate", w.farm_rate, 0.05, 4.0, 0.05, Some("scaled by the fertility under a field and by how wet it is"), |c, v| c.farm_rate = v),
         work_num(h, "Smallest plant worth cutting", w.min_harvest_mass, 0.5, 20.0, 0.5, None, |c, v| c.min_harvest_mass = v),
     ]));
 
     append(root, section("The dark", vec![
-        note("Walking home with no lamp in sight wears on somebody. Daylight, a roof and a lit \
-              street all settle it again. A person frightened enough, and with the coin for it, \
-              pays for a lamp post outside their own house - the cost is the same for everybody, \
-              so it is the rich who light their street first."),
+        note("Walking home with no lamp in sight wears on somebody; daylight, a roof and a lit \
+              street settle it again. Anyone frightened enough, with the coin for it, pays for a \
+              lamp post outside their own house - the cost is the same for everybody, so the \
+              rich light their street first."),
         people_num(h, "Fear per second in the dark", p.fear_gain, 0.0, 0.05, 0.001,
             Some("a memory of nights rather than a mood; less again for a hardy person"),
             |c, v| c.fear_gain = v),
@@ -249,9 +247,9 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     ]));
 
     append(root, section("Watering the fields", vec![
-        note("A field dries out as it is worked. Damp ground within reach of a river or a lake \
-              fills it back up on its own; anywhere else, whoever works the farm walks to the \
-              nearest bank with a bucket first."),
+        note("A field dries out as it is worked. Damp ground within reach of a river or lake \
+              fills it again on its own; anywhere else, whoever works the farm walks to the \
+              nearest bank with a bucket."),
         work_num(h, "Water used per second", w.farm_water_use, 0.0, 0.5, 0.005,
             Some("how fast working a field dries it out"), |c, v| c.farm_water_use = v),
         work_num(h, "Damp ground reach (cells)", w.farm_soak_reach as f64, 0.0, 20.0, 1.0,
@@ -272,21 +270,19 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     append(root, section("More rates", vec![
         work_num(h, "Cleared ground yield", w.clear_yield, 0.0, 1.0, 0.05, Some("share of a plant recovered when a building is raised over it"), |c, v| c.clear_yield = v),
         work_num(h, "A tree takes to fall (s)", w.fall_time, 0.1, 10.0, 0.1,
-            Some("anything with a stem goes over where it stood rather than vanishing out of \
-                  the hand that cut it"),
+            Some("anything with a stem goes over where it stood rather than vanishing as it \
+                  is cut"),
             |c, v| c.fall_time = v),
         work_num(h, "Fetch a load within", w.fetch_reach, 4.0, 200.0, 2.0,
-            Some("cells somebody will walk for a load lying on the ground, half again as far \
-                  for one cut by hand; past it they leave it, unless there is nothing nearer \
-                  to fetch at all"),
+            Some("cells somebody will walk for a dropped load, half again for one cut by \
+                  hand; past that they leave it, unless nothing is nearer"),
             |c, v| c.fetch_reach = v),
         work_num(h, "Dropped load life (days)", w.pile_life, 0.2, 30.0, 0.2,
-            Some("anything left on the ground, cut by hand or dropped by somebody working, rots \
-                  away over this long if nobody fetches it"),
+            Some("anything left on the ground rots away over this long if nobody fetches it"),
             |c, v| c.pile_life = v),
         work_num(h, "Replanning interval (s)", w.plan_interval, 0.1, 10.0, 0.1, None, |c, v| c.plan_interval = v),
         work_num(h, "Plant index rebuild (s)", w.plant_index_interval, 0.2, 20.0, 0.2,
-            Some("how often the coarse map of what is growing where is refreshed"), |c, v| c.plant_index_interval = v),
+            Some("how often the coarse map of what grows where is refreshed"), |c, v| c.plant_index_interval = v),
     ]));
 
     let mut panel = PeoplePanel {

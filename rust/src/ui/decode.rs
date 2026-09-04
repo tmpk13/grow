@@ -243,8 +243,8 @@ pub fn default_scale_field(h: &Handle) -> Element {
         0.0,
         1.0,
         Some(
-            "what every drop starts at: 0 works it out from the picture, 1 takes it exactly \
-             as it is, 8 reads art drawn eight screen pixels to a pixel",
+            "what every drop starts at: 0 works it out from the picture, 1 takes it as it \
+             is, 8 reads art drawn eight screen pixels to a pixel",
         ),
         move |v| {
             let mut prefs = crate::ui::prefs::Prefs::load();

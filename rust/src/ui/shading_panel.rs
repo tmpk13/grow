@@ -44,7 +44,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
 
     let mut curve = vec![el("div").class("plot-wrap").child(plot.unchecked_ref()).get()];
     curve.push(note(
-        "x is the input (depth inside the shape, or distance from an edge), y is the curve \
+        "x is the input - depth inside the shape, or distance from an edge - and y is the \
          response. A narrow start-to-end span leaves most of a body on one flat tone.",
     ));
     curve.extend(fields);

@@ -154,7 +154,7 @@ pub fn build_draw(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         h,
         "sheet",
         "how much of a dropped picture goes to one pixel of the sheet; 0 works it out from \
-         the picture, and the default for every drop is on the Sheet tab",
+         the picture. Every drop's default is on the Sheet tab",
     ));
     rows.push(nudge_row(h));
     rows.push(btn_row(vec![
@@ -242,9 +242,9 @@ fn imports_section(h: &Handle) -> Element {
         vec![
             note(
                 "Art drawn large - eight screen pixels to a pixel, or sixteen - is read back \
-                 down to the pixels it was drawn in, so a sheet holds what was drawn rather \
-                 than a magnified copy of it. Every drop target starts at this and can be set \
-                 to something else beside the target itself.",
+                 down to the pixels it was drawn in, so a sheet holds the drawing rather than \
+                 a magnified copy of it. Every drop target starts here and can be set on its \
+                 own beside the target.",
             ),
             crate::ui::decode::default_scale_field(h),
         ],
@@ -360,16 +360,16 @@ fn sheet_section(app: &App, h: &Handle) -> Element {
         let per_cell = app.state.civ.art_px_per_cell.max(1.0);
         rows.push(note(&format!(
             "The settlement draws art at {per_cell:.0} pixels to a cell, so this frame stands \
-             {:.1} by {:.1} cells there. A person is about a cell and a half tall; a house is \
-             two or three cells across. Dropping a picture larger than the frame grows the \
-             frame rather than shrinking the picture.",
+             {:.1} by {:.1} cells there. A person is about a cell and a half tall, a house two \
+             or three cells across. A picture larger than the frame grows the frame rather \
+             than being shrunk.",
             sheet.w as f64 / per_cell,
             sheet.h as f64 / per_cell
         )));
         rows.push(btn_row(vec![app_button(h, "Download PNG", download_sheet)]));
         rows.push(note(
-            "One image, every frame side by side at one pixel each, which is the shape a \
-             sheet is read back in.",
+            "One image, every frame side by side at one pixel each: the shape a sheet is read \
+             back in.",
         ));
         let bytes = app.state.art.bytes();
         if bytes >= 1024 {
@@ -1022,7 +1022,7 @@ fn download_zip(app: &mut App) {
 fn zip_section(app: &App, h: &Handle) -> Element {
     let mut rows = vec![note(
         "One image per sheet, laid out as a strip. Tick the sheets to include; ask for frames \
-         as well and each one lands beside the strip as its own file.",
+         as well and each lands beside the strip as its own file.",
     )];
     let list = el("div").class("chips").get();
     for sheet in &app.state.art.sheets {
@@ -1071,8 +1071,8 @@ fn store_section(app: &App, h: &Handle) -> Element {
     let kept = crate::ui::sprite_store::load();
     let mut rows = vec![note(
         "Sheets are kept here as well as in the project, so they outlive the project they \
-         were drawn in. Reset all leaves this alone: a kept sheet only goes when it is \
-         deleted from here.",
+         were drawn in. Reset all leaves this alone: a kept sheet goes only when it is deleted \
+         from here.",
     )];
 
     let prefs = crate::ui::prefs::Prefs::load();
@@ -1194,9 +1194,8 @@ fn use_section(app: &App, h: &Handle) -> Element {
     let ready = sheet.is_some_and(|s| s.any());
     let id = app.ui.selected_sheet.clone();
     let mut rows = vec![note(
-        "Sends this sheet to a person motion as a clip. The clip keeps its own \
-         copy, so the people on the map do not change again until it is sent \
-         a second time.",
+        "Sends this sheet to a person motion as a clip. The clip keeps its own copy, so the \
+         people on the map do not change again until it is sent a second time.",
     )];
     // A motion this sheet is already behind says so on its own button: the
     // press is the same either way, and what it is worth is not.
@@ -1264,8 +1263,8 @@ fn use_section(app: &App, h: &Handle) -> Element {
 
     if behind > 0 {
         rows.push(note(&format!(
-            "{behind} of these took this sheet before it was last drawn on. The people on the \
-             map are still showing what it looked like then."
+            "{behind} of these took this sheet before it was last drawn on, so the people on \
+             the map still show what it looked like then."
         )));
     }
     if !ready {

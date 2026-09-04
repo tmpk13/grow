@@ -171,10 +171,10 @@ pub fn build(app: &App, h: &Handle) -> Element {
     let mut rows_ui = vec![
         note(
             "Drop a picture of the land and it is laid over the whole map, corner to corner. \
-             Press on it to take the color under the pointer and drag out the piece to work on; \
-             every cell in that box whose color is near enough to the one taken becomes whatever \
-             is chosen below. Ground is what the cell is made of; growth is what may take root \
-             there, which leaves the ground alone and holds for whatever grows next.",
+             Press to take the color under the pointer, then drag out the piece to work on: \
+             every cell in that box near enough to the color taken becomes whatever is chosen \
+             below. Ground is what a cell is made of; growth is what may take root there, which \
+             leaves the ground alone and holds for whatever grows next.",
         ),
         drop_zone(h),
     ];
@@ -194,7 +194,7 @@ pub fn build(app: &App, h: &Handle) -> Element {
         "How near the color",
         land.threshold,
         NumOpts { min: 0.0, max: 1.0, step: 0.01 },
-        Some("0 takes only that exact color; 1 takes the whole box whatever it looks like"),
+        Some("0 takes that exact color only; 1 takes the whole box"),
         |app, v| app.ui.land.threshold = v,
     ));
     rows_ui.push(readout.clone());

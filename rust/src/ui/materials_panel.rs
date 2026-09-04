@@ -356,7 +356,7 @@ fn sampler_settings(app: &App, h: &Handle) -> Element {
         .collect();
     let role_id = id.clone();
     let _ = holder.append_child(&app_select(h, "Role", &selected.role, &role_options,
-        Some("a label only; species pick boxes per material slot"),
+        Some("a label only; species pick a box per material slot"),
         move |app, v| {
             if let Some(s) = app.state.materials.find_mut(&role_id) {
                 s.role = v.to_string();
@@ -437,9 +437,9 @@ impl Panel for MaterialsPanel {
             let _ = self.ramp_strip.append_child(&row);
         }
         self.ramp_note.set_text_content(Some(&format!(
-            "{} tones. Each row is what this box reads as at that height of the thing \
-             drawn from it, dark to light: draw the top of the box for the top of the \
-             object. A tone holds as much of a row as it covers of that part of the box.",
+            "{} tones, dark to light. Each row is what this box reads as at that height of \
+             the thing drawn from it, so draw the top of the box for the top of the object. A \
+             tone holds as much of a row as it covers of that part of the box.",
             ramp.len()
         )));
 

@@ -133,7 +133,7 @@
     "tab_label": "Materials",
     "group": "Boxes",
     "label": "Role",
-    "hint": "a label only; species pick boxes per material slot",
+    "hint": "a label only; species pick a box per material slot",
     "anchor": "role",
     "kind": "field"
   },
@@ -561,7 +561,7 @@
     "tab_label": "Species",
     "group": "Growth",
     "label": "Shrivel (s)",
-    "hint": "how long a plant takes to dry out and come apart once it is past its age",
+    "hint": "how long a plant takes to dry out and fall apart once past its age",
     "anchor": "shrivel-s",
     "kind": "field"
   },
@@ -1154,7 +1154,7 @@
     "tab_label": "Draw",
     "group": "Brush",
     "label": "Picture pixels to a pixel",
-    "hint": "how much of a dropped picture goes to one pixel of the sheet; 0 works it out from the picture, and the default for every drop is on the Sheet tab",
+    "hint": "how much of a dropped picture goes to one pixel of the sheet; 0 works it out from the picture. Every drop's default is on the Sheet tab",
     "anchor": "picture-pixels-to-a-pixel",
     "kind": "field"
   },
@@ -1536,7 +1536,7 @@
     "tab_label": "Sheet",
     "group": "Dropping pictures in",
     "label": "Picture pixels to a pixel",
-    "hint": "what every drop starts at: 0 works it out from the picture, 1 takes it exactly as it is, 8 reads art drawn eight screen pixels to a pixel",
+    "hint": "what every drop starts at: 0 works it out from the picture, 1 takes it as it is, 8 reads art drawn eight screen pixels to a pixel",
     "anchor": "picture-pixels-to-a-pixel",
     "kind": "field"
   },
@@ -2080,7 +2080,7 @@
     "tab_label": "Land",
     "group": "Zones from a picture",
     "label": "How near the color",
-    "hint": "0 takes only that exact color; 1 takes the whole box whatever it looks like",
+    "hint": "0 takes that exact color only; 1 takes the whole box",
     "anchor": "how-near-the-color",
     "kind": "field"
   },
@@ -2153,7 +2153,7 @@
     "tab_label": "Land",
     "group": "View",
     "label": "Wind in the trees",
-    "hint": "standing plants lean from the tips, each in its own time; runs on settlement time, so a paused world holds still",
+    "hint": "standing plants lean from the tips, each in its own time; on settlement time, so a paused world holds still",
     "anchor": "wind-in-the-trees",
     "kind": "field"
   },
@@ -2186,7 +2186,7 @@
     "tab_label": "Land",
     "group": "View",
     "label": "Clouds",
-    "hint": "procedural, passing over the sky on settlement time; a paused world holds its weather still",
+    "hint": "procedural, passing over on settlement time; a paused world holds its weather still",
     "anchor": "clouds",
     "kind": "field"
   },
@@ -2219,7 +2219,7 @@
     "tab_label": "Land",
     "group": "View",
     "label": "Cloud edge wobble",
-    "hint": "how strongly the edges churn as they pass; zero freezes the shapes and leaves only the drift",
+    "hint": "how strongly the edges churn; zero freezes the shapes and leaves only the drift",
     "anchor": "cloud-edge-wobble",
     "kind": "field"
   },
@@ -2230,7 +2230,7 @@
     "tab_label": "Land",
     "group": "View",
     "label": "Cloud start height",
-    "hint": "how far down the sky the weather begins, as a share of it; zero fills the whole sky and raising it leaves clear air over the top of the frame",
+    "hint": "how far down the sky the clouds begin, as a share of it; zero fills the sky, higher leaves clear air across the top",
     "anchor": "cloud-start-height",
     "kind": "field"
   },
@@ -2241,7 +2241,7 @@
     "tab_label": "Land",
     "group": "View",
     "label": "Clouds past the map's edge",
-    "hint": "the empty space around the map becomes the same sky: the gradient carries on and the clouds repeat across it",
+    "hint": "the space around the map becomes the same sky: the gradient carries on and the clouds repeat across it",
     "anchor": "clouds-past-the-map-s-edge",
     "kind": "field"
   },
@@ -2283,7 +2283,7 @@
     "tab_label": "Land",
     "group": "View",
     "label": "Fullscreen when idle (s)",
-    "hint": "with nobody touching anything for this long the map takes the whole window; a moved pointer, a key or a touch hands the menus back. Zero never does it",
+    "hint": "untouched for this long, the map takes the whole window; a pointer, a key or a touch hands the menus back. Zero never does it",
     "anchor": "fullscreen-when-idle-s",
     "kind": "field"
   },
@@ -2305,7 +2305,7 @@
     "tab_label": "Land",
     "group": "View",
     "label": "Detail threshold (zoom)",
-    "hint": "zoom below this and the drawing starts shedding detail: first the flourishes, then the sprites, then everything but the shapes",
+    "hint": "below this zoom the drawing sheds detail: flourishes first, then sprites, then everything but the shapes",
     "anchor": "detail-threshold-zoom",
     "kind": "field"
   },
@@ -2460,7 +2460,7 @@
     "tab_label": "People",
     "group": "Person sprites",
     "label": "Art pixels per cell",
-    "hint": "art pixels to one map cell; a cell is 8 px on the map, so art drawn at 8 px per cell comes out at 1.00 of its own size",
+    "hint": "art pixels to one map cell; a cell is 8 px, so art drawn at 8 px per cell comes out at 1.00 of its own size",
     "anchor": "art-pixels-per-cell",
     "kind": "field"
   },
@@ -2471,7 +2471,7 @@
     "tab_label": "People",
     "group": "Person sprites",
     "label": "Picture pixels to a pixel",
-    "hint": "how much of a dropped picture goes to one pixel of the person; 0 works it out from the picture",
+    "hint": "how much of a dropped picture goes to one pixel of the person; 0 works it out from the picture itself",
     "anchor": "picture-pixels-to-a-pixel",
     "kind": "field"
   },
@@ -2578,7 +2578,7 @@
     "tab_label": "People",
     "group": "Body and day",
     "label": "Cost of a swim",
-    "hint": "how much dearer a step into water is than one onto ground: high enough and a river is only ever walked round",
+    "hint": "how much dearer a step into water is than one onto ground; high enough and a river is only ever walked round",
     "anchor": "cost-of-a-swim",
     "kind": "field"
   },
@@ -2589,7 +2589,7 @@
     "tab_label": "People",
     "group": "Body and day",
     "label": "Walk round plants",
-    "hint": "a trunk is something to go round rather than through; off is the way it was, with people passing straight through trees",
+    "hint": "a trunk is something to go round rather than through; off lets people pass straight through a tree",
     "anchor": "walk-round-plants",
     "kind": "field"
   },
@@ -2600,7 +2600,7 @@
     "tab_label": "People",
     "group": "Body and day",
     "label": "In the way above",
-    "hint": "how much of a shrub, tree or vine has to be standing in a cell before it is walked round, in cells; a sapling below it is stepped over, and mats and tufts always are",
+    "hint": "plant mass standing in a cell before it is walked round; less is stepped over, and mats and tufts always are",
     "anchor": "in-the-way-above",
     "kind": "field"
   },
@@ -2611,7 +2611,7 @@
     "tab_label": "People",
     "group": "Body and day",
     "label": "Cost of pushing through",
-    "hint": "what crossing the thickest growth a person can get through costs against walking round it; everything standing counts, so a meadow is slow and a worn path round it is what people end up taking",
+    "hint": "what crossing the thickest passable growth costs against walking round it; a meadow is slow, so people wear a path around it",
     "anchor": "cost-of-pushing-through",
     "kind": "field"
   },
@@ -2898,7 +2898,7 @@
     "tab_label": "People",
     "group": "Company",
     "label": "Courtship weight",
-    "hint": "how much affinity decides between two matches of a like age; it has no say across a generation",
+    "hint": "how much affinity decides between two matches of a like age; no say across a generation",
     "anchor": "courtship-weight",
     "kind": "field"
   },
@@ -2983,7 +2983,7 @@
     "tab_label": "People",
     "group": "Work rates",
     "label": "Farming rate",
-    "hint": "multiplied by the fertility under the fields and by how wet they are",
+    "hint": "scaled by the fertility under a field and by how wet it is",
     "anchor": "farming-rate",
     "kind": "field"
   },
@@ -3113,7 +3113,7 @@
     "tab_label": "People",
     "group": "More rates",
     "label": "A tree takes to fall (s)",
-    "hint": "anything with a stem goes over where it stood rather than vanishing out of the hand that cut it",
+    "hint": "anything with a stem goes over where it stood rather than vanishing as it is cut",
     "anchor": "a-tree-takes-to-fall-s",
     "kind": "field"
   },
@@ -3124,7 +3124,7 @@
     "tab_label": "People",
     "group": "More rates",
     "label": "Fetch a load within",
-    "hint": "cells somebody will walk for a load lying on the ground, half again as far for one cut by hand; past it they leave it, unless there is nothing nearer to fetch at all",
+    "hint": "cells somebody will walk for a dropped load, half again for one cut by hand; past that they leave it, unless nothing is nearer",
     "anchor": "fetch-a-load-within",
     "kind": "field"
   },
@@ -3135,7 +3135,7 @@
     "tab_label": "People",
     "group": "More rates",
     "label": "Dropped load life (days)",
-    "hint": "anything left on the ground, cut by hand or dropped by somebody working, rots away over this long if nobody fetches it",
+    "hint": "anything left on the ground rots away over this long if nobody fetches it",
     "anchor": "dropped-load-life-days",
     "kind": "field"
   },
@@ -3156,7 +3156,7 @@
     "tab_label": "People",
     "group": "More rates",
     "label": "Plant index rebuild (s)",
-    "hint": "how often the coarse map of what is growing where is refreshed",
+    "hint": "how often the coarse map of what grows where is refreshed",
     "anchor": "plant-index-rebuild-s",
     "kind": "field"
   },
@@ -3414,7 +3414,7 @@
     "tab_label": "Build",
     "group": "Homes and towns",
     "label": "Homes rebuilt at once",
-    "hint": "a rebuild takes its beds out of the housing stock, and only starts when the household has somewhere else to sleep",
+    "hint": "a rebuild takes its beds out of the housing stock, and starts only once the household has somewhere else to sleep",
     "anchor": "homes-rebuilt-at-once",
     "kind": "field"
   },
@@ -3519,7 +3519,7 @@
     "tab_label": "Build",
     "group": "Homes and towns",
     "label": "Out there before giving up (s)",
-    "hint": "settlement seconds; a person walks about two and a half cells of it, so this is short by design",
+    "hint": "settlement seconds; a person walks about two and a half cells in one, so this is short by design",
     "anchor": "out-there-before-giving-up-s",
     "kind": "field"
   },
@@ -3541,7 +3541,7 @@
     "tab_label": "Build",
     "group": "Pulling things down",
     "label": "Salvage from pulling down",
-    "hint": "share of the materials that come back, which is more than falls out of a collapse",
+    "hint": "share of the materials that come back, more than falls out of a collapse",
     "anchor": "salvage-from-pulling-down",
     "kind": "field"
   },
@@ -3562,7 +3562,7 @@
     "tab_label": "Build",
     "group": "Camp fires",
     "label": "Frightened enough to light one",
-    "hint": "above the fear that buys a lamp post, or nobody is ever frightened enough to pay for one and the town never lights a street",
+    "hint": "keep above the fear that buys a lamp post, or no street is ever lit",
     "anchor": "frightened-enough-to-light-one",
     "kind": "field"
   },
@@ -3573,7 +3573,7 @@
     "tab_label": "Build",
     "group": "Camp fires",
     "label": "How long one burns",
-    "hint": "against the burn time the catalog gives it, which is five settlement minutes",
+    "hint": "against the catalog's burn time, which is five settlement minutes",
     "anchor": "how-long-one-burns",
     "kind": "field"
   },
@@ -3584,7 +3584,7 @@
     "tab_label": "Build",
     "group": "Camp fires",
     "label": "Fires per town at once",
-    "hint": "a bad night should read as a scatter of lights, not as the wilderness alight",
+    "hint": "a bad night should read as a scatter of lights, not a wilderness alight",
     "anchor": "fires-per-town-at-once",
     "kind": "field"
   },
@@ -3606,7 +3606,7 @@
     "tab_label": "Build",
     "group": "Camp fires",
     "label": "Frightened enough to walk to one",
-    "hint": "below the fear that lights one: sitting at somebody else's fire is the cheaper answer and should be the one taken first. Anybody with no bed at all goes whatever their fear",
+    "hint": "keep below the fear that lights one: joining a fire is cheaper and should come first. Anybody with no bed goes whatever their fear",
     "anchor": "frightened-enough-to-walk-to-one",
     "kind": "field"
   },
@@ -3628,7 +3628,7 @@
     "tab_label": "Build",
     "group": "Camp fires",
     "label": "Warmth of one",
-    "hint": "how much faster the dark eases while sitting at a fire than while standing in ordinary light; at one a fire is only a light",
+    "hint": "how much faster the dark eases at a fire than under ordinary light; at one a fire is only a light",
     "anchor": "warmth-of-one",
     "kind": "field"
   },
@@ -3649,7 +3649,7 @@
     "tab_label": "Build",
     "group": "Walls and gates",
     "label": "People before walling",
-    "hint": "a village that walls itself spends everything on the wall and then starves inside it",
+    "hint": "a village that walls itself spends everything on the wall and starves inside it",
     "anchor": "people-before-walling",
     "kind": "field"
   },
@@ -3756,7 +3756,7 @@
     "tab_label": "Build",
     "group": "Pictures for made things",
     "label": "Art pixels per cell",
-    "hint": "art pixels to one map cell; a cell is 8 px on the map, so art drawn at 8 px per cell comes out at 1.00 of its own size",
+    "hint": "art pixels to one map cell; a cell is 8 px, so art drawn at 8 px per cell comes out at 1.00 of its own size",
     "anchor": "art-pixels-per-cell",
     "kind": "field"
   },
@@ -4087,7 +4087,7 @@
     "tab_label": "Tech",
     "group": "Research",
     "label": "Need bias",
-    "hint": "how strongly automatic research chases what the settlement is short of",
+    "hint": "how strongly research chases what the settlement is short of",
     "anchor": "need-bias",
     "kind": "field"
   },
@@ -4127,7 +4127,7 @@
     "tab_label": "Experimental",
     "group": "Experiments",
     "label": "Try the unfinished things",
-    "hint": "off by default, and off is the settlement as it has always run",
+    "hint": "off by default, which is the settlement as it has always run",
     "anchor": "try-the-unfinished-things",
     "kind": "field"
   },
@@ -4148,14 +4148,14 @@
   {
     "group": "Everywhere",
     "label": "Hide menu",
-    "hint": "fold the side menu away and hand its width to the world",
+    "hint": "fold the side menu away and give its width to the world",
     "anchor": "#btn-panel",
     "kind": "chrome"
   },
   {
     "group": "Everywhere",
     "label": "Fold all",
-    "hint": "fold every section of the menu shut, or open them all again",
+    "hint": "fold every section shut, or open them all again",
     "anchor": "#btn-fold-groups",
     "kind": "chrome"
   },
@@ -4204,7 +4204,7 @@
   {
     "group": "Everywhere",
     "label": "Meaning",
-    "hint": "match menus on what they mean, not only how they are spelled",
+    "hint": "match on what a menu means, not only how it is spelled",
     "anchor": "#find-meaning",
     "kind": "chrome"
   }

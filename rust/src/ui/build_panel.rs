@@ -89,8 +89,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
 
     append(root, section("Homes and towns", vec![
         note("A person who has saved enough coin has their own house rebuilt one rung larger: \
-              hut, house, manor, and finally a tower. The coin goes to the treasury, which is what \
-              pays the laborers who carry the brick. Nobody plans a tower."),
+              hut, house, manor, and finally a tower. The coin goes to the treasury, which pays \
+              the laborers who carry the brick. Nobody plans a tower."),
         app_bool(h, "People upgrade their own homes", cfg.home_upgrades, None,
             |app, v| { app.state.civ.build.home_upgrades = v; app.request_save(); }),
         build_num(h, "Upgrade price scale", cfg.upgrade_scale, 0.1, 6.0, 0.1,
@@ -98,8 +98,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         build_num(h, "Salvage from the old house", cfg.upgrade_salvage, 0.0, 1.0, 0.05,
             Some("share of the old materials that count toward the new"), |c, v| c.upgrade_salvage = v),
         build_num(h, "Homes rebuilt at once", cfg.max_home_rebuilds as f64, 0.0, 8.0, 1.0,
-            Some("a rebuild takes its beds out of the housing stock, and only starts \
-                  when the household has somewhere else to sleep"),
+            Some("a rebuild takes its beds out of the housing stock, and starts only once the \
+                  household has somewhere else to sleep"),
             |c, v| c.max_home_rebuilds = v as i32),
         app_bool(h, "Send out expeditions", cfg.expeditions,
             Some("a crowded, well stocked town founds another one"),
@@ -116,105 +116,95 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             |c, v| c.expedition_interval = v),
         build_num(h, "Cells between town centers", cfg.colony_spacing as f64, 8.0, 200.0, 1.0, None,
             |c, v| c.colony_spacing = v as i32),
-        note("Somebody who ends up a long way from their own town and stays there gives up on \
-              walking back and founds one where they stand. They bring nothing but what they \
-              know: no stores and no storehouse, because nobody planned this. Anyone else out \
-              there with them joins it."),
+        note("Somebody stranded a long way from their own town gives up on walking back and \
+              founds one where they stand. They bring nothing but what they know: no stores and \
+              no storehouse, because nobody planned this. Anyone else out there joins it."),
         app_bool(h, "Strays found towns of their own", cfg.strays_settle, None,
             |app, v| { app.state.civ.build.strays_settle = v; app.request_save(); }),
         build_num(h, "Far from home (cells)", cfg.stray_distance, 10.0, 300.0, 1.0,
             Some("from their own town's center"), |c, v| c.stray_distance = v),
         build_num(h, "Out there before giving up (s)", cfg.stray_wait, 1.0, 600.0, 1.0,
-            Some("settlement seconds; a person walks about two and a half cells of it, so \
+            Some("settlement seconds; a person walks about two and a half cells in one, so \
                   this is short by design"),
             |c, v| c.stray_wait = v),
     ]));
 
     append(root, section("Pulling things down", vec![
-        note("Look inside anything the town has put up and it can be condemned: the people \
-              take it apart themselves, at the same rate they build, and leave most of what it \
-              was made of on the ground. Nobody lives or works in a condemned thing while it \
-              comes down, so the planner starts on what replaces it straight away. Letting it \
-              stand again puts it right, at the cost of the work already spent on taking it \
-              apart. A site that has not gone up yet is called off instead, and everything \
-              delivered to it is left where it stood."),
+        note("Look inside anything the town has put up and it can be condemned: people take it \
+              apart at the rate they build it, leaving most of the materials on the ground. \
+              Nobody lives or works in it while it comes down, so the planner starts on its \
+              replacement at once. Letting it stand again costs the work already spent on taking \
+              it apart. A site not yet raised is called off instead, and whatever was delivered \
+              to it is left where it stood."),
         build_num(h, "Work to pull down", cfg.pull_down_share, 0.05, 2.0, 0.05,
             Some("against what it took to put up"), |c, v| c.pull_down_share = v),
         build_num(h, "Salvage from pulling down", cfg.pull_down_salvage, 0.0, 1.0, 0.05,
-            Some("share of the materials that come back, which is more than falls out of a \
-                  collapse"),
+            Some("share of the materials that come back, more than falls out of a collapse"),
             |c, v| c.pull_down_salvage = v),
     ]));
 
     append(root, section("Camp fires", vec![
         note("A camp fire is the one thing on the map that takes itself away again. Somebody \
-              out after dark, standing in no light at all and further gone than the price of \
-              a lamp post, stops walking, gathers what is lying around and lights a fire \
-              where they are. It costs the town nothing, it throws a small light while it \
-              lasts, and it burns down to nothing and is gone. Nothing is salvaged from one, \
-              because it burned. A fire lights the cell it stands on like anything else does, \
-              which is why the fear below has to sit above the one that buys a post: put it \
-              under and nobody is ever frightened enough to pay for one."),
+              out after dark in no light at all, further gone than the price of a lamp post, \
+              stops walking, gathers what is lying around and lights a fire where they stand. \
+              It costs the town nothing, throws a small light while it lasts, then burns out; \
+              nothing is salvaged, because it burned. A fire lights its own cell, so the fear \
+              below has to sit above the one that buys a lamp post, or no street is ever lit."),
         app_bool(h, "People light fires in the dark", cfg.camp_fires, None,
             |app, v| { app.state.civ.build.camp_fires = v; app.request_save(); }),
         build_num(h, "Frightened enough to light one", cfg.camp_fire_fear, 0.0, 1.0, 0.05,
-            Some("above the fear that buys a lamp post, or nobody is ever frightened \
-                  enough to pay for one and the town never lights a street"),
+            Some("keep above the fear that buys a lamp post, or no street is ever lit"),
             |c, v| c.camp_fire_fear = v),
         build_num(h, "How long one burns", cfg.camp_fire_burn, 0.1, 6.0, 0.1,
-            Some("against the burn time the catalog gives it, which is five settlement \
-                  minutes"),
+            Some("against the catalog's burn time, which is five settlement minutes"),
             |c, v| c.camp_fire_burn = v),
         build_num(h, "Fires per town at once", cfg.camp_fires_at_once as f64, 0.0, 20.0, 1.0,
-            Some("a bad night should read as a scatter of lights, not as the wilderness \
-                  alight"),
+            Some("a bad night should read as a scatter of lights, not a wilderness alight"),
             |c, v| c.camp_fires_at_once = v as i32),
         note("Whoever lights one sits down at it, and anybody else out in the dark walks over \
-              and takes a place at the ring. Sitting there settles the dark far faster than \
-              standing under a lamp does, which is what makes the walk worth taking; being sat \
-              together is also how the people at a fire come to know each other."),
+              and takes a place. Sitting there settles the dark far faster than standing under \
+              a lamp, which is what makes the walk worth taking, and it is how the people at a \
+              fire come to know each other."),
         build_num(h, "Places at a fire", cfg.camp_fire_seats as f64, 0.0, 8.0, 1.0,
             Some("the cells around it, so a fire in a corner has fewer than one in the open"),
             |c, v| c.camp_fire_seats = v as i32),
         build_num(h, "Frightened enough to walk to one", cfg.camp_fire_gather, 0.0, 1.0, 0.05,
-            Some("below the fear that lights one: sitting at somebody else's fire is the \
-                  cheaper answer and should be the one taken first. Anybody with no bed at \
-                  all goes whatever their fear"),
+            Some("keep below the fear that lights one: joining a fire is cheaper and should \
+                  come first. Anybody with no bed goes whatever their fear"),
             |c, v| c.camp_fire_gather = v),
         build_num(h, "How far one is worth walking", cfg.camp_fire_reach, 1.0, 80.0, 1.0,
             Some("in cells, measured from wherever the night caught them"),
             |c, v| c.camp_fire_reach = v),
         build_num(h, "Warmth of one", cfg.camp_fire_warmth, 1.0, 20.0, 0.5,
-            Some("how much faster the dark eases while sitting at a fire than while standing \
-                  in ordinary light; at one a fire is only a light"),
+            Some("how much faster the dark eases at a fire than under ordinary light; at one \
+                  a fire is only a light"),
             |c, v| c.camp_fire_warmth = v),
     ]));
 
     append(root, section("Walls and gates", vec![
-        note("A town that has learned to fortify rings itself: a rectangle around \
-              everything it has built, with the gates cut where the paths are already \
-              worn. Nothing is ever raised that would leave the town no way out, so the \
-              ring closes down to its gates and stops there."),
+        note("A town that has learned to fortify rings itself: a rectangle around everything \
+              it has built, with gates cut where the paths are already worn. Nothing is raised \
+              that would leave the town no way out, so the ring closes to its gates and stops."),
         app_bool(h, "Towns wall themselves", cfg.walls, None,
             |app, v| { app.state.civ.build.walls = v; app.request_save(); }),
         build_num(h, "People before walling", cfg.wall_population as f64, 1.0, 200.0, 1.0,
-            Some("a village that walls itself spends everything on the wall and then \
-                  starves inside it"), |c, v| c.wall_population = v as i32),
+            Some("a village that walls itself spends everything on the wall and starves \
+                  inside it"), |c, v| c.wall_population = v as i32),
         build_num(h, "Ring clearance (cells)", cfg.wall_margin as f64, 1.0, 20.0, 1.0,
             Some("gap kept between the outermost building and the wall"), |c, v| c.wall_margin = v as i32),
         build_num(h, "Ways through", cfg.wall_gates as f64, 1.0, 12.0, 1.0,
             Some("gates are drawn to the busiest cells of the ring and spread apart"),
             |c, v| c.wall_gates = v as i32),
         build_num(h, "Wall pieces at once", cfg.wall_sites as f64, 0.0, 6.0, 1.0,
-            Some("counted apart from the sites above, or a ring would stop the town \
-                  building anything else"), |c, v| c.wall_sites = v as i32),
+            Some("counted apart from the sites above, or a ring would stop the town building \
+                  anything else"), |c, v| c.wall_sites = v as i32),
     ]));
 
     append(root, section("Stalls", vec![
-        note("A person with coin to spare buys a counter of their own, stocks it out of \
-              the town store at the town's price, and sells over it at a margin they \
-              keep. It is the only thing in the settlement that moves coin from one \
-              person to another without the treasury in the middle."),
+        note("A person with coin to spare buys a counter of their own, stocks it from the town \
+              store at the town's price, and sells over it at a margin they keep. It is the \
+              only thing in the settlement that moves coin between two people without the \
+              treasury in the middle."),
         app_bool(h, "People open stalls", cfg.stalls, None,
             |app, v| { app.state.civ.build.stalls = v; app.request_save(); }),
         build_num(h, "Stall price scale", cfg.stall_price_scale, 0.1, 6.0, 0.1,
@@ -288,10 +278,9 @@ fn place_section(app: &App, h: &Handle) -> Element {
     let hand = app.ui.hand.clone();
     let mut rows = vec![note(
         "With Place on above the map, every press puts one of these down where it lands: a \
-         building for the town chosen below, a plant of any species this project holds, a load \
-         of anything on the ground, or a piece of scenery in the sky behind the map. What is \
-         placed on the map is placed the way the town would have placed it, so it is built, \
-         harvested and hauled by the same rules as everything else.",
+         building for the town chosen below, a plant of any species in the project, a load on \
+         the ground, or scenery in the sky behind the map. Anything placed by hand behaves as \
+         if the town had placed it, and is built, harvested and hauled by the same rules.",
     )];
     let kinds: Vec<(String, String)> = crate::civ::place::KINDS
         .iter()
@@ -378,17 +367,16 @@ fn place_section(app: &App, h: &Handle) -> Element {
                 |app, v| app.ui.hand.scene.height = v));
             rows.push(app_num(h, "How far off", hand.scene.distance,
                 NumOpts { min: 0.0, max: 1.0, step: 0.05 },
-                Some("hazes it into the sky, and puts it behind anything nearer"),
+                Some("hazes it into the sky and puts it behind anything nearer"),
                 |app, v| app.ui.hand.scene.distance = v));
             rows.push(app_num(h, "Snow line", hand.scene.snow,
                 NumOpts { min: 0.0, max: 1.0, step: 0.05 },
                 Some("as a share of its height; 1 is no snow at all"),
                 |app, v| app.ui.hand.scene.snow = v));
             rows.push(note(
-                "Press the sky to put one up, and drag it: sideways moves it, up and down \
-                 makes it taller and shorter. Pressing one that is already there takes hold \
-                 of it instead. The list of what is standing, and what to make it of, is on \
-                 the Land panel.",
+                "Press the sky to put one up, then drag it: sideways moves it, up and down \
+                 resizes it. Pressing one already standing takes hold of it instead. What is \
+                 standing, and what it is made of, is on the Land panel.",
             ));
         }
         crate::civ::place::Kind::Load => {

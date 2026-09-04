@@ -16,16 +16,15 @@ use crate::ui::{
 /// given something to be made of, and taken down again.
 fn scenery_section(app: &App, h: &Handle) -> Element {
     let mut rows = vec![note(
-        "Hills and mountains in the sky band, behind everything on the map. They are scenery \
-         and nothing else: nobody walks on one, nothing is built on one, and the town never \
-         asks about them. How far off a piece is hazes it into the sky and decides what stands \
-         in front of what, so a near ridge is drawn over a far one whatever order they went up \
-         in.",
+        "Hills and mountains in the sky band, behind everything on the map. Scenery and nothing \
+         else: nobody walks on one, nothing is built on one, and the town never asks about them. \
+         How far off a piece is hazes it into the sky and puts it behind anything nearer, \
+         whatever order they went up in.",
     )];
     if app.state.civ.scenery.is_empty() {
         rows.push(note(
             "Nothing behind the map yet. Turn Place on above the map, choose Scenery in the \
-             placing menu on the Build panel, and press the sky.",
+             Build panel's placing menu, then press the sky.",
         ));
     }
     for (i, piece) in app.state.civ.scenery.iter().enumerate() {
@@ -44,7 +43,7 @@ fn scenery_section(app: &App, h: &Handle) -> Element {
         rows.push(scene_num(h, i, "Height (cells)", piece.height, 0.5, 60.0, 0.5, None,
             |p, v| p.height = v));
         rows.push(scene_num(h, i, "How far off", piece.distance, 0.0, 1.0, 0.05,
-            Some("hazes it into the sky, and puts it behind anything nearer"),
+            Some("hazes it into the sky and puts it behind anything nearer"),
             |p, v| p.distance = v));
         rows.push(scene_num(h, i, "Snow line", piece.snow, 0.0, 1.0, 0.05,
             Some("as a share of its height; 1 is no snow at all"), |p, v| p.snow = v));
@@ -110,12 +109,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("terrain, deposits, people and everything they do"),
             |app, v| { app.state.civ.seed = v as u32; app.request_save(); }),
         el("h4").text("Grow it instead").get(),
-        note("Adds land to the right and along the bottom, so every column and row that is \
-              already there keeps its number and nothing standing on one moves. The new ground \
-              arrives with a wilderness on it, warmed for as long as a fresh map is; Wild growth \
-              goes up with the area at the same time, because the land carries a count of plants \
-              rather than a density, and without that the new ground would come out bare. The \
-              town, its people and everything they know carry on."),
+        note("Adds land to the right and along the bottom, so every column and row already \
+              there keeps its number and nothing standing on one moves. The new ground arrives \
+              warmed, with a wilderness on it, and Wild growth rises with the area to match: the \
+              land carries a count of plants rather than a density, so without that the new \
+              ground would come out bare. The town and its people carry on."),
         grow_num(h, "Add columns", app.ui.grow_cols as f64, |ui, v| ui.grow_cols = v as i32),
         grow_num(h, "Add rows", app.ui.grow_rows as f64, |ui, v| ui.grow_rows = v as i32),
         btn_row(vec![app_button(h, "Grow the map", |app| {
@@ -145,9 +143,9 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             }),
             app_button(h, "Rebuild this land", |app| app.civ_restart()),
         ]),
-        note("Anything starred here is waiting on Apply: the map is not rebuilt while a slider is \
-              being dragged. A large map costs memory for its pixel buffers and time for its \
-              wilderness warmup, but not frame rate: only what the camera can see is ever drawn."),
+        note("Anything starred is waiting on Apply: the map is not rebuilt mid-drag. A large map \
+              costs memory for its pixel buffers and time for its warmup, but not frame rate - \
+              only what the camera can see is ever drawn."),
     ];
     append(root, section("Map", map));
 
@@ -177,8 +175,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let r = app.state.civ.terrain.rivers;
     append(root, section("Rivers", vec![
         note("Rivers are cut after the noise rather than sampled out of it: a spring in the high \
-              ground, then downhill until it reaches standing water or the edge of the map. They \
-              leave damp banks behind them, and they are the roads the boats use."),
+              ground, then downhill to standing water or the edge of the map. They leave damp \
+              banks behind them, and they are the roads the boats use."),
         river_num(h, "Springs per 10000 cells", r.density, 0.0, 40.0, 0.5,
             Some("a larger map gets more rivers rather than longer ones"), |r, v| r.density = v),
         river_num(h, "Channel width at the mouth", r.width, 0.4, 8.0, 0.1,
@@ -195,7 +193,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
 
     let mut deposit_fields = vec![note(
         "Stone and ore sit in the high rock, clay along the water. Every deposit holds a finite \
-         amount, so a settlement that has emptied the ground near it has to reach further out.",
+         amount, so a settlement that empties the ground near it has to reach further out.",
     )];
     for kind in DEPOSIT_KINDS {
         let cfg = app.state.civ.terrain.deposits.get(kind);
@@ -234,8 +232,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         app_bool(h, "Chimney smoke", view.smoke, None,
             |app, v| { app.state.civ.view.smoke = v; app.civ_repaint(); }),
         app_bool(h, "Wind in the trees", view.sway,
-            Some("standing plants lean from the tips, each in its own time; runs on settlement \
-                  time, so a paused world holds still"),
+            Some("standing plants lean from the tips, each in its own time; on settlement time, \
+                  so a paused world holds still"),
             |app, v| { app.state.civ.view.sway = v; app.civ_repaint(); }),
         app_num(h, "Sway lean (px)", view.sway_amp,
             NumOpts { min: 0.0, max: 6.0, step: 0.2 },
@@ -246,8 +244,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("full leans per simulated second, at speed one"),
             |app, v| { app.state.civ.view.sway_speed = v; app.request_save(); }),
         app_bool(h, "Clouds", view.clouds,
-            Some("procedural, passing over the sky on settlement time; a paused world holds \
-                  its weather still"),
+            Some("procedural, passing over on settlement time; a paused world holds its \
+                  weather still"),
             |app, v| { app.state.civ.view.clouds = v; app.request_save(); }),
         app_num(h, "Cloud cover", view.cloud_cover,
             NumOpts { min: 0.05, max: 1.0, step: 0.05 },
@@ -259,17 +257,17 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             |app, v| { app.state.civ.view.cloud_speed = v; app.request_save(); }),
         app_num(h, "Cloud edge wobble", view.cloud_wobble,
             NumOpts { min: 0.0, max: 1.0, step: 0.05 },
-            Some("how strongly the edges churn as they pass; zero freezes the shapes and \
-                  leaves only the drift"),
+            Some("how strongly the edges churn; zero freezes the shapes and leaves only the \
+                  drift"),
             |app, v| { app.state.civ.view.cloud_wobble = v; app.request_save(); }),
         app_num(h, "Cloud start height", view.cloud_top,
             NumOpts { min: 0.0, max: 0.95, step: 0.05 },
-            Some("how far down the sky the weather begins, as a share of it; zero fills the \
-                  whole sky and raising it leaves clear air over the top of the frame"),
+            Some("how far down the sky the clouds begin, as a share of it; zero fills the sky, \
+                  higher leaves clear air across the top"),
             |app, v| { app.state.civ.view.cloud_top = v; app.request_save(); }),
         app_bool(h, "Clouds past the map's edge", view.cloud_space,
-            Some("the empty space around the map becomes the same sky: the gradient carries \
-                  on and the clouds repeat across it"),
+            Some("the space around the map becomes the same sky: the gradient carries on and \
+                  the clouds repeat across it"),
             |app, v| { app.state.civ.view.cloud_space = v; app.request_save(); }),
         app_bool(h, "Building labels", view.labels, None,
             |app, v| { app.state.civ.view.labels = v; app.civ_repaint(); }),
@@ -280,16 +278,16 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             |app, v| { app.state.civ.view.current = v; app.civ_repaint(); }),
         app_num(h, "Fullscreen when idle (s)", view.idle_fullscreen,
             NumOpts { min: 0.0, max: 600.0, step: 5.0 },
-            Some("with nobody touching anything for this long the map takes the whole window; \
-                  a moved pointer, a key or a touch hands the menus back. Zero never does it"),
+            Some("untouched for this long, the map takes the whole window; a pointer, a key or \
+                  a touch hands the menus back. Zero never does it"),
             |app, v| { app.state.civ.view.idle_fullscreen = v; app.request_save(); }),
         app_bool(h, "Draw only what is on screen", view.cull,
             Some("off is slower and only useful when something looks wrong at the edge"),
             |app, v| { app.state.civ.view.cull = v; app.civ_repaint(); }),
         app_num(h, "Detail threshold (zoom)", view.detail_zoom,
             NumOpts { min: 0.1, max: 4.0, step: 0.05 },
-            Some("zoom below this and the drawing starts shedding detail: first the flourishes, \
-                  then the sprites, then everything but the shapes"),
+            Some("below this zoom the drawing sheds detail: flourishes first, then sprites, \
+                  then everything but the shapes"),
             |app, v| { app.state.civ.view.detail_zoom = v; app.civ_repaint(); }),
         app_color(h, "Shallow water", &view.water_top, None,
             |app, v| { app.state.civ.view.water_top = v.to_string(); app.civ_repaint(); }),

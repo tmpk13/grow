@@ -654,7 +654,7 @@ pub static SPECIES_SCHEMA: &[FieldGroup] = &[
                 0.2,
                 60.0,
                 0.2,
-                Some("how long a plant takes to dry out and come apart once it is past its age")
+                Some("how long a plant takes to dry out and fall apart once past its age")
             ),
         ],
     },

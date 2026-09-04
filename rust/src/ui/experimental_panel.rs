@@ -28,7 +28,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                     h,
                     "Try the unfinished things",
                     on,
-                    Some("off by default, and off is the settlement as it has always run"),
+                    Some("off by default, which is the settlement as it has always run"),
                     |app, v| {
                         app.state.civ.experiments.on = v;
                         app.request_save();
@@ -39,9 +39,9 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                     },
                 ),
                 note(
-                    "Nothing in here is settled. It can be turned on while a town runs and turned \
-                     off again, and with it off none of it is asked anything: no balloon is built, \
-                     nothing is spent on one, and research runs at the rate it always did.",
+                    "Nothing in here is settled. It can be turned on and off while a town runs, \
+                     and with it off none of it is asked anything: no balloon is built, nothing \
+                     is spent on one, and research runs at the rate it always did.",
                 ),
             ],
         ),
@@ -58,11 +58,10 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                         "With this on, a Take over switch joins the row above the map. Press a \
                          person with it and they are yours: the arrow keys or W A S D walk them, \
                          a stick on the map does the same with a thumb, and the buttons under it \
-                         are the four things they can be asked to do - cut what is in front of \
-                         them, pick a load up or put it down, step in or out of a doorway, and \
-                         eat what they have. They plan nothing for themselves until they are let \
-                         go, and everything else about being a person still happens to them: \
-                         they age, they tire, and they starve if nobody feeds them.",
+                         cut what is in front of them, pick a load up or put it down, step \
+                         through a doorway, and eat what they have. They plan nothing for \
+                         themselves until they are let go, and the rest of being a person still \
+                         happens: they age, they tire, and they starve if nobody feeds them.",
                     ),
                     app_bool(h, "Let a person be taken over", c.on, None, |app, v| {
                         app.state.civ.experiments.control.on = v;
@@ -78,7 +77,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                     }),
                     app_bool(h, "Show the stick", c.joystick,
                         Some("the keys work either way; the stick is for a screen with no \
-                              keyboard behind it"),
+                              keyboard"),
                         |app, v| {
                             app.state.civ.experiments.control.joystick = v;
                             app.request_save();
@@ -103,9 +102,9 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                 vec![
                     note(
                         "A town with a school and cloth to spare sews a canopy, burns charcoal \
-                         under it and sends it up over itself. What can be seen from up there is \
-                         worth more to the scholars than another day at the bench, so research \
-                         runs faster while one is in the air. No school, no balloon.",
+                         under it and sends it up. What the scholars see from up there is worth \
+                         more than another day at the bench, so research runs faster while one \
+                         is in the air. No school, no balloon.",
                     ),
                     app_bool(h, "Send them up", b.on, None, |app, v| {
                         app.state.civ.experiments.balloons.on = v;

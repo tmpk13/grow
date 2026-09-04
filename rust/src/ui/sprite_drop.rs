@@ -62,13 +62,12 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
     let sprites = &app.state.civ.sprites;
     let mut rows = vec![
         note(
-            "Drop images on a motion to draw people with them instead of with the \
-             generated body. One image is read as a strip of frames; several are read \
-             as one frame each, in the order their names sort. A motion with nothing \
-             on it borrows from a related one, so a single walk sheet is enough to \
-             replace the person everywhere. A frame is drawn whole, exactly as it was \
-             drawn, so motions exported from one canvas line up however much room each \
-             of them uses.",
+            "Drop images on a motion to draw people with them instead of the generated body. \
+             One image is read as a strip of frames; several are read as one frame each, in \
+             the order their names sort. A motion with nothing on it borrows from a related \
+             one, so a single walk sheet replaces the person everywhere. Frames are drawn \
+             whole and unstretched, so motions exported from one canvas line up whatever room \
+             each takes.",
         ),
         art_scale_row(app, h),
         crate::ui::decode::scale_field(
@@ -76,7 +75,7 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
             h,
             "motion",
             "how much of a dropped picture goes to one pixel of the person; 0 works it out \
-             from the picture",
+             from the picture itself",
         ),
         app_bool(
             h,
@@ -96,7 +95,7 @@ pub fn sprites_section(app: &App, h: &Handle) -> Element {
     if bytes > 0 {
         let text = format!("Sheets in this project: {}.", size_text(bytes));
         rows.push(note(&if bytes > SIZE_WARN {
-            format!("{text} Past about a megabyte a project may be too large to save in the browser; drop smaller art or fewer frames.")
+            format!("{text} Past about a megabyte the browser may refuse to save the project; drop smaller art or fewer frames.")
         } else {
             text
         }));
@@ -112,8 +111,8 @@ fn art_scale_row(app: &App, h: &Handle) -> Element {
     let cell = app.state.civ.world.cell_px;
     let per_cell = app.state.civ.art_px_per_cell;
     let hint = format!(
-        "art pixels to one map cell; a cell is {cell} px on the map, so art drawn at \
-         {per_cell:.0} px per cell comes out at {:.2} of its own size",
+        "art pixels to one map cell; a cell is {cell} px, so art drawn at {per_cell:.0} px \
+         per cell comes out at {:.2} of its own size",
         cell as f64 / per_cell.max(1.0)
     );
     app_num(
@@ -140,10 +139,9 @@ pub fn made_section(app: &App, h: &Handle) -> Element {
         note(
             "Buildings, walls, boats and the loads people carry are drawn out of the sampling \
              boxes unless there is a picture for them. A picture comes out at the size it was \
-             drawn: its own pixels against the art resolution below, never stretched to the box \
-             the generator would have filled, and stood on the front edge of the footprint with \
-             whatever it does not cover hanging evenly either side. A thing with a picture for \
-             one state only is drawn from it in that state and generated the rest of the time.",
+             drawn - its own pixels against the art resolution below, never stretched - stood \
+             on the front edge of the footprint, the rest hanging evenly either side. A thing \
+             with a picture for one state only is generated the rest of the time.",
         ),
         art_scale_row(app, h),
         crate::ui::decode::scale_field(
@@ -419,7 +417,7 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
             MIN_SCALE,
             MAX_SCALE,
             0.05,
-            Some("1 is the art at its own size; both sides move together, so the frame's shape is never changed"),
+            Some("1 is the art at its own size; both sides move together, so the frame keeps its shape"),
             |clip, v| clip.scale = v,
         ));
         body.push(clip_num(
@@ -447,7 +445,7 @@ fn slot_card(app: &App, h: &Handle, motion: Motion) -> Element {
             motion,
             "Mirror the art",
             c.mirror,
-            Some("for a sheet drawn facing the other way than the person walks"),
+            Some("for a sheet drawn facing the opposite way to the walk"),
             |clip, v| clip.mirror = v,
         ));
         if let Some(sheet) = app.state.art.find(&c.sheet) {

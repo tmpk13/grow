@@ -48,15 +48,15 @@ if ((await page.locator('.tab').count()) === 0) await fail('the app did not boot
 const chrome = [
   ['#btn-undo', 'Undo', 'step back through changes'],
   ['#btn-redo', 'Redo', 'step forward again'],
-  ['#btn-panel', 'Hide menu', 'fold the side menu away and hand its width to the world'],
-  ['#btn-fold-groups', 'Fold all', 'fold every section of the menu shut, or open them all again'],
+  ['#btn-panel', 'Hide menu', 'fold the side menu away and give its width to the world'],
+  ['#btn-fold-groups', 'Fold all', 'fold every section shut, or open them all again'],
   ['#btn-full', 'Fullscreen', 'show just the world, no menus'],
   ['#btn-new', 'New', 'start an empty project'],
   ['#btn-export', 'Export', 'save the project to a file'],
   ['#file-import', 'Import', 'load a project from a file'],
   ['#btn-reset', 'Reset all', 'throw everything away and start over'],
   ['#ui-scale', 'Text size', 'how large every label and control is drawn'],
-  ['#find-meaning', 'Meaning', 'match menus on what they mean, not only how they are spelled'],
+  ['#find-meaning', 'Meaning', 'match on what a menu means, not only how it is spelled'],
 ].map(([anchor, label, hint]) => ({
   mode: '',
   mode_label: '',

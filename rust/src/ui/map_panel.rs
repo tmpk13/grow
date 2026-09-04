@@ -597,12 +597,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         section(
             "The map editor",
             vec![note(
-                "The settlement's own map, drawn by hand. Paint what the land is with the \
-                 tools above the stage - the same pencil, fill and eraser the sprite editor \
-                 uses - and the map changes under the pointer: there is no draft and nothing \
-                 to apply. Every stroke is one step back, kept for as long as this page is \
-                 open. A picture can be laid under it to trace, or read straight in as the \
-                 whole map.",
+                "The settlement's own map, drawn by hand. Paint the land with the tools above \
+                 the stage - the same pencil, fill and eraser the sprite editor uses - and the \
+                 map changes under the pointer: no draft, nothing to apply. Every stroke is one \
+                 step back, kept for as long as the page is open. A picture can be laid under \
+                 it to trace, or read straight in as the whole map.",
             )],
         ),
     );
@@ -618,10 +617,10 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             vec![
                 if app.settlement.is_some() {
                     note(
-                        "What is standing on the map is left where it is: a cell somebody \
-                         has built on keeps its ground whatever is painted over it. Zones are \
-                         drawn nowhere but here - they say what may take root, which is a \
-                         thing about the future of a cell rather than about how it looks.",
+                        "What is standing on the map is left where it is: a cell somebody has \
+                         built on keeps its ground whatever is painted over it. Zones are drawn \
+                         nowhere but here - they say what may take root, which is about a \
+                         cell's future rather than how it looks.",
                     )
                 } else {
                     // The page paints the settlement's map, and there is not
@@ -664,10 +663,10 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                     })
                 }]),
                 note(
-                    "Wiping turns every cell to the ground the legend has selected and takes \
-                     every zone and sky mark off with it, which is a blank sheet to draw a map \
-                     on. Wipe to water and draw the land in, or wipe to grass and draw the sea; \
-                     it is one step back like any other stroke.",
+                    "Wiping turns every cell to the ground selected in the legend and takes \
+                     every zone and sky mark with it: a blank sheet to draw a map on. Wipe to \
+                     water and draw the land in, or wipe to grass and draw the sea. It is one \
+                     step back like any other stroke.",
                 ),
                 danger_button("Take every zone off", Scope::Panel, {
                     let h2 = h.clone();
@@ -700,8 +699,8 @@ fn brushes_section(app: &App, h: &Handle) -> Element {
     let current = Brush::from_color(app.ui.brush_color);
     let mut rows = vec![note(
         "What the pointer paints. The first five are the ground itself, the next three are \
-         zones drawn over it, and sky is a mark on this page alone. The eraser takes the zone \
-         off a cell, or the sky mark off it, depending on which of them is chosen.",
+         zones drawn over it, and sky is a mark on this page alone. The eraser takes off \
+         whichever of the two is chosen.",
     )];
     let chips = el("div").class("chips").get();
     for brush in BRUSHES {
@@ -746,8 +745,8 @@ fn brushes_section(app: &App, h: &Handle) -> Element {
 fn picture_section(app: &App, h: &Handle) -> Element {
     let mut rows = vec![note(
         "Drop a picture of a place and it is laid under the map, corner to corner, to trace \
-         over. It is never part of the project and never part of a settlement: the picture \
-         goes when the page does, and what is kept is the map painted with it there.",
+         over. It belongs to neither the project nor a settlement: the picture goes when the \
+         page does, and what is kept is the map painted with it there.",
     )];
     rows.push(drop_zone(h));
     let tools = &app.ui.map_edit;
@@ -763,8 +762,8 @@ fn picture_section(app: &App, h: &Handle) -> Element {
             1.0,
             1.0,
             Some(
-                "art drawn eight screen pixels to a pixel is eight here; it is guessed when \
-                 the picture arrives, and it is what decides how large a map the picture makes",
+                "art drawn eight screen pixels to a pixel is eight here; guessed when the \
+                 picture arrives, and it decides how large a map the picture makes",
             ),
             move |v| {
                 let mut sh = h2.borrow_mut();
@@ -790,8 +789,8 @@ fn picture_section(app: &App, h: &Handle) -> Element {
             "Fill by color in the picture",
             tools.by_color,
             Some(
-                "the fill tool spreads over the picture underneath rather than over the map, \
-                 so a photographed sea is one press",
+                "the fill tool spreads over the picture rather than the map, so a photographed \
+                 sea is one press",
             ),
             move |v| {
                 let mut sh = h2.borrow_mut();
@@ -809,8 +808,7 @@ fn picture_section(app: &App, h: &Handle) -> Element {
                 tools.threshold,
                 NumOpts { min: 0.0, max: 1.0, step: 0.01 },
                 Some(
-                    "0 spreads over that exact color only; 1 takes the whole map whatever it \
-                     looks like",
+                    "0 spreads over that exact color only; 1 takes the whole map",
                 ),
                 move |v| {
                     h2.borrow_mut().app.ui.map_edit.threshold = v;
@@ -826,7 +824,7 @@ fn picture_section(app: &App, h: &Handle) -> Element {
             if cells > 400_000.0 {
                 text.push_str(
                     " That is a very large map: it costs memory for its pixel buffers and a \
-                     long warmup for its wilderness, and nothing stops it.",
+                     long wilderness warmup, and nothing stops it.",
                 );
             }
             rows.push(note(&text));
@@ -836,10 +834,10 @@ fn picture_section(app: &App, h: &Handle) -> Element {
             app_button(h, "Take the sky colors", take_sky),
         ]));
         rows.push(note(
-            "Using it as the map reads every cell straight out of the picture, nearest color \
-             in the legend wins, and founds the settlement again on what comes out. Taking \
-             the sky colors reads the top and the bottom of whatever is marked sky out of the \
-             picture and sets the world's sky gradient to them.",
+            "Using it as the map reads every cell straight out of the picture - nearest color \
+             in the legend wins - and founds the settlement again on the result. Taking the sky \
+             colors reads the top and bottom of whatever is marked sky and sets the world's sky \
+             gradient to them.",
         ));
         let h2 = h.clone();
         rows.push(danger_button("Forget the picture", Scope::Panel, move || {

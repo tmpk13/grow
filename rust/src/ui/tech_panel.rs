@@ -28,7 +28,7 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         tech_num(h, "Insight per person per second", cfg.insight_per_person, 0.0, 0.1, 0.001,
             Some("what a settlement works out without a school"), |c, v| c.insight_per_person = v),
         tech_num(h, "Need bias", cfg.need_bias, 0.0, 3.0, 0.1,
-            Some("how strongly automatic research chases what the settlement is short of"), |c, v| c.need_bias = v),
+            Some("how strongly research chases what the settlement is short of"), |c, v| c.need_bias = v),
         app_bool(h, "Choose research automatically", cfg.auto_research, None, |app, v| {
             app.state.civ.tech.auto_research = v;
             app.request_save();
@@ -40,8 +40,8 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let mut progress = Vec::new();
     if let Some(picker) = colony_picker(app, h) {
         progress.push(picker);
-        progress.push(note("Each town researches on its own. A colony founded by people from \
-                            another starts with what they knew when they left."));
+        progress.push(note("Each town researches on its own. A colony starts with whatever its \
+                            founders knew when they left."));
     }
     progress.push(current.clone());
     progress.push(mods.clone());

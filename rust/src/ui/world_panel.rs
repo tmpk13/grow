@@ -51,15 +51,14 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             |app, v| { app.state.world.sky_bottom = v.to_string(); app.repaint_background(); }),
         app_select(h, "Soil texture", &w.soil_sampler.clone(), &sampler_options(app), None,
             |app, v| { app.state.world.soil_sampler = v.to_string(); app.repaint_background(); }),
-        note("Grid and cell size are starred until Apply: the area is not rebuilt under a slider \
-              while it is being dragged."),
+        note("Grid and cell size are starred until Apply: the area is not rebuilt mid-drag."),
     ];
     append(root, section("Area grid", grid));
 
     let mut class_fields = vec![note(
-        "One item per cell per class, so a ground cover and a tree can share a cell but two trees \
-         cannot. A species can never exceed its class ceiling. Plants already growing keep the \
-         limits they started with.",
+        "One item per cell per class, so a ground cover and a tree can share a cell but two \
+         trees cannot. No species may exceed its class ceiling, and plants already growing keep \
+         the limits they started with.",
     )];
     for class in SIZE_CLASSES {
         let limits = app.state.class_limits.get(class);
