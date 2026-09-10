@@ -203,11 +203,13 @@ pub struct ViewConfig {
     /// How strongly the edges churn as they pass. Zero freezes the shapes and
     /// leaves only the drift.
     pub cloud_wobble: f64,
-    /// Where the weather starts, as a share of the sky band measured down from
-    /// the top of it. Zero fills the whole sky; raising it holds the clouds
-    /// off the top of the frame and slides the band down toward the horizon.
-    /// The same line is used past the map's edge, so the sky is one sky.
-    pub cloud_top: f64,
+    /// How much of the sky band, measured up from the horizon, is clear of
+    /// cloud, as a share of it. Zero lets the weather come down to the
+    /// horizon; raising it lifts the base of the clouds and leaves clear air
+    /// over the land. The line is where the middle of a cloud stays above
+    /// rather than a cut: a cloud just above it hangs whole below it. The
+    /// same line is used past the map's edge, so the sky is one sky.
+    pub cloud_base: f64,
     /// The empty space around the map becomes the same sky: the gradient
     /// carries on past the edge and the clouds repeat across all of it.
     pub cloud_space: bool,
@@ -260,12 +262,12 @@ impl ViewConfig {
         }
     }
 
-    /// The first row of the sky band clouds are allowed on, in world pixels.
-    /// Everything above it is clear sky, and the tile is anchored here rather
-    /// than at the top of the world, so raising the line slides the whole band
-    /// down instead of sliding a window over it.
-    pub fn cloud_start_px(&self, sky_px: i32) -> i32 {
-        (sky_px.max(0) as f64 * clamp01(self.cloud_top)).round() as i32
+    /// The base of the weather as a row of the sky band, in world pixels: the
+    /// line the middle of every cloud stays above. The tile is read from
+    /// this line rather than from the top of the world, so raising it lifts
+    /// the whole sky of cloud instead of sliding a window over it.
+    pub fn cloud_base_px(&self, sky_px: i32) -> i32 {
+        (sky_px.max(0) as f64 * (1.0 - clamp01(self.cloud_base))).round() as i32
     }
 
     /// Whether labels of this kind are drawn. Every kind is off while the
@@ -333,7 +335,7 @@ impl Default for ViewConfig {
             cloud_cover: 0.85,
             cloud_speed: 0.74,
             cloud_wobble: 0.1,
-            cloud_top: 0.0,
+            cloud_base: 0.0,
             cloud_space: false,
             water_top: "#2b4f63".into(),
             water_deep: "#16303f".into(),

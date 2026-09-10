@@ -200,22 +200,32 @@ everywhere else, though these strokes are not part of the project's own history
 - the map is not in the project - and the last two dozen of them are what is
 kept.
 
+* **Layers as the map.** Drop one picture per kind of thing - a layer of
+  water, one of sand, one of trees, one of sky - and the map is read out of the
+  set: wherever a layer has something drawn, the cell is that. What a layer is
+  comes from its file name (`water.png`, `03 trees.png`, `rock face.png`) and
+  can be changed on its row; a layer that says *Leave alone* is skipped. A
+  layer with nothing clear in it is read as a mask, light where the thing is.
+  Where two layers answer the same question the later one in the list wins, a
+  layer of trees over a layer of sand answers two, and every cell no ground
+  layer covers is the ground the legend has selected.
+* **Picture pixels to a cell** is how much of a layer goes to one cell. It is
+  guessed from the first layer - art drawn eight screen pixels to a pixel comes
+  back as eight - and it is what decides how large a map the layers make. Every
+  layer is stretched over that map corner to corner, so a set exported from one
+  drawing lands cell for cell.
+* **Use the layers as the map** reads the set in and founds the settlement
+  again on it, at the layers' own size at that scale. There is no ceiling on
+  the size. A very large map costs memory and a long wilderness warmup, and
+  the panel says so rather than refusing.
 * **Drop a picture** and it is laid under the map, corner to corner, to trace
-  over. It is never part of the project and never part of a settlement: the
+  over. It is never read in and never part of the project or a settlement: the
   picture goes when the page does, and what is kept is the map painted with it
   there.
 * **How strongly it shows** is how much of the picture reads through the map
   drawn over it. All the way down is the map on its own; all the way up takes
   the map off and leaves the picture, which is what tracing a coastline wants.
   Zones and sky marks stay legible either way.
-* **Picture pixels to a cell** is how much of the picture goes to one cell. It
-  is guessed when the picture arrives - art drawn eight screen pixels to a pixel
-  comes back as eight - and it is what decides how large a map the picture makes.
-* **Use it as the map** reads the whole picture in: every cell becomes the
-  nearest thing in the legend, the map takes the picture's own size at that
-  scale, and the settlement is founded again on it. There is no ceiling on the
-  size. A very large map costs memory and a long wilderness warmup, and the
-  panel says so rather than refusing.
 * **Take the sky colors** reads the top and the bottom of whatever is marked
   sky out of the picture and sets the world's sky gradient to them.
 * **Fill by color in the picture** turns the fill tool into a magic wand over
@@ -362,11 +372,14 @@ what is on screen, and the zoom below which detail starts being shed.
 
 **Weather** is in there too: whether clouds pass at all, how much of the sky
 they take, how fast they drift, how strongly their edges churn, and **Cloud
-start height** - how far down the sky they begin, as a share of it. Zero fills
-the sky to the top of the frame; raising it leaves clear air above the weather
-and slides the whole band down toward the horizon. The line is the same one the
-sky past the map's edge is drawn against, so with **Clouds past the map's edge**
-on a shape carries across the boundary rather than stepping at it.
+base height** - how far up from the horizon the weather begins, as a share of
+the sky. Zero brings the clouds down to the horizon; raising it lifts them and
+leaves clear air over the land. The line is one the middle of a cloud stays
+above rather than a cut: a cloud just above it hangs whole below it and one
+just below it is not there, so the underside of the weather is ragged the way
+a real one is. It is the same line the sky past the map's edge is drawn
+against, so with **Clouds past the map's edge** on a shape carries across the
+boundary rather than stepping at it.
 
 **Grow it instead** makes the map larger without starting the settlement over.
 The new land goes on the right and along the bottom, so every column and row

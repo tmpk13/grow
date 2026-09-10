@@ -6,6 +6,49 @@
 
 import { chromium } from 'playwright-core';
 import { mkdirSync, readFileSync } from 'node:fs';
+import { deflateSync } from 'node:zlib';
+
+// A PNG made here, for the drops that need a picture with a particular shape
+// in it: `w` by `h`, with `rgba(x, y)` saying what each pixel is.
+const CRC_TABLE = new Uint32Array(256).map((_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+const crc32 = (buf) => {
+  let c = 0xffffffff;
+  for (const b of buf) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+};
+const png = (w, h, rgba) => {
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+  const stride = w * 4 + 1;
+  const raw = Buffer.alloc(stride * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * stride] = 0;
+    for (let x = 0; x < w; x++) {
+      const [r, g, b, a] = rgba(x, y);
+      raw.set([r, g, b, a], y * stride + 1 + x * 4);
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 6, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+};
 
 const outDir = process.argv[2] || '/tmp/grow-shots';
 mkdirSync(outDir, { recursive: true });
@@ -1499,7 +1542,7 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
   // it runs is the threshold's to decide.
   const RED_AND_BLUE =
     'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFUlEQVR4nGO4YGAARAYJF4CIgTgOABDSFIGliA40AAAAAElFTkSuQmCC';
-  await page.locator('#panel-body .dropzone input[type=file]').setInputFiles({
+  await page.locator('#panel-body .dropzone[data-drop="picture"] input[type=file]').setInputFiles({
     name: 'trace.png',
     mimeType: 'image/png',
     buffer: Buffer.from(RED_AND_BLUE, 'base64'),
@@ -1554,6 +1597,51 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
   if (/Water\d+ cells, 100%/.test(await tally())) {
     problems.push('undoing the wipe left the map wiped');
   }
+
+  // Layers as the map: one picture per kind of thing, what each is read from
+  // its file name, and the map founded again at the layers' own size on what
+  // they say. The water layer is clear where nothing was drawn; the trees
+  // layer has no clear pixel in it and is read light against dark.
+  const water = png(64, 32, (x) => (x < 24 ? [40, 90, 200, 255] : [0, 0, 0, 0]));
+  const trees = png(64, 32, (x, y) =>
+    x >= 40 && x < 60 && y >= 8 && y < 24 ? [255, 255, 255, 255] : [0, 0, 0, 255],
+  );
+  await page.locator('#panel-body .dropzone[data-drop="layers"] input[type=file]').setInputFiles([
+    { name: 'water.png', mimeType: 'image/png', buffer: water },
+    { name: 'trees.png', mimeType: 'image/png', buffer: trees },
+  ]);
+  await page.waitForTimeout(900);
+  // Files land in the order their names sort, so the trees come first.
+  const readAs = await page.$$eval('#panel-body .map-layer-row select', (n) => n.map((s) => s.value));
+  if (readAs.join() !== 'trees-only,water') {
+    problems.push(`the layers were read as ${JSON.stringify(readAs)}, not trees then water`);
+  }
+  // The scale is guessed from the first layer, and a flat block of trees
+  // reads as art drawn four pixels to a pixel, which it may well be; the
+  // number is on the panel to be set when the guess is wrong, so set it.
+  await setNum('#panel-body [data-find="picture-pixels-to-a-cell"] input.num', '1');
+  await page.waitForTimeout(400);
+  const layersSaid = await page.evaluate(() =>
+    [...document.querySelectorAll('#panel-body details.group[data-group="Layers as the map"] .note')]
+      .map((n) => n.textContent)
+      .join(' '),
+  );
+  if (!/64 by 32 cells/.test(layersSaid)) {
+    problems.push(`the layers section does not say what map the layers make: ${layersSaid}`);
+  }
+  await page.click('#panel-body .btn:text-is("Use the layers as the map")');
+  await page.waitForTimeout(3500);
+  const made = await tally();
+  if (!/cells64 by 32/.test(made)) {
+    problems.push(`reading the layers made ${made}, not a 64 by 32 map`);
+  }
+  if (!((await count('Water')) > 200)) {
+    problems.push(`the water layer left ${await count('Water')} cells of water`);
+  }
+  if (!/Trees only\d+ zoned/.test(made)) {
+    problems.push(`the trees layer zoned nothing: ${made}`);
+  }
+  await page.screenshot({ path: `${outDir}/19c-map-from-layers.png` });
 }
 await page.click('.mode:text-is("Settlement")');
 await page.waitForTimeout(1500);

@@ -260,11 +260,12 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("how strongly the edges churn; zero freezes the shapes and leaves only the \
                   drift"),
             |app, v| { app.state.civ.view.cloud_wobble = v; app.request_save(); }),
-        app_num(h, "Cloud start height", view.cloud_top,
+        app_num(h, "Cloud base height", view.cloud_base,
             NumOpts { min: 0.0, max: 0.95, step: 0.05 },
-            Some("how far down the sky the clouds begin, as a share of it; zero fills the sky, \
-                  higher leaves clear air across the top"),
-            |app, v| { app.state.civ.view.cloud_top = v; app.request_save(); }),
+            Some("how far up from the horizon the clouds begin, as a share of the sky; zero \
+                  brings the weather down to the horizon, higher leaves clear air over the \
+                  land, and a cloud is whole or gone by where its middle is, not cut"),
+            |app, v| { app.state.civ.view.cloud_base = v; app.request_save(); }),
         app_bool(h, "Clouds past the map's edge", view.cloud_space,
             Some("the space around the map becomes the same sky: the gradient carries on and \
                   the clouds repeat across it"),

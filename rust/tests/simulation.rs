@@ -2782,12 +2782,37 @@ fn the_clouds_are_seamless_settable_and_on_the_clock() {
         count(&heavy)
     );
 
-    // The start height is a line down the sky band, in whole world pixels,
-    // and it is the same line the space around the map is drawn against.
-    assert_eq!(state.civ.view.cloud_start_px(200), 0, "clouds start at the top by default");
-    state.civ.view.cloud_top = 0.5;
-    assert_eq!(state.civ.view.cloud_start_px(200), 100);
-    state.civ.view.cloud_top = 0.0;
+    // The base height is a line up the sky band from the horizon, in whole
+    // world pixels, and it is the same line the space around the map is drawn
+    // against.
+    assert_eq!(state.civ.view.cloud_base_px(200), 200, "the weather reaches the horizon by default");
+    state.civ.view.cloud_base = 0.5;
+    assert_eq!(state.civ.view.cloud_base_px(200), 100);
+    state.civ.view.cloud_base = 0.0;
+
+    // The band across the base: its first row is the tile whole, since every
+    // cloud there has its middle above the line, and its last rows are all
+    // but empty, since none does. What is between is clouds hanging whole
+    // below the line rather than a cut along it.
+    assert_eq!(heavy.edge.len(), heavy.px.len());
+    let (w, h) = (heavy.w as usize, heavy.h as usize);
+    assert_eq!(heavy.edge[..w], heavy.px[(h / 2) * w..(h / 2 + 1) * w]);
+    let drawn = |rows: std::ops::Range<usize>| {
+        heavy.edge[rows.start * w..rows.end * w].iter().filter(|p| **p != 0).count()
+    };
+    let above = drawn(0..h / 4);
+    let below = drawn(h / 2..h);
+    let far_below = drawn(3 * h / 4..h);
+    assert!(above > 0 && below > 0, "nothing hangs below the base ({above} above, {below} below)");
+    assert!(far_below * 8 < below, "the band does not thin out below the base: {far_below} of {below}");
+    assert!(drawn(0..h) < heavy.px.iter().filter(|p| **p != 0).count());
+    // Read against a base line: the tile whole above the band, the band
+    // across it, nothing below.
+    let base = 500;
+    assert_eq!(heavy.row_at(base - h as i32, base).unwrap(), &heavy.px[..w]);
+    assert_eq!(heavy.row_at(base - h as i32 / 2, base).unwrap(), &heavy.edge[..w]);
+    assert_eq!(heavy.row_at(base, base).unwrap(), &heavy.edge[(h / 2) * w..(h / 2 + 1) * w]);
+    assert!(heavy.row_at(base + h as i32 / 2, base).is_none());
 
     // Wobble is the edge movement: with it the shapes churn from step to
     // step, without it the same shapes drift whole and nothing regenerates.
@@ -2977,21 +3002,28 @@ fn sitting_at_a_fire_settles_the_dark_faster_than_standing_in_it() {
     );
 }
 
-/// The cloud start height is a line across the sky band: nothing is stamped
-/// above it, and the weather picks up from it downward. Read off a composited
-/// frame rather than off the tile, because the tile does not know where it is
-/// put and this is entirely about where it is put.
+/// The cloud base is a line across the sky band that the middle of every
+/// cloud stays above: the sky over it carries cloud, clear air lies well
+/// below it, and between the two the clouds hang below the line rather than
+/// being cut along it. Read off a composited frame rather than off the tile,
+/// because the tile does not know where it is put and this is entirely about
+/// where it is put.
 #[test]
-fn no_cloud_is_drawn_above_the_start_height() {
+fn the_cloud_base_is_a_line_the_middles_stay_above() {
+    use grow::civ::clouds::TILE_H;
+
     let mut state = State::new();
     state.civ.world.cols = 40;
     state.civ.world.rows = 20;
+    // Deep enough that a whole band of hanging cloud fits under the base
+    // with clear sky left below it.
+    state.civ.world.sky_px = 400;
     state.civ.terrain.warmup = 0.0;
     state.civ.view.clouds = true;
     state.civ.view.cloud_cover = 1.0;
     state.civ.view.cloud_wobble = 0.0;
     state.civ.view.cull = false;
-    state.civ.view.cloud_top = 0.0;
+    state.civ.view.cloud_base = 0.0;
 
     let mut sim = Settlement::new(&state);
     sim.bootstrap(&state);
@@ -2999,27 +3031,29 @@ fn no_cloud_is_drawn_above_the_start_height() {
     sim.composite(&state);
     let px_w = sim.world().px_w as usize;
     let sky = sim.world().sky_px;
-    assert!(sky > 8, "the sky band is too shallow to say anything about");
+    assert!(sky > TILE_H, "the sky band is too shallow to say anything about");
 
     let cloudy = |sim: &Settlement, row: i32| -> bool {
         let at = row as usize * px_w;
         sim.buffer[at..at + px_w] != sim.ground[at..at + px_w]
     };
     assert!(
-        (0..sky / 4).any(|y| cloudy(&sim, y)),
-        "with the line at the top, the top of the sky should carry cloud"
+        (sky - TILE_H / 2..sky).any(|y| cloudy(&sim, y)),
+        "with the base at the horizon, the sky just over it should carry cloud"
     );
 
-    state.civ.view.cloud_top = 0.5;
-    let line = state.civ.view.cloud_start_px(sky);
+    state.civ.view.cloud_base = 0.5;
+    let base = state.civ.view.cloud_base_px(sky);
+    let half = TILE_H / 2;
     sim.ground_dirty = true;
     sim.composite(&state);
-    for y in 0..line {
-        assert!(!cloudy(&sim, y), "row {y} carries cloud above the start height {line}");
+    assert!((0..base - half).any(|y| cloudy(&sim, y)), "the sky over the base carries no cloud");
+    for y in base + half..sky {
+        assert!(!cloudy(&sim, y), "row {y} carries cloud well below the base at {base}");
     }
     assert!(
-        (line..sky).any(|y| cloudy(&sim, y)),
-        "nothing was drawn below the start height either"
+        (base..base + half).any(|y| cloudy(&sim, y)),
+        "the weather is cut along the base at {base} rather than hanging below it"
     );
 }
 

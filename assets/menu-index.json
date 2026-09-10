@@ -2229,9 +2229,9 @@
     "tab": "land",
     "tab_label": "Land",
     "group": "View",
-    "label": "Cloud start height",
-    "hint": "how far down the sky the clouds begin, as a share of it; zero fills the sky, higher leaves clear air across the top",
-    "anchor": "cloud-start-height",
+    "label": "Cloud base height",
+    "hint": "how far up from the horizon the clouds begin, as a share of the sky; zero brings the weather down to the horizon, higher leaves clear air over the land, and a cloud is whole or gone by where its middle is, not cut",
+    "anchor": "cloud-base-height",
     "kind": "field"
   },
   {

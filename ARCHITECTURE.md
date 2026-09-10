@@ -54,7 +54,7 @@ flowchart TD
 
   subgraph artpanels [Sprite editor panels]
     artp["ui/art_panel.rs<br/>brush, layers, frames, sheets, downloads"]
-    mapp["ui/map_panel.rs<br/>the settlement map, painted by hand over a picture"]
+    mapp["ui/map_panel.rs<br/>the settlement map, painted by hand or read from layers"]
   end
 
   subgraph civpanels [Settlement panels]
@@ -93,8 +93,8 @@ flowchart TD
     pdb["civ/people_db.rs<br/>the register of people"]
     social["civ/social.rs<br/>who has met whom, and what they made of it"]
     csprites["civ/sprites.rs<br/>clips per person motion and per made thing's state"]
-    cclouds["civ/clouds.rs<br/>one seamless tile of weather"]
-    brush["civ/map_brush.rs<br/>what a stroke on the map means"]
+    cclouds["civ/clouds.rs<br/>one seamless tile of weather, and which cloud each pixel belongs to"]
+    brush["civ/map_brush.rs<br/>what a stroke on the map means, and a map read from layers"]
     boats["civ/boats.rs<br/>hulls, cargoes, voyages"]
     ball["civ/balloons.rs<br/>canopies aloft, and what they are worth"]
     path["civ/pathing.rs<br/>A* over land and water"]
@@ -1583,7 +1583,9 @@ switch:
   the ground rather than instead of it.
 - **Sky** is not on the map at all. It is a mark in `app.ui.map_edit`, kept for
   as long as the page is open, and all it does is say which rows of the picture
-  underneath to read the sky gradient out of.
+  underneath to read the sky gradient out of. A sky layer read in with the map
+  puts the marks there too, through `MapTools::mark_sky`, after the founding
+  and at the new map's size, since `ensure` throws away marks of any other.
 
 The fill tool has a second way to decide what it covers. `Surface::fill_from`
 is asked first and answers false everywhere but here; with **Fill by color in
@@ -1616,33 +1618,56 @@ Because the strokes land on the running map, the expensive passes are batched
 by the stroke rather than by the cell: `rebuild_plant_index` and `sync_zones`
 run once when the pointer lifts, not once per cell the pointer walked over.
 
-### A picture as the map
+### Layers as the map
 
-The picture being traced is in `app.ui`, on the same terms as the landscape
-dropped on the Land panel: a photograph is megabytes and the map painted with
-it there is what is worth keeping. One number decides everything else about it.
-`civ::sprites::pixel_size` guesses how many of its pixels go to one pixel it
-was drawn in, by measuring runs of one color along rows and down columns and
-reducing their lengths to a common divisor - a photograph has runs of every
-length, so the divisor falls to one, and art drawn eight to a pixel comes back
-as eight. The runs at the ends of a line are left out, being as likely to be
-half a block as a whole one, and the answer has to divide the picture or it was
-measured on a pattern rather than on a scale.
+A map comes in as a set of layers, one picture per kind of thing, which is
+how a drawing program exports one: a layer of water, a layer of sand, a layer
+of trees. Each is a `map_panel::MapLayer` in `app.ui.map_edit`, kept as where
+it has something rather than as its pixels - `map_brush::layer_mask` reduces a
+picture to one flag a pixel on the way in - because that is all a layer is
+ever asked. A layer out of a drawing program is clear wherever nothing was
+drawn, so a pixel that is not clear is the mark; one with no clear pixel in
+it at all was drawn as a mask, light against dark, and is read by brightness.
 
-That number is what "Use it as the map" is built on: the picture is worth
-`width / n` by `height / n` cells, `map_brush::read_picture` reads every cell as
-the nearest thing in the legend, and the settlement is founded again at that
-size on what comes out. There is no ceiling on it. A drawing of a coastline is
-worth however many cells it was drawn with, and the panel says so rather than
-refusing: a very large map costs memory for its pixel buffers and a long
-wilderness warmup, and both of those are the person's to spend.
+What a layer is comes from its file name. `Brush::guess` tries a fixed list of
+words against the whole words of the name - "rock face" is a face before it
+is a rock, "yellow" is not low - and answers `Clear` for a name it does not
+know, which the page shows as *Leave alone* and skips. The names survive the
+decode because `ui::decode::read_named` hands each frame back beside the file
+it came from; `read_files`, which everything else drops through, is that with
+the names thrown away. A select on each row changes the guess.
+
+One number decides how large a map the set makes. `civ::sprites::pixel_size`
+guesses how many of the first layer's pixels go to one pixel it was drawn in,
+by measuring runs of one color along rows and down columns and reducing their
+lengths to a common divisor - a photograph has runs of every length, so the
+divisor falls to one, and art drawn eight to a pixel comes back as eight. The
+runs at the ends of a line are left out, being as likely to be half a block as
+a whole one, and the answer has to divide the picture or it was measured on a
+pattern rather than on a scale. The layers are worth `width / n` by
+`height / n` cells, every layer is stretched over that map corner to corner,
+and there is no ceiling on it: a drawing of a coastline is worth however many
+cells it was drawn with, and the panel says so rather than refusing.
+
+`map_brush::read_layers` turns the set into a `MapCells`: three grids, one
+byte a cell each, for the ground, the zone and the sky mark, because a layer
+of trees over a layer of sand answers two questions about one cell and a
+single brush id could carry one. Layers are read in list order and the later
+one wins where two answer the same question; cells no ground layer covers are
+the ground the legend has selected, the same rule the wipe button follows.
 
 The laying down happens in `frame`, between the settlement being made and
 `bootstrap` being called on it - `App::pending_map` carries the cells across
 the frame boundary the same way `pending_bootstrap` carries the founding. That
 order is the whole trick: the town is sited on the coastline that was drawn,
-and the wilderness warms onto the painted ground rather than being painted over
-afterwards.
+and the wilderness warms onto it rather than being painted over afterwards.
+`lay_cells` refuses cells of any other size than the map it is handed, which
+is the one way the two could disagree.
+
+The picture being traced is separate from all of this. It is in `app.ui` on
+the same terms as the landscape dropped on the Land panel - a photograph is
+megabytes and the map painted with it there is what is worth keeping - and it
+is never read in: it is something to draw over, and to read a sky out of.
 
 ### The same number, on the way in
 

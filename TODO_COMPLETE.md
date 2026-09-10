@@ -3,6 +3,20 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) The cloud setting is a base rather than a start: how far up from the
+  horizon the weather begins, as a share of the sky. It is a line the middle
+  of every cloud stays above rather than a cut - a cloud just above it hangs
+  whole below it, one just below it is not there - so the underside of the
+  weather is ragged rather than ruled. The same line is used past the map's
+  edge, where the letterbox is two patterns, the tile whole and the band
+  across the base.
+- (LLM) The map editor reads a map in from layers, one picture per kind of
+  thing, the way a drawing program exports one: where a layer has something
+  drawn the cell is that, what a layer is comes from its file name and can be
+  changed on its row, a layer with nothing clear in it is read light against
+  dark, and a layer of trees over a layer of sand answers two questions about
+  one cell. The legend-colored picture that used to be read as the map is
+  gone; the picture under the map is for tracing only.
 - (LLM) A typed field applies when the edit is finished - the return key, or
   the pointer going somewhere else - rather than at every letter or digit typed
   on the way to it. Sliders are unchanged: every value one is dragged through

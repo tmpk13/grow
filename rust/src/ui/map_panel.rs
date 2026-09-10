@@ -15,22 +15,28 @@
 //! is neither: it is a mark on this page alone, held for as long as the page
 //! is open, and all it does is say where to read a sky out of the picture.
 //!
-//! A picture can be laid under the map to trace, or read straight in as the
-//! map. What decides between them is one number - how many of the picture's
-//! pixels go to one cell - which is guessed when the picture arrives. A second
-//! says how strongly the picture shows through the map drawn over it, which is
-//! a matter of what somebody is looking for rather than of what the map is.
+//! A whole map can be read in from a set of layers, one picture per kind of
+//! thing, the way a drawing program hands one over: where a layer has
+//! something drawn, the cell is what the layer is, and what a layer is comes
+//! from the name of its file. One number decides how large a map the set
+//! makes - how many of a layer's pixels go to one cell - and it is guessed
+//! when the first layer arrives.
+//!
+//! A picture can also be laid under the map to trace. It is never read in;
+//! it is something to draw over, and a second number says how strongly it
+//! shows through the map drawn on it, which is a matter of what somebody is
+//! looking for rather than of what the map is.
 
 use wasm_bindgen::JsCast;
 use web_sys::{DragEvent, Element, Event, HtmlCanvasElement};
 
 use crate::app::{App, Handle, Panel};
-use crate::civ::map_brush::{Brush, BRUSHES};
+use crate::civ::map_brush::{Brush, LayerMask, BRUSHES};
 use crate::civ::terrain::Cell;
 use crate::ui::paint::Surface;
 use crate::ui::{
     app_button, append, btn_row, button, count_field, danger_button, el, input_el, note,
-    number_field, on, section, stat, NumOpts, Scope, Tap,
+    number_field, on, section, select_value_of, stat, NumOpts, Scope, Tap,
 };
 use crate::util::EMPTY_COLOR;
 use crate::world::Zone;
@@ -55,12 +61,37 @@ const NEAR_ENOUGH: f64 = 0.12;
 /// over.
 const CELLS_KEPT: usize = 2_000_000;
 
-/// The smallest map a picture is allowed to make. There is no ceiling on the
-/// size - a drawing is worth however many cells it was drawn with - but there
-/// is a floor, because a town cannot be founded on a map of nine cells and a
-/// picture dropped by mistake should not be the thing that finds that out.
+/// The smallest map a set of layers is allowed to make. There is no ceiling
+/// on the size - a drawing is worth however many cells it was drawn with -
+/// but there is a floor, because a town cannot be founded on a map of nine
+/// cells and a picture dropped by mistake should not be the thing that finds
+/// that out.
 const MIN_COLS: i32 = 16;
 const MIN_ROWS: i32 = 8;
+
+/// One layer dropped to be read as the map: where one kind of thing is, at
+/// the size it was drawn.
+pub struct MapLayer {
+    pub name: String,
+    /// What the cells it covers become. Guessed from the file name, and
+    /// changed on the page when the guess is wrong.
+    pub brush: Brush,
+    pub w: i32,
+    pub h: i32,
+    /// Where the layer has something, one flag a pixel.
+    pub on: Vec<bool>,
+    /// Read by brightness rather than by what is clear, because nothing in
+    /// it was.
+    pub by_light: bool,
+}
+
+impl MapLayer {
+    /// How much of the layer has something on it, as a share.
+    pub fn covers(&self) -> f64 {
+        let n = (self.w * self.h).max(1) as f64;
+        self.on.iter().filter(|&&v| v).count() as f64 / n
+    }
+}
 
 /// How many strokes can be put back. A stroke holds a cell for every cell it
 /// touched, and a fill over a large map is every cell there is, so this is
@@ -88,7 +119,9 @@ pub type Step = Vec<Was>;
 pub struct MapTools {
     pub image: Option<(i32, i32, Vec<u32>)>,
     pub name: String,
-    /// Picture pixels to one map cell. Zero means nobody has said, which is
+    /// The layers to read a map out of, in the order they are read.
+    pub layers: Vec<MapLayer>,
+    /// Layer pixels to one map cell. Zero means nobody has said, which is
     /// read as one.
     pub px: i32,
     /// How strongly the picture shows through the map over it, nothing to
@@ -117,6 +150,7 @@ impl Default for MapTools {
         MapTools {
             image: None,
             name: String::new(),
+            layers: Vec::new(),
             px: 0,
             trace: TRACE_SHOWS,
             by_color: false,
@@ -153,16 +187,29 @@ impl MapTools {
         }
     }
 
-    /// How many picture pixels go to a cell, never less than one.
+    /// How many layer pixels go to a cell, never less than one.
     pub fn scale(&self) -> i32 {
         self.px.max(1)
     }
 
-    /// The map the picture makes at that scale, in cells.
-    pub fn picture_cells(&self) -> Option<(i32, i32)> {
-        let (w, h, _) = self.image.as_ref()?;
+    /// The map the layers make at that scale, in cells: the first layer's
+    /// size, which every other layer is stretched to.
+    pub fn layer_cells(&self) -> Option<(i32, i32)> {
+        let first = self.layers.first()?;
         let n = self.scale();
-        Some(((w / n).max(MIN_COLS), (h / n).max(MIN_ROWS)))
+        Some(((first.w / n).max(MIN_COLS), (first.h / n).max(MIN_ROWS)))
+    }
+
+    /// Sky marks read in with a map, at the size of that map, so the page
+    /// keeps them when it next looks at the map they were read for.
+    pub fn mark_sky(&mut self, cols: i32, rows: i32, marks: Vec<u8>) {
+        if marks.len() != (cols.max(0) * rows.max(0)) as usize {
+            return;
+        }
+        self.sky = marks;
+        self.sky_dims = (cols, rows);
+        self.steps.clear();
+        self.redone.clear();
     }
 
     /// Drops the oldest strokes until the history is worth keeping: not too
@@ -600,13 +647,15 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
                 "The settlement's own map, drawn by hand. Paint the land with the tools above \
                  the stage - the same pencil, fill and eraser the sprite editor uses - and the \
                  map changes under the pointer: no draft, nothing to apply. Every stroke is one \
-                 step back, kept for as long as the page is open. A picture can be laid under \
-                 it to trace, or read straight in as the whole map.",
+                 step back, kept for as long as the page is open. A whole map can be read in \
+                 from a set of layers, one per kind of thing, and a picture can be laid under \
+                 the map to trace.",
             )],
         ),
     );
 
     append(root, brushes_section(app, h));
+    append(root, layers_section(app, h));
     append(root, picture_section(app, h));
 
     let tally = el("div").class("stat-grid").get();
@@ -741,35 +790,138 @@ fn brushes_section(app: &App, h: &Handle) -> Element {
     section("What to paint", rows)
 }
 
-/// The picture: under the map to trace, or read in as the map itself.
+/// The layers: a map read in whole from one picture per kind of thing.
+fn layers_section(app: &App, h: &Handle) -> Element {
+    let tools = &app.ui.map_edit;
+    let mut rows = vec![note(
+        "Drop one picture per kind of thing - a layer of water, one of sand, one of trees - \
+         and the map is read out of the set: wherever a layer has something drawn, the cell \
+         is that. Which kind a layer is comes from its file name and can be changed here. A \
+         layer with nothing clear in it is read as a mask, light where the thing is.",
+    )];
+    rows.push(drop_zone(h, "Drop layers, one per kind of thing", "layers", true, take_layers));
+    if tools.layers.is_empty() {
+        return section("Layers as the map", rows);
+    }
+    let list = el("div").class("map-layer-list").get();
+    for (at, layer) in tools.layers.iter().enumerate() {
+        let _ = list.append_child(&layer_row(h, at, layer));
+    }
+    rows.push(list);
+    let h2 = h.clone();
+    rows.push(count_field(
+        "Picture pixels to a cell",
+        tools.scale() as f64,
+        1.0,
+        1.0,
+        Some(
+            "art drawn eight screen pixels to a pixel is eight here; guessed from the first \
+             layer, and it decides how large a map the layers make",
+        ),
+        move |v| {
+            let mut sh = h2.borrow_mut();
+            sh.app.ui.map_edit.px = (v as i32).max(1);
+            sh.app.rebuild_panel = true;
+        },
+    ));
+    if let Some((cols, rows_n)) = tools.layer_cells() {
+        let cells = cols as f64 * rows_n as f64;
+        let mut text = format!(
+            "At that scale the layers are {cols} by {rows_n} cells, which is the map they \
+             would make."
+        );
+        if cells > 400_000.0 {
+            text.push_str(
+                " That is a very large map: it costs memory for its pixel buffers and a \
+                 long wilderness warmup, and nothing stops it.",
+            );
+        }
+        rows.push(note(&text));
+    }
+    let under = Brush::from_color(app.ui.brush_color).ground().unwrap_or(Cell::Grass);
+    rows.push(btn_row(vec![app_button(h, "Use the layers as the map", use_layers)]));
+    rows.push(note(&format!(
+        "Reading the layers founds the settlement again on the map they make, at that size. \
+         Where two layers of one kind of question overlap, the later one in the list wins; a \
+         layer set to Leave alone is skipped; and every cell no ground layer covers is {} - \
+         the ground the legend has selected.",
+        Brush::of_ground(under).label().to_lowercase()
+    )));
+    let h2 = h.clone();
+    rows.push(danger_button("Forget the layers", Scope::Panel, move || {
+        let mut sh = h2.borrow_mut();
+        sh.app.ui.map_edit.layers.clear();
+        sh.app.rebuild_panel = true;
+    }));
+    section("Layers as the map", rows)
+}
+
+/// One layer on the list: its name and size, what it is read as, and a way
+/// off the list.
+fn layer_row(h: &Handle, at: usize, layer: &MapLayer) -> Element {
+    let size = format!(
+        "{} by {}, covers {:.0}%{}",
+        layer.w,
+        layer.h,
+        layer.covers() * 100.0,
+        if layer.by_light { ", read light against dark" } else { "" }
+    );
+    let name = el("span")
+        .class("map-layer-name")
+        .child(&el("span").text(&layer.name).get())
+        .child(&el("span").class("map-layer-size").text(&size).get())
+        .get();
+    let mut sel = el("select").attr("title", "what the cells this layer covers become");
+    for brush in BRUSHES {
+        let opt = el("option").attr("value", &brush.key()).text(brush.label());
+        let opt = if brush == layer.brush { opt.attr("selected", "selected") } else { opt };
+        sel = sel.child(&opt.get());
+    }
+    let h2 = h.clone();
+    let sel = sel
+        .on("change", Scope::Panel, move |e: Event| {
+            let mut sh = h2.borrow_mut();
+            if let Some(layer) = sh.app.ui.map_edit.layers.get_mut(at) {
+                layer.brush = Brush::from_key(&select_value_of(&e));
+            }
+        })
+        .get();
+    let h2 = h.clone();
+    let off = el("button")
+        .class("btn danger")
+        .attr("type", "button")
+        .attr("title", "take this layer off the list")
+        .text("Take off")
+        .on("click", Scope::Panel, move |_| {
+            let mut sh = h2.borrow_mut();
+            if at < sh.app.ui.map_edit.layers.len() {
+                sh.app.ui.map_edit.layers.remove(at);
+            }
+            sh.app.rebuild_panel = true;
+        })
+        .get();
+    el("div")
+        .class("map-layer-row")
+        .attr("data-layer", &at.to_string())
+        .child(&name)
+        .child(&sel)
+        .child(&off)
+        .get()
+}
+
+/// The picture: under the map to trace.
 fn picture_section(app: &App, h: &Handle) -> Element {
     let mut rows = vec![note(
         "Drop a picture of a place and it is laid under the map, corner to corner, to trace \
          over. It belongs to neither the project nor a settlement: the picture goes when the \
          page does, and what is kept is the map painted with it there.",
     )];
-    rows.push(drop_zone(h));
+    rows.push(drop_zone(h, "Drop a picture to trace", "picture", false, take));
     let tools = &app.ui.map_edit;
     if let Some((iw, ih, _)) = &tools.image {
         rows.push(stat(
             if tools.name.is_empty() { "picture" } else { &tools.name },
             &format!("{iw} by {ih}"),
-        ));
-        let h2 = h.clone();
-        rows.push(count_field(
-            "Picture pixels to a cell",
-            tools.scale() as f64,
-            1.0,
-            1.0,
-            Some(
-                "art drawn eight screen pixels to a pixel is eight here; guessed when the \
-                 picture arrives, and it decides how large a map the picture makes",
-            ),
-            move |v| {
-                let mut sh = h2.borrow_mut();
-                sh.app.ui.map_edit.px = (v as i32).max(1);
-                sh.app.rebuild_panel = true;
-            },
         ));
         let h2 = h.clone();
         rows.push(number_field(
@@ -815,29 +967,10 @@ fn picture_section(app: &App, h: &Handle) -> Element {
                 },
             ));
         }
-        if let Some((cols, rows_n)) = tools.picture_cells() {
-            let cells = cols as f64 * rows_n as f64;
-            let mut text = format!(
-                "At that scale the picture is {cols} by {rows_n} cells, which is the map it \
-                 would make."
-            );
-            if cells > 400_000.0 {
-                text.push_str(
-                    " That is a very large map: it costs memory for its pixel buffers and a \
-                     long wilderness warmup, and nothing stops it.",
-                );
-            }
-            rows.push(note(&text));
-        }
-        rows.push(btn_row(vec![
-            app_button(h, "Use it as the map", use_as_map),
-            app_button(h, "Take the sky colors", take_sky),
-        ]));
+        rows.push(btn_row(vec![app_button(h, "Take the sky colors", take_sky)]));
         rows.push(note(
-            "Using it as the map reads every cell straight out of the picture - nearest color \
-             in the legend wins - and founds the settlement again on the result. Taking the sky \
-             colors reads the top and bottom of whatever is marked sky and sets the world's sky \
-             gradient to them.",
+            "Taking the sky colors reads the top and bottom of whatever is marked sky and sets \
+             the world's sky gradient to them.",
         ));
         let h2 = h.clone();
         rows.push(danger_button("Forget the picture", Scope::Panel, move || {
@@ -903,31 +1036,35 @@ fn wipe(app: &mut App) {
     app.rebuild_panel();
 }
 
-/// The picture as the whole map. The map takes the picture's own size at the
+/// The layers as the whole map. The map takes the first layer's size at the
 /// scale it was read at, with no ceiling on it: a drawing of a coastline is
-/// worth however many cells it was drawn with.
-fn use_as_map(app: &mut App) {
-    let image = match app.ui.map_edit.image.clone() {
-        Some(image) => image,
+/// worth however many cells it was drawn with. The cells are read here and
+/// laid down on the next frame, between the map being made and the town
+/// being founded on it.
+fn use_layers(app: &mut App) {
+    let (cols, rows) = match app.ui.map_edit.layer_cells() {
+        Some(size) => size,
         None => {
-            app.set_note("no picture to read a map out of");
+            app.set_note("no layers to read a map out of");
             return;
         }
     };
-    let (cols, rows) = match app.ui.map_edit.picture_cells() {
-        Some(size) => size,
-        None => return,
-    };
-    let cells = crate::civ::map_brush::read_picture(&image, cols, rows);
-    app.record("map from a picture", false);
+    let under = Brush::from_color(app.ui.brush_color).ground().unwrap_or(Cell::Grass);
+    let masks: Vec<LayerMask> = app
+        .ui
+        .map_edit
+        .layers
+        .iter()
+        .map(|l| LayerMask { brush: l.brush, w: l.w, h: l.h, on: &l.on })
+        .collect();
+    let cells = crate::civ::map_brush::read_layers(&masks, cols, rows, under);
     app.state.civ.world.cols = cols;
     app.state.civ.world.rows = rows;
-    app.ui.map_edit.sky = Vec::new();
     // The map is about to be exactly what these say, so nothing is left
     // waiting on Apply.
     app.civ_restart();
     app.pending_map = Some(cells);
-    app.set_note(&format!("reading the picture as a {cols} by {rows} map..."));
+    app.set_note(&format!("reading the layers as a {cols} by {rows} map..."));
     app.request_save();
 }
 
@@ -985,14 +1122,22 @@ fn take_sky(app: &mut App) {
     }
 }
 
-fn drop_zone(h: &Handle) -> Element {
+/// A place to drop files, or press to pick them. `kind` marks which of the
+/// page's two it is, and `on_files` is what a drop means.
+fn drop_zone(
+    h: &Handle,
+    hint: &str,
+    kind: &str,
+    multiple: bool,
+    on_files: fn(&Handle, web_sys::FileList),
+) -> Element {
     let picker = input_el("file").tap(|i| {
         i.set_accept("image/*");
+        i.set_multiple(multiple);
         let _ = i.set_attribute("hidden", "hidden");
     });
-    let zone = el("div").class("dropzone").get();
-    let _ =
-        zone.append_child(&el("span").class("dropzone-hint").text("Drop a picture to trace").get());
+    let zone = el("div").class("dropzone").attr("data-drop", kind).get();
+    let _ = zone.append_child(&el("span").class("dropzone-hint").text(hint).get());
     let _ = zone.append_child(picker.unchecked_ref());
 
     for event in ["dragenter", "dragover"] {
@@ -1019,7 +1164,7 @@ fn drop_zone(h: &Handle) -> Element {
                 .and_then(|d| d.data_transfer())
                 .and_then(|t| t.files());
             if let Some(files) = files {
-                take(&h2, files);
+                on_files(&h2, files);
             }
         });
     }
@@ -1034,7 +1179,7 @@ fn drop_zone(h: &Handle) -> Element {
         let picker2 = picker.clone();
         on(picker.unchecked_ref(), "change", Scope::Panel, move |_| {
             if let Some(files) = picker2.files() {
-                take(&h2, files);
+                on_files(&h2, files);
             }
             picker2.set_value("");
         });
@@ -1051,19 +1196,41 @@ fn take(h: &Handle, files: web_sys::FileList) {
         let mut sh = h.borrow_mut();
         match frames.into_iter().next() {
             Some((w, height, px)) => {
-                // Guessed rather than asked for. Art drawn at eight pixels to
-                // a pixel is the common case and nobody wants to count them;
-                // the number is on the panel to be changed when the guess is
-                // wrong.
-                let px_per = crate::civ::sprites::pixel_size(w, height, &px);
-                sh.app.ui.map_edit.px = px_per;
                 sh.app.ui.map_edit.image = Some((w, height, px));
                 sh.app.ui.map_edit.name = name.clone();
-                sh.app.set_note(&format!(
-                    "{name} laid under the map at {px_per} px per cell"
-                ));
+                sh.app.set_note(&format!("{name} laid under the map"));
             }
             None => sh.app.set_note("nothing readable in that drop"),
+        }
+        sh.app.rebuild_panel = true;
+    });
+}
+
+/// Layers dropped to be read as the map. Each is kept as where it has
+/// something rather than as its pixels, which is all that is ever asked of
+/// it, and what it is comes from its name.
+fn take_layers(h: &Handle, files: web_sys::FileList) {
+    let h = h.clone();
+    crate::ui::decode::read_named(files, move |named, _, _| {
+        let mut sh = h.borrow_mut();
+        let mut added = 0;
+        for (name, (w, height, px)) in named {
+            // Guessed from the first layer of a fresh set rather than asked
+            // for. Art drawn at eight pixels to a pixel is the common case
+            // and nobody wants to count them; the number is on the panel to
+            // be changed when the guess is wrong.
+            if sh.app.ui.map_edit.layers.is_empty() {
+                sh.app.ui.map_edit.px = crate::civ::sprites::pixel_size(w, height, &px);
+            }
+            let (on, by_light) = crate::civ::map_brush::layer_mask(w, height, &px);
+            let brush = Brush::guess(&name);
+            sh.app.ui.map_edit.layers.push(MapLayer { name, brush, w, h: height, on, by_light });
+            added += 1;
+        }
+        match added {
+            0 => sh.app.set_note("nothing readable in that drop"),
+            1 => sh.app.set_note("one layer added; check what it was read as"),
+            n => sh.app.set_note(&format!("{n} layers added; check what each was read as")),
         }
         sh.app.rebuild_panel = true;
     });

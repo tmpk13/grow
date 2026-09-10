@@ -1982,25 +1982,28 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
     // horizon they blend into the sky instead of thinning pixel by pixel,
     // which is what makes the band read as depth rather than as static.
     let sky = sim.world().sky_px;
-    // Where the weather is allowed to start. The tile is read from this line
-    // down, so the setting slides the band rather than cropping it.
-    let cloud_top = state.civ.view.cloud_start_px(sky);
-    if !sim.clouds.px.is_empty() && view.y0 < sky && cloud_top < sky {
+    // The base of the weather: the line the middle of every cloud stays
+    // above. The tile answers row by row how its clouds hang round it, so
+    // the setting lifts the sky of cloud rather than cropping it.
+    let base = state.civ.view.cloud_base_px(sky);
+    if !sim.clouds.px.is_empty() && view.y0 < sky {
         let clouds = &sim.clouds;
         let fade_rows = (sky as f64 * 0.35).max(1.0);
         // Rows are on the upload's own grid, which is every multiple of the
-        // step from the origin; the first one at or below the cloud line is
-        // not a row anything reads.
-        let from = first.max(cloud_top);
-        let mut y = from + (step - from.rem_euclid(step)) % step;
+        // step from the origin.
+        let mut y = first;
         while y < view.y1.min(sky) {
+            // Rows only go down from here, and below the base's band there
+            // is nothing left to stamp.
+            let src = match clouds.row_at(y, base) {
+                Some(src) => src,
+                None => break,
+            };
             let row = y as usize * px_w;
             let fade = (((sky - y) as f64 / fade_rows).min(1.0) * 0.95).powi(2);
-            let sy = (y - cloud_top).rem_euclid(clouds.h);
-            let srow = (sy * clouds.w) as usize;
             for x in view.x0..view.x1 {
                 let sx = (x + clouds.drift).rem_euclid(clouds.w);
-                let c = clouds.px[srow + sx as usize];
+                let c = src[sx as usize];
                 if c == 0 {
                     continue;
                 }

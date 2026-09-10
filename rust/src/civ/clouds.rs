@@ -10,6 +10,14 @@
 //! by an offset the tile does not know about; what the tile itself animates is
 //! the edges, which churn at a low, settable amplitude - clouds boiling
 //! slowly rather than sliding as one rigid picture.
+//!
+//! The weather has a base: a line across the sky that the middle of a cloud
+//! stays above. It is not a cut. A cloud is drawn whole or not at all by where
+//! its middle is, so the ones just above the line hang below it and the ones
+//! just below it are not there, and the underside of the weather is ragged
+//! the way a real one is rather than ruled. The tile carries what that needs,
+//! which cloud every pixel belongs to, and answers for any base line, so
+//! moving the line rebuilds nothing.
 
 use crate::state::State;
 use crate::util::{hex_to_packed, mix_packed, pack_rgba};
@@ -34,6 +42,13 @@ pub struct CloudLayer {
     pub h: i32,
     /// Packed pixels, zero where the sky shows through.
     pub px: Vec<u32>,
+    /// The tile as it is drawn across the band that straddles the cloud base.
+    /// Row `e` of it is world row `base - h / 2 + e`, and a pixel is kept only
+    /// if the cloud it belongs to has its middle above the base. Above the
+    /// band the tile is `px` whole; below it there is nothing. Both readers
+    /// go through `row_at`, which is what keeps the map and the space around
+    /// it the same sky.
+    pub edge: Vec<u32>,
     /// What the tile was built from, so a frame that changed nothing reuses
     /// it. Doubles as the camera's key for knowing when to re-upload.
     pub key: u64,
@@ -41,6 +56,34 @@ pub struct CloudLayer {
     pub drift: i32,
     /// The field the pixels were colored from, kept for the underside pass.
     scratch: Vec<f32>,
+    /// The broad octave alone, which is what a cloud's middle is found in.
+    broad: Vec<f32>,
+    /// Rows from each pixel to the middle of the cloud it belongs to,
+    /// negative upward, wrapped so the tile's seam is not a cliff.
+    rise: Vec<i16>,
+}
+
+impl CloudLayer {
+    /// The tile row that world row `y` reads, against a cloud base at world
+    /// row `base`: the tile whole above the band round the base, the edge
+    /// tile across it, and nothing below. Rows read from the base line, so the
+    /// same shape is at the same place for every reader.
+    pub fn row_at(&self, y: i32, base: i32) -> Option<&[u32]> {
+        if self.px.is_empty() || self.w <= 0 || self.h <= 0 {
+            return None;
+        }
+        let w = self.w as usize;
+        let half = self.h / 2;
+        let (rows, sy) = if y < base - half {
+            (&self.px, (y - base).rem_euclid(self.h))
+        } else if y < base + half {
+            (&self.edge, y - (base - half))
+        } else {
+            return None;
+        };
+        let at = sy as usize * w;
+        rows.get(at..at + w)
+    }
 }
 
 /// One octave's lattice, its corner values worked out once per rebuild. At
@@ -112,9 +155,11 @@ fn lattices(seed: i32, t: f64, wobble: f64) -> (Lattice, Lattice) {
     (Lattice::new(48, seed, t, wobble), Lattice::new(16, seed ^ 0x9e37, t * 1.7, wobble))
 }
 
-fn sample(broad: &Lattice, fine: &Lattice, x: i32, y: i32) -> f64 {
+/// The broad octave on its own and the two mixed, at one pixel.
+fn sample(broad: &Lattice, fine: &Lattice, x: i32, y: i32) -> (f64, f64) {
     let (xf, yf) = (x as f64, (y * VERTICAL_SQUASH) as f64);
-    broad.at(xf, yf) * 0.62 + fine.at(xf, yf) * 0.38
+    let b = broad.at(xf, yf);
+    (b, b * 0.62 + fine.at(xf, yf) * 0.38)
 }
 
 /// Public for the tests, which check the tile is seamless where it wraps.
@@ -122,7 +167,70 @@ fn sample(broad: &Lattice, fine: &Lattice, x: i32, y: i32) -> f64 {
 /// and samples the same way.
 pub fn field(x: i32, y: i32, seed: i32, t: f64, wobble: f64) -> f64 {
     let (broad, fine) = lattices(seed, t, wobble);
-    sample(&broad, &fine, x, y)
+    sample(&broad, &fine, x, y).1
+}
+
+/// Which cloud each pixel belongs to, as rows from the pixel to the middle
+/// of it. A middle is a local top of the broad octave, every pixel climbs to
+/// one, and the basin round a top is one cloud; where two basins meet is the
+/// thinnest part of the mass between them, which is where a cloud would come
+/// apart anyway. The broad octave alone is climbed: the fine one has a top
+/// every few pixels and would cut the sky into confetti.
+fn find_middles(broad: &[f32], w: i32, h: i32, rise: &mut Vec<i16>) {
+    let n = (w * h) as usize;
+    // Where each pixel steps next: its highest neighbor, or itself at a top.
+    // Steps only ever go up, so there is no ring to walk round.
+    let mut next: Vec<u32> = vec![0; n];
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) as usize;
+            let mut best = i;
+            let mut top = broad[i];
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let j = ((y + dy).rem_euclid(h) * w + (x + dx).rem_euclid(w)) as usize;
+                    if broad[j] > top {
+                        top = broad[j];
+                        best = j;
+                    }
+                }
+            }
+            next[i] = best as u32;
+        }
+    }
+    // Every chain resolved to its top, and every pixel on the way pointed
+    // straight at it, so no step is walked twice.
+    let mut top_of: Vec<u32> = vec![u32::MAX; n];
+    let mut path: Vec<usize> = Vec::new();
+    for start in 0..n {
+        if top_of[start] != u32::MAX {
+            continue;
+        }
+        path.clear();
+        let mut i = start;
+        while top_of[i] == u32::MAX && next[i] as usize != i {
+            path.push(i);
+            i = next[i] as usize;
+        }
+        let root = if top_of[i] != u32::MAX { top_of[i] } else { i as u32 };
+        top_of[i] = root;
+        for &p in &path {
+            top_of[p] = root;
+        }
+    }
+    let half = h / 2;
+    rise.clear();
+    rise.resize(n, 0);
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) as usize;
+            let ty = top_of[i] as i32 / w;
+            rise[i] = ((ty - y + half).rem_euclid(h) - half) as i16;
+        }
+    }
 }
 
 /// Brings the layer up to the moment: the drift every frame, the tile itself
@@ -161,9 +269,12 @@ pub fn refresh(layer: &mut CloudLayer, state: &State, time: f64) {
     let n = (TILE_W * TILE_H) as usize;
     let (broad, fine) = lattices(seed, t, wobble);
     layer.scratch.resize(n, 0.0);
+    layer.broad.resize(n, 0.0);
     for y in 0..TILE_H {
         for x in 0..TILE_W {
-            layer.scratch[(y * TILE_W + x) as usize] = sample(&broad, &fine, x, y) as f32;
+            let (b, v) = sample(&broad, &fine, x, y);
+            layer.scratch[(y * TILE_W + x) as usize] = v as f32;
+            layer.broad[(y * TILE_W + x) as usize] = b as f32;
         }
     }
 
@@ -200,6 +311,26 @@ pub fn refresh(layer: &mut CloudLayer, state: &State, time: f64) {
             } else {
                 body
             };
+        }
+    }
+
+    // The band across the base. A pixel in row `e` of it is at world row
+    // `base - h / 2 + e`, and it is drawn if the middle of its cloud is above
+    // the base: `e + rise < h / 2`. The band is exactly a tile tall because
+    // a middle is never more than half a tile from its pixel, so above the
+    // band every cloud is whole and below it none is.
+    find_middles(&layer.broad, TILE_W, TILE_H, &mut layer.rise);
+    let half = TILE_H / 2;
+    layer.edge.clear();
+    layer.edge.resize(n, 0);
+    for e in 0..TILE_H {
+        let sy = (e + half) % TILE_H;
+        for x in 0..TILE_W {
+            let i = (sy * TILE_W + x) as usize;
+            if e + layer.rise[i] as i32 >= half {
+                continue;
+            }
+            layer.edge[(e * TILE_W + x) as usize] = layer.px[i];
         }
     }
 }

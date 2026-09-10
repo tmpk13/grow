@@ -58,10 +58,13 @@ pub struct Viewport {
     /// One visible region, repacked for upload. Kept here so a frame does not
     /// allocate.
     scratch: Vec<u32>,
-    /// The cloud tile as a canvas the context can repeat, and the key of the
-    /// tile it holds so an unchanged frame skips the upload.
+    /// The cloud tile as a canvas the context can repeat, the band of it
+    /// across the cloud base as another, and the key of the tile they hold so
+    /// an unchanged frame skips the upload.
     clouds_tile: HtmlCanvasElement,
     clouds_tile_ctx: CanvasRenderingContext2d,
+    clouds_edge: HtmlCanvasElement,
+    clouds_edge_ctx: CanvasRenderingContext2d,
     clouds_key: u64,
     /// Set for the frames whose empty space is sky; the world is drawn over
     /// its own rectangle afterwards.
@@ -73,9 +76,12 @@ pub struct Viewport {
 struct SpaceClouds {
     drift: i32,
     sky_px: i32,
-    /// The world row the clouds start on, the same line the map's own sky band
-    /// uses, so the weather does not step at the edge of the map.
-    cloud_top: i32,
+    /// The world row of the cloud base, the same line the map's own sky band
+    /// reads against, so the weather does not step at the edge of the map.
+    base: i32,
+    /// Half the tile's height: how far either side of the base the band goes
+    /// in which a cloud is whole or gone by where its middle is.
+    half: i32,
     top: String,
     bottom: String,
 }
@@ -122,6 +128,8 @@ impl Viewport {
         let off_ctx = context_of(&off);
         let clouds_tile = new_canvas();
         let clouds_tile_ctx = context_of(&clouds_tile);
+        let clouds_edge = new_canvas();
+        let clouds_edge_ctx = context_of(&clouds_edge);
         Viewport {
             canvas,
             ctx,
@@ -129,6 +137,8 @@ impl Viewport {
             off_ctx,
             clouds_tile,
             clouds_tile_ctx,
+            clouds_edge,
+            clouds_edge_ctx,
             clouds_key: 0,
             space_clouds: None,
             zoom: 2.0,
@@ -257,26 +267,28 @@ impl Viewport {
         &mut self,
         layer: &crate::civ::clouds::CloudLayer,
         cfg: &crate::world::WorldConfig,
-        cloud_top: i32,
+        base: i32,
     ) {
-        if layer.px.is_empty() {
+        if layer.px.is_empty() || layer.edge.len() != layer.px.len() {
             self.space_clouds = None;
             return;
         }
         if self.clouds_key != layer.key {
-            if self.clouds_tile.width() != layer.w as u32
-                || self.clouds_tile.height() != layer.h as u32
-            {
-                self.clouds_tile.set_width(layer.w as u32);
-                self.clouds_tile.set_height(layer.h as u32);
+            for canvas in [&self.clouds_tile, &self.clouds_edge] {
+                if canvas.width() != layer.w as u32 || canvas.height() != layer.h as u32 {
+                    canvas.set_width(layer.w as u32);
+                    canvas.set_height(layer.h as u32);
+                }
             }
             put_buffer(&self.clouds_tile_ctx, &layer.px, layer.w, layer.h);
+            put_buffer(&self.clouds_edge_ctx, &layer.edge, layer.w, layer.h);
             self.clouds_key = layer.key;
         }
         self.space_clouds = Some(SpaceClouds {
             drift: layer.drift,
             sky_px: cfg.sky_px,
-            cloud_top,
+            base,
+            half: layer.h / 2,
             top: cfg.sky_top.clone(),
             bottom: cfg.sky_bottom.clone(),
         });
@@ -305,11 +317,19 @@ impl Viewport {
         let _ = g.add_color_stop(1.0, &sc.bottom);
         ctx.set_fill_style_canvas_gradient(&g);
         ctx.fill_rect(0.0, 0.0, rw, rh);
-        let pattern = match ctx.create_pattern_with_html_canvas_element(&self.clouds_tile, "repeat")
+        if self.zoom <= 0.0 {
+            return;
+        }
+        let whole = match ctx.create_pattern_with_html_canvas_element(&self.clouds_tile, "repeat")
         {
             Ok(Some(p)) => p,
             _ => return,
         };
+        let edge =
+            match ctx.create_pattern_with_html_canvas_element(&self.clouds_edge, "repeat-x") {
+                Ok(Some(p)) => p,
+                _ => return,
+            };
         // A pattern repeats in the context's current space, so the context is
         // put into world scale and the visible rectangle is filled in world
         // coordinates; the tile then lands exactly where the sky band's own
@@ -317,24 +337,34 @@ impl Viewport {
         ctx.save();
         ctx.translate(self.pan_x, self.pan_y).ok();
         ctx.scale(self.zoom, self.zoom).ok();
-        // The tile's first row lands on the cloud line rather than on the top
-        // of the world, which is where the map's own band anchors it too, so
-        // one shape carries on across the edge of the map.
-        ctx.translate(-sc.drift as f64, sc.cloud_top as f64).ok();
-        ctx.set_fill_style_canvas_pattern(&pattern);
-        if self.zoom > 0.0 {
-            // Local coordinates now count from the cloud line down; nothing
-            // above it is filled, so the sky over the weather stays clear.
-            let top = ((-self.pan_y) / self.zoom - sc.cloud_top as f64).max(0.0);
-            let bottom = (rh - self.pan_y) / self.zoom - sc.cloud_top as f64;
-            if bottom > top {
-                ctx.fill_rect(
-                    (-self.pan_x) / self.zoom + sc.drift as f64,
-                    top,
-                    rw / self.zoom,
-                    bottom - top,
-                );
-            }
+        let left = -self.pan_x / self.zoom;
+        let top = -self.pan_y / self.zoom;
+        let bottom = (rh - self.pan_y) / self.zoom;
+        let width = rw / self.zoom;
+        let base = sc.base as f64;
+        let half = sc.half as f64;
+        // Above the band round the base the tile repeats whole, its first row
+        // on the base line, which is where the map's own band reads it from,
+        // so one shape carries on across the edge of the map.
+        let band_top = base - half;
+        if band_top > top {
+            ctx.save();
+            ctx.translate(-sc.drift as f64, base).ok();
+            ctx.set_fill_style_canvas_pattern(&whole);
+            ctx.fill_rect(left + sc.drift as f64, top - base, width, band_top.min(bottom) - top);
+            ctx.restore();
+        }
+        // Across the band, the edge tile: every cloud whole or gone by where
+        // its middle is. It repeats sideways only, and below it is clear air.
+        let band_bottom = base + half;
+        if band_bottom > top && band_top < bottom {
+            let from = top.max(band_top);
+            let to = bottom.min(band_bottom);
+            ctx.save();
+            ctx.translate(-sc.drift as f64, band_top).ok();
+            ctx.set_fill_style_canvas_pattern(&edge);
+            ctx.fill_rect(left + sc.drift as f64, from - band_top, width, to - from);
+            ctx.restore();
         }
         ctx.restore();
     }

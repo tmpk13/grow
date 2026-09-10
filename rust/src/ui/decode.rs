@@ -23,9 +23,15 @@ use crate::util::pack_rgba;
 /// is told once either way.
 type Sink = Rc<RefCell<Option<Box<dyn FnOnce(Option<Frame>)>>>>;
 
+/// One decoded file beside the name it came in under.
+type Named = (String, Frame);
+
 /// The caller, held until the last file is home. Every image decodes on its own
 /// callback, so whichever one finishes last is the one that reports.
-type Done = Rc<RefCell<Option<Box<dyn FnOnce(Vec<Frame>, bool, String)>>>>;
+type Done = Rc<RefCell<Option<Box<dyn FnOnce(Vec<Named>, bool, String)>>>>;
+
+/// The files of one drop as they come home, in the order their names sort.
+type Slots = Rc<RefCell<Vec<Option<Named>>>>;
 
 /// Source images larger than this are drawn down on the way in. Nothing the
 /// tool draws is read at anything near it, and walking a photograph pixel by
@@ -36,6 +42,18 @@ const MAX_SOURCE_PX: i32 = 1024;
 /// names sort. Files that are not images arrive as nothing and are dropped, so
 /// the caller sees only what could be read.
 pub fn read_files(files: FileList, done: impl FnOnce(Vec<Frame>, bool, String) + 'static) {
+    read_named(files, move |named, single, source| {
+        done(named.into_iter().map(|(_, frame)| frame).collect(), single, source)
+    });
+}
+
+/// The same, with each frame's file name beside it, for a drop where the
+/// names say what the pictures are. Files that could not be read are not in
+/// the list, so the names are the only way to know which frame was which.
+pub fn read_named(
+    files: FileList,
+    done: impl FnOnce(Vec<(String, Frame)>, bool, String) + 'static,
+) {
     let mut list: Vec<File> = (0..files.length()).filter_map(|i| files.get(i)).collect();
     list.sort_by(|a, b| natural_cmp(&a.name(), &b.name()));
     list.truncate(MAX_FRAMES as usize);
@@ -50,7 +68,7 @@ pub fn read_files(files: FileList, done: impl FnOnce(Vec<Frame>, bool, String) +
     };
     // The slots are filled out of order, so they are collected rather than
     // appended to.
-    let slots: Rc<RefCell<Vec<Option<Frame>>>> = Rc::new(RefCell::new(vec![None; list.len()]));
+    let slots: Slots = Rc::new(RefCell::new(vec![None; list.len()]));
     let left = Rc::new(Cell::new(list.len()));
     let done: Done = Rc::new(RefCell::new(Some(Box::new(done))));
     for (i, file) in list.into_iter().enumerate() {
@@ -58,13 +76,14 @@ pub fn read_files(files: FileList, done: impl FnOnce(Vec<Frame>, bool, String) +
         let left = left.clone();
         let done = done.clone();
         let source = source.clone();
+        let name = file.name();
         decode(&file, move |frame| {
-            slots.borrow_mut()[i] = frame;
+            slots.borrow_mut()[i] = frame.map(|f| (name, f));
             left.set(left.get().saturating_sub(1));
             if left.get() > 0 {
                 return;
             }
-            let frames: Vec<Frame> = std::mem::take(&mut *slots.borrow_mut())
+            let frames: Vec<Named> = std::mem::take(&mut *slots.borrow_mut())
                 .into_iter()
                 .flatten()
                 .collect();

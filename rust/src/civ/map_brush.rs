@@ -9,8 +9,15 @@
 //! all. They are one list rather than three menus for the same reason the
 //! picture tool's are: the questions are about the same cell, and somebody
 //! painting a map is answering whichever one the cell needs.
+//!
+//! A whole map can be read in from a set of layers, one picture per brush:
+//! where a layer has something drawn, the cell is what the layer is. That is
+//! how a drawing program hands a map over - a layer of water, a layer of
+//! sand, a layer of trees - and it needs no exact colors, which a picture
+//! that carried every kind at once did.
 
 use crate::civ::terrain::Cell;
+use crate::util::unpack_rgba;
 use crate::world::Zone;
 
 /// What one press paints.
@@ -115,25 +122,64 @@ impl Brush {
         BRUSHES.iter().copied().find(|b| b.color() == v).unwrap_or(Brush::Clear)
     }
 
-    /// The nearest brush to a color out of a picture, for reading a drawing of
-    /// a map in as a map. Everything is nearest to something, so this always
-    /// answers; `Clear` and `Sky` are left out of the running because neither
-    /// is a kind of ground a cell could be turned into.
-    pub fn nearest(v: u32) -> Brush {
-        let want = crate::util::unpack_rgba(v);
-        let mut best = (i32::MAX, Brush::Grass);
-        for brush in BRUSHES {
-            if brush == Brush::Clear || brush == Brush::Sky {
-                continue;
-            }
-            let c = crate::util::unpack_rgba(brush.color());
-            let d = |a: u8, b: u8| (a as i32 - b as i32).pow(2);
-            let far = d(want.r, c.r) + d(want.g, c.g) + d(want.b, c.b);
-            if far < best.0 {
-                best = (far, brush);
-            }
-        }
-        best.1
+    /// What a layer is, guessed from the name of its file: one exported as
+    /// `water.png` or `03 trees.png` is what it says it is. The words are
+    /// tried in a fixed order rather than the order they appear, so a "rock
+    /// face" is a face and not a rock, and a name that says nothing anybody
+    /// recognizes is `Clear`, which the page reads as "not said yet".
+    pub fn guess(name: &str) -> Brush {
+        const WORDS: [(&str, Brush); 24] = [
+            ("cliff", Brush::Cliff),
+            ("face", Brush::Cliff),
+            ("water", Brush::Water),
+            ("sea", Brush::Water),
+            ("lake", Brush::Water),
+            ("river", Brush::Water),
+            ("ocean", Brush::Water),
+            ("rock", Brush::Rock),
+            ("stone", Brush::Rock),
+            ("grass", Brush::Grass),
+            ("sand", Brush::Sand),
+            ("beach", Brush::Sand),
+            ("shore", Brush::Sand),
+            ("wood", Brush::Wood),
+            ("tree", Brush::Wood),
+            ("forest", Brush::Wood),
+            ("meadow", Brush::Low),
+            ("shrub", Brush::Low),
+            ("low", Brush::Low),
+            ("bare", Brush::Bare),
+            ("nothing", Brush::Bare),
+            ("road", Brush::Bare),
+            ("clearing", Brush::Bare),
+            ("sky", Brush::Sky),
+        ];
+        let name = name.to_ascii_lowercase();
+        // Whole words, so "yellow" is not low; a word may carry a plural or
+        // an ending, so "trees" and "rocks" still count.
+        let words: Vec<&str> = name
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect();
+        WORDS
+            .iter()
+            .find(|(word, _)| words.iter().any(|w| w.starts_with(word)))
+            .map(|(_, brush)| *brush)
+            .unwrap_or(Brush::Clear)
+    }
+
+    /// Its place in the list by name, which is how the page's own list of
+    /// layers reads a choice back.
+    pub fn from_key(key: &str) -> Brush {
+        BRUSHES
+            .iter()
+            .copied()
+            .find(|b| crate::util::slug(b.label()) == key)
+            .unwrap_or(Brush::Clear)
+    }
+
+    pub fn key(self) -> String {
+        crate::util::slug(self.label())
     }
 
     /// The ground it makes, for the brushes that are about the ground.
@@ -183,42 +229,113 @@ impl Brush {
     }
 }
 
-/// Every cell of a map, read out of a picture. The picture is stretched corner
-/// to corner over the map it is about to become, which at the scale the map
-/// editor offers is one cell per block of pixels, and every color in it is
-/// read as the nearest thing in the legend.
-pub fn read_picture(image: &(i32, i32, Vec<u32>), cols: i32, rows: i32) -> Vec<u8> {
-    let (iw, ih, px) = image;
-    let mut out = vec![0u8; (cols.max(0) * rows.max(0)) as usize];
-    for r in 0..rows {
-        for c in 0..cols {
-            let sx = (((c as f64 + 0.5) / cols as f64) * *iw as f64).floor() as i32;
-            let sy = (((r as f64 + 0.5) / rows as f64) * *ih as f64).floor() as i32;
-            let v = px
-                .get((sy.clamp(0, ih - 1) * iw + sx.clamp(0, iw - 1)) as usize)
-                .copied()
-                .unwrap_or(0);
-            out[(r * cols + c) as usize] = Brush::nearest(v).id();
+/// Where a layer says its thing is, one flag a pixel, and whether it had to
+/// be read by brightness. A layer out of a drawing program is clear wherever
+/// nothing was drawn, so a pixel that is not clear is the mark. One with no
+/// clear pixel in it at all was drawn as a mask instead, light where the
+/// thing is and dark where it is not, and is read that way.
+pub fn layer_mask(w: i32, h: i32, px: &[u32]) -> (Vec<bool>, bool) {
+    let n = (w.max(0) * h.max(0)) as usize;
+    let cut = crate::civ::sprites::ALPHA_CUT;
+    let pixel = |i: usize| unpack_rgba(px.get(i).copied().unwrap_or(0));
+    let by_light = (0..n).all(|i| pixel(i).a >= cut);
+    let on = (0..n)
+        .map(|i| {
+            let c = pixel(i);
+            if by_light {
+                c.r as u32 * 299 + c.g as u32 * 587 + c.b as u32 * 114 >= 128 * 1000
+            } else {
+                c.a >= cut
+            }
+        })
+        .collect();
+    (on, by_light)
+}
+
+/// One layer as it is read: what it is, how large it was drawn, and where it
+/// has something.
+pub struct LayerMask<'a> {
+    pub brush: Brush,
+    pub w: i32,
+    pub h: i32,
+    pub on: &'a [bool],
+}
+
+/// The map a set of layers makes: the ground of every cell, the zone of
+/// every cell and which cells are marked sky, one byte a cell each. Three
+/// grids rather than one, because they are three questions about a cell and
+/// a layer of trees over a layer of sand answers two of them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MapCells {
+    pub cols: i32,
+    pub rows: i32,
+    pub ground: Vec<u8>,
+    pub zone: Vec<u8>,
+    pub sky: Vec<u8>,
+}
+
+/// Every cell of a map, read out of a set of layers. Each layer is stretched
+/// corner to corner over the map, so a set exported from one drawing lands
+/// cell for cell and a stray one of another size still lands somewhere
+/// sensible. Where a layer has something, the cell is what the layer is: a
+/// ground layer sets the ground, a zone layer the zone, a sky layer the mark,
+/// and two layers answering the same question are read in order with the
+/// later one winning. A layer set to `Clear` says nothing. Every cell no
+/// ground layer covers is `base`.
+pub fn read_layers(layers: &[LayerMask], cols: i32, rows: i32, base: Cell) -> MapCells {
+    let n = (cols.max(0) * rows.max(0)) as usize;
+    let mut out = MapCells {
+        cols,
+        rows,
+        ground: vec![base as u8; n],
+        zone: vec![Zone::Any as u8; n],
+        sky: vec![0; n],
+    };
+    for layer in layers {
+        if layer.brush == Brush::Clear || layer.w <= 0 || layer.h <= 0 {
+            continue;
+        }
+        let ground = layer.brush.ground();
+        let zone = layer.brush.zone();
+        for r in 0..rows {
+            let sy = (((r as f64 + 0.5) / rows as f64) * layer.h as f64).floor() as i32;
+            let sy = sy.clamp(0, layer.h - 1);
+            for c in 0..cols {
+                let sx = (((c as f64 + 0.5) / cols as f64) * layer.w as f64).floor() as i32;
+                let sx = sx.clamp(0, layer.w - 1);
+                if !layer.on.get((sy * layer.w + sx) as usize).copied().unwrap_or(false) {
+                    continue;
+                }
+                let i = (r * cols + c) as usize;
+                if let Some(kind) = ground {
+                    out.ground[i] = kind as u8;
+                } else if let Some(zone) = zone {
+                    out.zone[i] = zone as u8;
+                } else if layer.brush == Brush::Sky {
+                    out.sky[i] = 1;
+                }
+            }
         }
     }
     out
 }
 
-/// Lays a read picture over a map, one cell at a time. Meant for a settlement
-/// that has been made and not yet founded, so the wilderness grows on the
-/// painted ground rather than being flattened by it afterwards.
-pub fn lay_cells(sim: &mut crate::civ::settlement::Settlement, cells: &[u8]) {
+/// Lays a read map over a settlement's, one cell at a time. Meant for a
+/// settlement that has been made and not yet founded, so the wilderness grows
+/// on the painted ground rather than being flattened by it afterwards. The
+/// sky marks are not laid: they belong to the page, not the map.
+pub fn lay_cells(sim: &mut crate::civ::settlement::Settlement, cells: &MapCells) {
     let (cols, rows) = (sim.world().cols, sim.world().rows);
+    if (cols, rows) != (cells.cols, cells.rows) {
+        return;
+    }
     for r in 0..rows {
         for c in 0..cols {
-            let brush = match cells.get((r * cols + c) as usize) {
-                Some(&id) => Brush::from_u8(id),
-                None => continue,
-            };
-            if let Some(kind) = brush.ground() {
-                sim.paint_cell(c, r, kind);
+            let i = (r * cols + c) as usize;
+            if let Some(&kind) = cells.ground.get(i) {
+                sim.paint_cell(c, r, Cell::from_u8(kind));
             }
-            match brush.zone() {
+            match cells.zone.get(i).copied().map(Zone::from_u8) {
                 Some(Zone::Any) | None => {}
                 Some(zone) => sim.terrain.set_zone(c, r, zone),
             }

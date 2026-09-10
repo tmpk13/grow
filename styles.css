@@ -1021,6 +1021,57 @@ input[type="color"] {
   gap: 0.25rem;
 }
 
+/* The layers dropped on the map page: one row each, holding its name and
+   size, what it is read as, and a way off the list. Not the sheet's layer
+   list, which has rows of its own further down. */
+.map-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* The name takes a line of its own over the select and the button, so a
+   long file name is read whole rather than squeezed beside a wide select. */
+.map-layer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 0.3rem 0.35rem;
+  padding: 0.25rem 0.4rem;
+  background: #0f151e;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius);
+}
+
+.map-layer-row .map-layer-name {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.map-layer-row .map-layer-size {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.map-layer-row select {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+  width: 100%;
+}
+
+.map-layer-row .btn {
+  grid-column: 2;
+  grid-row: 2;
+  width: auto;
+  justify-self: end;
+}
+
 .stat {
   display: flex;
   justify-content: space-between;

@@ -224,11 +224,11 @@ pub struct App {
     /// wilderness onto the new ground blocks the thread, and the note saying
     /// so has to paint first.
     pub pending_expand: Option<(i32, i32)>,
-    /// A map read out of a picture, one brush id per cell, waiting for the
-    /// settlement it belongs to be made. Laid down between the map being made
-    /// and the town being founded on it, so the wilderness grows on the
-    /// painted ground rather than under it.
-    pub pending_map: Option<Vec<u8>>,
+    /// A map read out of a set of layers, waiting for the settlement it
+    /// belongs to be made. Laid down between the map being made and the town
+    /// being founded on it, so the wilderness grows on the painted ground
+    /// rather than under it.
+    pub pending_map: Option<crate::civ::map_brush::MapCells>,
     pub save_deadline: Option<f64>,
     /// When the running settlement is next written down, and whether anything
     /// has happened in it since the last time. It changes every tick and is
@@ -3043,14 +3043,17 @@ fn frame(h: &Handle, ts: f64) {
                 sh.app.settlement = Some(Settlement::new(&sh.app.state));
             }
         }
-        // A map read out of a picture is laid on the fresh land before
-        // anybody is put on it: the town is founded on the coastline that was
-        // drawn, and the wilderness warms onto it rather than being painted
-        // over afterwards.
+        // A map read out of layers is laid on the fresh land before anybody
+        // is put on it: the town is founded on the coastline that was drawn,
+        // and the wilderness warms onto it rather than being painted over
+        // afterwards.
         if let Some(cells) = sh.app.pending_map.take() {
             if let Some(civ) = &mut sh.app.settlement {
                 crate::civ::map_brush::lay_cells(civ, &cells);
             }
+            // The sky marks are the page's rather than the map's, and they
+            // came with the layers that were read.
+            sh.app.ui.map_edit.mark_sky(cells.cols, cells.rows, cells.sky);
         }
         if let Some(civ) = &mut sh.app.settlement {
             // A settlement left running is picked up where it was; only a
@@ -3281,8 +3284,8 @@ fn draw(app: &mut App, budget: usize) {
                 civ.composite(&app.state);
             }
             if app.state.civ.view.cloud_space {
-                let top = app.state.civ.view.cloud_start_px(app.state.civ.world.sky_px);
-                app.viewport.set_space_clouds(&civ.clouds, &app.state.civ.world, top);
+                let base = app.state.civ.view.cloud_base_px(app.state.civ.world.sky_px);
+                app.viewport.set_space_clouds(&civ.clouds, &app.state.civ.world, base);
             }
             let region = civ.view;
             let buffer = std::mem::take(&mut civ.buffer);
