@@ -86,8 +86,8 @@ fn the_index_covers_every_mode_and_tab() {
         .collect();
     tabs.sort();
     tabs.dedup();
-    // Four panels in the lab, two in the sprite editor, six in the settlement.
-    assert_eq!(tabs.len(), 12, "every tab of every mode should be in the index: {tabs:?}");
+    // Four panels in the lab, three in the sprite editor, six in the settlement.
+    assert_eq!(tabs.len(), 13, "every tab of every mode should be in the index: {tabs:?}");
 
     for mode in ["lab", "sprites", "settlement"] {
         assert!(

@@ -65,7 +65,6 @@ flowchart TD
     tchp["ui/tech_panel.rs"]
     expp["ui/experimental_panel.rs<br/>one switch, and what is under it"]
     sdrop["ui/sprite_drop.rs<br/>drop zones: person motions and made things"]
-    zpaint["ui/zone_paint.rs<br/>a picture over the map: ground and zones"]
     hud["ui/drive.rs<br/>the stick and the buttons, over the map"]
   end
 
@@ -169,9 +168,7 @@ flowchart TD
   expp --> ctl
   hud --> ctl
   bldp --> place
-  lndp --> zpaint
   lndp --> scene
-  zpaint --> terrain
   mapp --> brush
   mapp --> pnt
   mapp --> dec
@@ -1154,15 +1151,7 @@ experiment would apply is exactly one rather than something that rounds to it.
 The panel does not draw the settings for a block that is off, so nothing under
 it reaches menu search either.
 
-Two things are under it. The map editor is the odd one, because it is not on
-the settlement's panels at all: with the switch on, `tabs_for` hands back a
-third page for the sprite editor. A tab list is static and the thing that
-decides between them is a switch on another panel, so there are two lists
-rather than a filter, and `tab_id_of` looks in the longer one whether or not it
-is showing - a search hit on a page behind the switch should say so by taking
-somebody there rather than by landing them on the first tab.
-
-The other is hot air balloons. A town with a school and cloth to
+One thing is under it: hot air balloons. A town with a school and cloth to
 spare sends one up over itself; while it is aloft the colony's research runs
 faster. A balloon is a position on the ground plane plus a height, so it is
 drawn in the same projection as everything else and simply painted after the
@@ -1672,17 +1661,23 @@ version so the cached ground is painted again. `paint_terrain` stamps it over
 the ground it has just drawn, whole where a pixel is opaque and letting the
 ground through where it is clear, before the current, the deposits, paths and
 shadows go on, so a cell that is dirt acts as dirt and looks like what was
-drawn there while everything else stands over it. The View section's **Ground
+drawn there while everything else stands over it. The map page's **Ground
 over the map picture** leaves the stamp out and is part of the ground cache's
 key. The picture is written down with the settlement as runs of pixels, since
 nothing could make it again, and `MapArt::grown` pads it with clear pixels
 when the map grows so the new land shows the ground that grew there.
 
 The picture being traced is otherwise separate from all of this. It is in
-`app.ui` on the same terms as the landscape dropped on the Land panel - a
-photograph is megabytes and the map painted with it there is what is worth
-keeping - and it is not laid under the map cell by cell: it is something to
-draw over, and to read a sky out of.
+`app.ui` rather than in the project - a photograph is megabytes and the map
+painted with it there is what is worth keeping - and it is not laid under the
+map cell by cell: it is something to draw over, and to read a sky out of.
+
+Everything about drawing the map is on this one page, and it is a plain tab
+of the sprite editor rather than a page behind the experiments switch, which
+is also what puts its controls in the menu index. The Land panel's Map
+section keeps the size, the seed and the terrain settings, and the two pages
+point at each other with a button each, through `show_mode` and `show_tab`
+the way a search hit travels.
 
 ### The same number, on the way in
 

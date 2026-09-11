@@ -125,14 +125,10 @@ pub struct UiState {
     /// The stage looks inside a pressed building rather than dragging the map.
     /// The fourth exclusive press switch.
     pub inspect: bool,
-    /// The picture laid over the map to draw zones and ground from, and what
-    /// has been picked out of it. A tool rather than part of the project, so
-    /// it lives for as long as the page is open and no longer.
-    pub land: crate::ui::zone_paint::Landscape,
     /// What the map editor holds that the map does not: the picture laid under
     /// it to trace, the cells marked sky on it, and the strokes that can be
-    /// put back. Held on the same terms as the one above and for the same
-    /// reason.
+    /// put back. A tool rather than part of the project, so it lives for as
+    /// long as the page is open and no longer.
     pub map_edit: crate::ui::map_panel::MapTools,
     /// The stage puts down whatever the placing menu is holding. The fifth
     /// exclusive press switch.
@@ -688,15 +684,11 @@ const LAB_TABS: &[TabDef] = &[
     TabDef { id: "world", label: "World", build: ui::world_panel::build },
 ];
 
+/// The two drawing pages and the map editor, which is the settlement's map
+/// drawn with the same tools. It lives here rather than on a settlement panel
+/// because the stage and the toolbar are the pixel editor's; the Land panel
+/// points at it.
 const SPRITE_TABS: &[TabDef] = &[
-    TabDef { id: "draw", label: "Draw", build: ui::art_panel::build_draw },
-    TabDef { id: "sheet", label: "Sheet", build: ui::art_panel::build_sheet },
-];
-
-/// The same two with the map editor after them. A separate list rather than a
-/// filter, because a tab list is static and the one thing that decides between
-/// these is a switch on another panel.
-const SPRITE_TABS_EXPERIMENTAL: &[TabDef] = &[
     TabDef { id: "draw", label: "Draw", build: ui::art_panel::build_draw },
     TabDef { id: "sheet", label: "Sheet", build: ui::art_panel::build_sheet },
     TabDef { id: "map", label: "Map", build: ui::map_panel::build },
@@ -713,17 +705,13 @@ const CIV_TABS: &[TabDef] = &[
 
 /// The tab of `mode` with this id, as the static string the tab machinery
 /// wants. Menu search carries ids as text, having read them out of the page.
-/// Every tab is looked up here, whether or not it is showing: a search hit on
-/// a page behind the experiments switch should say so by taking somebody
-/// there, not by silently landing them on the first tab.
 pub fn tab_id_of(mode: Mode, id: &str) -> Option<&'static str> {
-    tabs_for(mode, true).iter().find(|t| t.id == id).map(|t| t.id)
+    tabs_for(mode).iter().find(|t| t.id == id).map(|t| t.id)
 }
 
-fn tabs_for(mode: Mode, experiments: bool) -> &'static [TabDef] {
+fn tabs_for(mode: Mode) -> &'static [TabDef] {
     match mode {
         Mode::Lab => LAB_TABS,
-        Mode::Sprites if experiments => SPRITE_TABS_EXPERIMENTAL,
         Mode::Sprites => SPRITE_TABS,
         Mode::Settlement => CIV_TABS,
     }
@@ -731,7 +719,7 @@ fn tabs_for(mode: Mode, experiments: bool) -> &'static [TabDef] {
 
 /// The tabs the page is showing right now.
 fn tabs_now(app: &App) -> &'static [TabDef] {
-    tabs_for(app.mode, app.state.civ.experiments.on)
+    tabs_for(app.mode)
 }
 
 // ---- storage -------------------------------------------------------------
@@ -864,10 +852,6 @@ pub fn start() -> Result<(), JsValue> {
         play_time: 0.0,
         move_people: false,
         map_edit: Default::default(),
-        land: crate::ui::zone_paint::Landscape {
-            threshold: 0.12,
-            ..crate::ui::zone_paint::Landscape::default()
-        },
         place: false,
         scene_drag: None,
         hand: crate::civ::place::Hand::default(),
@@ -3054,6 +3038,10 @@ fn frame(h: &Handle, ts: f64) {
             // The sky marks are the page's rather than the map's, and they
             // came with the layers that were read.
             sh.app.ui.map_edit.mark_sky(cells.cols, cells.rows, cells.sky);
+            // The map page was built before the map existed, and what it
+            // offers depends on what was laid: the picture's switch, the
+            // tally.
+            sh.app.rebuild_panel = true;
         }
         if let Some(civ) = &mut sh.app.settlement {
             // A settlement left running is picked up where it was; only a

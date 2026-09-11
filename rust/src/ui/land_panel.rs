@@ -8,7 +8,7 @@ use crate::civ::config::FOLIAGE_MODES;
 use crate::civ::terrain::{DepositKind, DEPOSIT_KINDS};
 use crate::ui::{
     app_bool, app_button, app_color, app_num, app_restart_num, app_select, append, btn_row, clear,
-    danger_button, el, note, sampler_options, section, stat, NumOpts, Scope,
+    danger_button, el, go_to_button, note, sampler_options, section, stat, NumOpts, Scope,
 };
 
 /// What stands behind the map. Putting one up is a press on the sky with the
@@ -92,6 +92,11 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     let civ = &app.state.civ;
 
     let map = vec![
+        note("The map itself - the ground, what may grow where, a picture to draw it as - is \
+              drawn by hand on the Sprite editor's Map page, with everything about drawing it \
+              in one place. What is here is its size, the seed, and the terrain it is grown \
+              from when nobody draws one."),
+        btn_row(vec![go_to_button(h, "Draw the map by hand", crate::app::Mode::Sprites, "map")]),
         civ_num(h, "Columns (x)", civ.world.cols as f64, NumOpts { min: 24.0, max: 512.0, step: 1.0 },
             Some("cells across the map"),
             |app, v| app.state.civ.world.cols = v as i32),
@@ -215,7 +220,6 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     }
     append(root, section("Deposits", deposit_fields));
 
-    append(root, crate::ui::zone_paint::build(app, h));
     append(root, scenery_section(app, h));
 
     let view = &app.state.civ.view;
@@ -270,10 +274,6 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("the space around the map becomes the same sky: the gradient carries on and \
                   the clouds repeat across it"),
             |app, v| { app.state.civ.view.cloud_space = v; app.request_save(); }),
-        app_bool(h, "Ground over the map picture", view.ground_over_art,
-            Some("a map read from a picture is drawn as that picture and its cells only act \
-                  as what they are; on, the generated ground is drawn over it instead"),
-            |app, v| { app.state.civ.view.ground_over_art = v; app.civ_repaint(); }),
         app_bool(h, "Building labels", view.labels, None,
             |app, v| { app.state.civ.view.labels = v; app.civ_repaint(); }),
         app_bool(h, "Boats", view.boats, None,

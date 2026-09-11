@@ -82,7 +82,15 @@ const setNum = async (selector, value) => {
 page.on('console', (msg) => {
   if (msg.type() === 'error') problems.push(`console error: ${msg.text()}`);
 });
-page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+// Said at once as well as collected, with where it came from, so a page error
+// can be placed against the progress lines around it.
+let shownErrors = 0;
+page.on('pageerror', (err) => {
+  const lines = (err.stack || '').split('\n').filter((l) => !/wasm-function|wbindgen_throw|throw_str/.test(l));
+  if (shownErrors++ < 2) console.log(`page error now: ${err.message}\n${lines.slice(0, 12).join('\n')}`);
+  else console.log(`page error now: ${err.message}`);
+  problems.push(`page error: ${err.message}`);
+});
 
 // Sections of a panel arrive folded, and nearly every check below reaches
 // into one. Pressing Unfold all after each of them would be a press after
@@ -363,7 +371,7 @@ await setSpeed(speedPos(4));
 // stack a layer, step and play the frames, and send the sheet to a motion.
 await page.click('.mode:text-is("Sprite editor")');
 await page.waitForTimeout(700);
-if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet') {
+if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') {
   problems.push('the sprite editor did not bring its own tabs');
 }
 // The editor draws none of the view menu's overlays, so the dropdown is gone.
@@ -1264,71 +1272,6 @@ await page.waitForTimeout(500);
 if ((await page.locator('#take-over').count()) !== 0) {
   problems.push('the take over switch was on the toolbar with the experiment off');
 }
-// Zones from a picture: a four pixel image, red down one side and blue down
-// the other, laid over the map. Dragging a box over the red half and applying
-// a zone to it should take about half the cells in the box and nothing else.
-await page.click('.tab[data-tab="land"]');
-await page.waitForTimeout(500);
-const zoneGroup = page.locator('#panel-body .group:has-text("Zones from a picture")');
-if ((await zoneGroup.count()) === 0) {
-  problems.push('the Land panel has no way to draw zones from a picture');
-} else {
-  const RED_AND_BLUE =
-    'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAFUlEQVR4nGO4YGAARAYJF4CIgTgOABDSFIGliA40AAAAAElFTkSuQmCC';
-  await zoneGroup.locator('input[type=file]').setInputFiles({
-    name: 'land.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from(RED_AND_BLUE, 'base64'),
-  });
-  await page.waitForTimeout(900);
-  const canvas = zoneGroup.locator('canvas.landscape');
-  if ((await canvas.count()) === 0) {
-    problems.push('the dropped picture was not laid over the map');
-  } else {
-    // Press on the red half and drag the box across the whole picture. The
-    // events are dispatched on the canvas itself rather than driven with the
-    // mouse: the panel scrolls, and a canvas that is half above the fold has a
-    // bounding box the pointer cannot reach.
-    await canvas.evaluate((node) => {
-      const r = node.getBoundingClientRect();
-      const send = (type, fx, fy, buttons) =>
-        node.dispatchEvent(
-          new PointerEvent(type, {
-            pointerId: 1,
-            clientX: r.left + r.width * fx,
-            clientY: r.top + r.height * fy,
-            bubbles: true,
-            button: 0,
-            buttons,
-          }),
-        );
-      send('pointerdown', 0.1, 0.5, 1);
-      send('pointermove', 0.6, 0.9, 1);
-      send('pointermove', 0.98, 0.98, 1);
-      send('pointerup', 0.98, 0.98, 0);
-    });
-    await page.waitForTimeout(400);
-    const readout = (await page.textContent('#zone-readout')) ?? '';
-    const hit = readout.match(/^(\d+) cells match, of (\d+)/);
-    if (!hit) {
-      problems.push(`dragging a box on the picture read "${readout}"`);
-    } else if (!(Number(hit[1]) > 0 && Number(hit[1]) < Number(hit[2]))) {
-      problems.push(`the color threshold took ${hit[1]} of ${hit[2]} cells, not some of them`);
-    }
-    await zoneGroup.locator('[data-find="make-it"] select').selectOption('bare');
-    await page.waitForTimeout(200);
-    await zoneGroup.locator('.btn:text-is("Apply to the map")').click();
-    await page.waitForTimeout(500);
-    const said = (await page.textContent('#save-note')).trim();
-    if (!/cells are growth: nothing/.test(said)) {
-      problems.push(`applying a zone said "${said}"`);
-    }
-    await page.screenshot({ path: `${outDir}/11l-zones.png` });
-    await zoneGroup.locator('.btn:text-is("Forget the picture")').click();
-    await page.waitForTimeout(400);
-  }
-}
-
 // Placing things by hand: the menu is on the Build panel and the press is the
 // stage's, the same as every other switch over the map.
 await page.click('.tab[data-tab="build"]');
@@ -1462,17 +1405,28 @@ if ((await page.locator('#take-over').count()) === 0) {
   await page.waitForTimeout(150);
 }
 
-// The map editor: a third page of the sprite editor, which only exists while
-// the experiment is on. It paints the settlement's own map, so what is checked
-// is that a press on the stage changes the map under it, that a zone is drawn
-// over the ground rather than instead of it, and that a stroke can be put back.
-await page.click('.mode:text-is("Sprite editor")');
+// The map editor: a third page of the sprite editor, which the Land panel's
+// Map section points at, and that button is how this gets there. It paints
+// the settlement's own map, so what is checked is that a press on the stage
+// changes the map under it, that a zone is drawn over the ground rather than
+// instead of it, and that a stroke can be put back.
+await page.click('.tab[data-tab="land"]');
+await page.waitForTimeout(500);
+await page.click('#panel-body .btn:text-is("Draw the map by hand")');
 await page.waitForTimeout(700);
+const landedOn = await page.evaluate(
+  () =>
+    `${document.querySelector('.mode.active')?.textContent}/${document
+      .querySelector('.tab.active')
+      ?.getAttribute('data-tab')}`,
+);
+if (landedOn !== 'Sprite editor/map') {
+  problems.push(`the Land panel's button landed on ${landedOn}, not the map page`);
+}
 if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') {
-  problems.push('the map page is missing with the experiment on');
+  problems.push('the sprite editor has no map page');
 } else {
-  await page.click('.tab[data-tab="map"]');
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(300);
   // The tally is one stat per kind of ground, name and count, plus the size of
   // the map. Read whole rows, and only the tally's own section.
   const tally = () =>
@@ -1645,11 +1599,36 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
   if (!/drawn as a picture64 by 32/.test(await tally())) {
     problems.push(`the map read from layers is not drawn as their picture: ${await tally()}`);
   }
+  // The switch that draws the generated ground over the picture lives here,
+  // with the picture it is about. On, then a look at the settlement, then off.
+  const groundOver = '#panel-body [data-find="ground-over-the-map-picture"] .btn';
+  if ((await page.locator(groundOver).count()) !== 1) {
+    problems.push('the map page has no switch to draw the ground over its picture');
+  } else {
+    await page.click(groundOver);
+    await page.waitForTimeout(300);
+    await page.click('.mode:text-is("Settlement")');
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: `${outDir}/19d-ground-over-picture.png` });
+    // A mode opens on its first tab, so the map page has to be chosen again.
+    await page.click('.mode:text-is("Sprite editor")');
+    await page.waitForTimeout(500);
+    await page.click('.tab[data-tab="map"]');
+    await page.waitForTimeout(500);
+    await page.click(groundOver);
+    await page.waitForTimeout(300);
+  }
+  // The page's own way back to the map's size and seed.
+  await page.click('#panel-body .btn:text-is("Map size and seed")');
+  await page.waitForTimeout(600);
+  if ((await page.evaluate(() => document.querySelector('.tab.active')?.getAttribute('data-tab'))) !== 'land') {
+    problems.push('the map page\'s button to the map size did not reach the Land panel');
+  }
 }
 await page.click('.mode:text-is("Settlement")');
 await page.waitForTimeout(1500);
 // The map drawn as the layers' own picture, with the town on top of it.
-await page.screenshot({ path: `${outDir}/19d-map-picture.png` });
+await page.screenshot({ path: `${outDir}/19e-map-picture.png` });
 await page.click('.tab[data-tab="experimental"]');
 await page.waitForTimeout(400);
 
@@ -1703,14 +1682,6 @@ await page.waitForTimeout(600);
 await page.screenshot({ path: `${outDir}/11i-space-clouds.png` });
 await page.click(spaceClouds);
 await page.waitForTimeout(200);
-
-// The generated ground over the map's picture, and the picture back again.
-const groundOver = '#panel-body [data-find="ground-over-the-map-picture"] .btn';
-await page.click(groundOver);
-await page.waitForTimeout(600);
-await page.screenshot({ path: `${outDir}/11j-ground-over-picture.png` });
-await page.click(groundOver);
-await page.waitForTimeout(300);
 await resume();
 
 // Back to the lab and in again: both sims have to survive the switch.

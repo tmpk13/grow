@@ -35,8 +35,8 @@ use crate::civ::map_brush::{Brush, LayerArt, LayerMask, MapArt, BRUSHES};
 use crate::civ::terrain::Cell;
 use crate::ui::paint::Surface;
 use crate::ui::{
-    app_button, append, btn_row, button, count_field, danger_button, el, input_el, note,
-    number_field, on, section, select_value_of, stat, NumOpts, Scope, Tap,
+    app_bool, app_button, append, btn_row, button, count_field, danger_button, el, go_to_button,
+    input_el, note, number_field, on, section, select_value_of, stat, NumOpts, Scope, Tap,
 };
 use crate::util::EMPTY_COLOR;
 use crate::world::Zone;
@@ -448,7 +448,7 @@ fn color_region(app: &App, from: (i32, i32)) -> Vec<(i32, i32)> {
             continue;
         }
         seen[i] = true;
-        if !crate::ui::zone_paint::near(at(c, r), target, tools.threshold) {
+        if !crate::civ::map_brush::near(at(c, r), target, tools.threshold) {
             continue;
         }
         out.push((c, r));
@@ -646,14 +646,24 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
         root,
         section(
             "The map editor",
-            vec![note(
-                "The settlement's own map, drawn by hand. Paint the land with the tools above \
-                 the stage - the same pencil, fill and eraser the sprite editor uses - and the \
-                 map changes under the pointer: no draft, nothing to apply. Every stroke is one \
-                 step back, kept for as long as the page is open. A whole map can be read in \
-                 from a set of layers, one per kind of thing, and a picture can be laid under \
-                 the map to trace.",
-            )],
+            vec![
+                note(
+                    "The settlement's own map, drawn by hand. Paint the land with the tools \
+                     above the stage - the same pencil, fill and eraser the sprite editor uses \
+                     - and the map changes under the pointer: no draft, nothing to apply. Every \
+                     stroke is one step back, kept for as long as the page is open. A whole map \
+                     can be read in from a set of layers, one per kind of thing, and a picture \
+                     can be laid under the map to trace. Everything about drawing the map is on \
+                     this page; its size, the seed and the terrain it is grown from when nobody \
+                     draws one are in the Land panel's Map section.",
+                ),
+                btn_row(vec![go_to_button(
+                    h,
+                    "Map size and seed",
+                    crate::app::Mode::Settlement,
+                    "land",
+                )]),
+            ],
         ),
     );
 
@@ -730,9 +740,14 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     if app.settlement.as_ref().is_some_and(|sim| sim.art.is_some()) {
         map_rows.push(note(
             "The map is drawn as the picture it was read from, and what is painted here \
-             changes what a cell is without changing how it looks. Taking the picture off \
-             draws the map as the ground it is instead, for good.",
+             changes what a cell is without changing how it looks. The switch draws the \
+             generated ground over the picture for a look at the ground as it is; taking the \
+             picture off draws it that way for good.",
         ));
+        map_rows.push(app_bool(h, "Ground over the map picture", app.state.civ.view.ground_over_art,
+            Some("draws the generated ground over the picture the map was read from, so the \
+                  cells look like what they are rather than like the drawing"),
+            |app, v| { app.state.civ.view.ground_over_art = v; app.civ_repaint(); }));
         map_rows.push(danger_button("Take the picture off the map", Scope::Panel, {
             let h2 = h.clone();
             move || {
@@ -861,13 +876,13 @@ fn layers_section(app: &App, h: &Handle) -> Element {
     )));
     rows.push(note(if tools.image.is_some() {
         "The picture to trace is the drawing whole, so it becomes the map's own picture: the \
-         ground is drawn as it and the cells only act as what they are. The Land panel's View \
-         section has a switch to draw the generated ground over it."
+         ground is drawn as it and the cells only act as what they are. The map section below \
+         has a switch to draw the generated ground over it."
     } else {
         "The layers flattened - later over earlier, masks left out - become the map's own \
          picture: the ground is drawn as it and the cells only act as what they are, so a \
-         layer set to Leave alone still lends its colors. The Land panel's View section has a \
-         switch to draw the generated ground over it."
+         layer set to Leave alone still lends its colors. The map section below has a switch \
+         to draw the generated ground over it."
     }));
     let h2 = h.clone();
     rows.push(danger_button("Forget the layers", Scope::Panel, move || {

@@ -38,7 +38,6 @@ pub mod restart_bar;
 pub mod section_io;
 pub mod view_menu;
 pub mod world_panel;
-pub mod zone_paint;
 
 pub fn window() -> Window {
     web_sys::window().expect("no window")
@@ -92,7 +91,12 @@ pub enum Scope {
 }
 
 /// A listener, kept alive for as long as the node it is attached to.
-type Listener = Closure<dyn FnMut(Event)>;
+/// A listener and where it hangs, so clearing a scope can take it off the
+/// node as well as dropping it. Dropping alone is not enough: an event that
+/// was queued before the node was taken out of the page - a details element's
+/// toggle after its open attribute moved - is still delivered to the detached
+/// node, and a closure that has been dropped by then throws.
+type Listener = (web_sys::EventTarget, String, Closure<dyn FnMut(Event)>);
 
 thread_local! {
     static GLOBAL_BAG: RefCell<Vec<Listener>> = const { RefCell::new(Vec::new()) };
@@ -116,22 +120,27 @@ fn with_bag<R>(scope: Scope, f: impl FnOnce(&mut Vec<Listener>) -> R) -> R {
     }
 }
 
-/// Drops every listener in a scope. Always clear the nodes first.
+/// Takes every listener in a scope off its node and drops it. The nodes are
+/// usually cleared first, but a listener is taken off regardless, since an
+/// event already on its way to a detached node would still find it.
 pub fn clear_scope(scope: Scope) {
-    with_bag(scope, |bag| bag.clear());
+    let taken = with_bag(scope, std::mem::take);
+    for (target, event, closure) in taken {
+        let _ = target.remove_event_listener_with_callback(&event, closure.as_ref().unchecked_ref());
+    }
 }
 
 pub fn on(target: &EventTarget, event: &str, scope: Scope, f: impl FnMut(Event) + 'static) {
-    let closure = Listener::wrap(Box::new(f));
+    let closure = Closure::wrap(Box::new(f) as Box<dyn FnMut(Event)>);
     target
         .add_event_listener_with_callback(event, closure.as_ref().unchecked_ref())
         .expect("listener");
-    with_bag(scope, |bag| bag.push(closure));
+    with_bag(scope, |bag| bag.push((target.clone(), event.to_string(), closure)));
 }
 
 /// Same, but the listener asks the browser not to take the default action.
 pub fn on_passive_false(target: &EventTarget, event: &str, scope: Scope, f: impl FnMut(Event) + 'static) {
-    let closure = Listener::wrap(Box::new(f));
+    let closure = Closure::wrap(Box::new(f) as Box<dyn FnMut(Event)>);
     let opts = web_sys::AddEventListenerOptions::new();
     opts.set_passive(false);
     target
@@ -141,7 +150,7 @@ pub fn on_passive_false(target: &EventTarget, event: &str, scope: Scope, f: impl
             &opts,
         )
         .expect("listener");
-    with_bag(scope, |bag| bag.push(closure));
+    with_bag(scope, |bag| bag.push((target.clone(), event.to_string(), closure)));
 }
 
 pub fn clear(node: &Element) {
@@ -296,6 +305,32 @@ fn mark_drop(list: &Element, row: Option<&Element>) {
 
 pub fn append(parent: &Element, child: Element) {
     let _ = parent.append_child(&child);
+}
+
+/// Runs `f` once the current event has finished being handled. A control in
+/// the panel that rebuilds the panel would be tearing down the listener it
+/// is running in; putting the work at the back of the queue lets the click
+/// finish first.
+pub fn defer(f: impl FnOnce() + 'static) {
+    let cb = Closure::once_into_js(f);
+    let _ = window().set_timeout_with_callback_and_timeout_and_arguments_0(cb.unchecked_ref(), 0);
+}
+
+/// A button in a panel that goes to another mode and tab, the way a search
+/// hit travels. Deferred, since the panel it is in is about to be replaced.
+pub fn go_to_button(h: &Handle, label: &str, mode: crate::app::Mode, tab: &'static str) -> Element {
+    let h2 = h.clone();
+    button(label, Scope::Panel, move || {
+        let h3 = h2.clone();
+        defer(move || {
+            let mut sh = h3.borrow_mut();
+            let sh = &mut *sh;
+            if sh.app.mode != mode {
+                crate::app::show_mode(sh, &h3, mode);
+            }
+            crate::app::show_tab(sh, &h3, tab);
+        });
+    })
 }
 
 pub fn input_el(kind: &str) -> HtmlInputElement {

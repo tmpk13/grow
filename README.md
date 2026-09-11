@@ -176,9 +176,11 @@ middle button or a held ctrl drags, wheel or pinch zooms.
 
 ### The map page
 
-With the settlement's **Experimental** switch on, the sprite editor grows a
-third page: the settlement's own map, drawn by hand instead of grown from
-noise.
+The sprite editor's third page is the settlement's own map, drawn by hand
+instead of grown from noise. Everything about drawing the map is on it; the
+map's size, the seed and the terrain it is grown from when nobody draws one
+are in the Land panel's Map section, and the two point at each other - **Draw
+the map by hand** there, **Map size and seed** here.
 
 It is the same pixel editor. The stage is one pixel per map cell, the tools are
 the ones already in the toolbar - pencil, fill, eraser, pick, line, mirror -
@@ -226,11 +228,11 @@ kept.
   goes over it. Where the picture is clear the generated ground shows
   through, which is what land the map grows later looks like. With a picture
   to trace loaded when the layers are used, that picture is the map's picture
-  instead, as the drawing whole. **Ground over the map picture** in the Land
-  panel's View section draws the generated ground over it again, and **Take
-  the picture off the map** on the map page drops it for good. The picture is
-  written down with the settlement, so a photograph costs its size every time
-  the settlement is saved.
+  instead, as the drawing whole. **Ground over the map picture**, in the map
+  section of this page, draws the generated ground over it again, and **Take
+  the picture off the map** drops it for good. The picture is written down
+  with the settlement, so a photograph costs its size every time the
+  settlement is saved.
 * **Drop a picture** and it is laid under the map, corner to corner, to trace
   over. It is never read in and never part of the project or a settlement: the
   picture goes when the page does, and what is kept is the map painted with it
@@ -258,8 +260,7 @@ kept.
 swimming and rock is walked on and built on; a face of rock is neither. Nobody
 crosses one, nothing takes root in one, and nothing is ever built on one. The
 terrain generator never makes one, so a cliff on a map is always somewhere
-somebody drew it - by hand here, or from a picture with the Land panel's
-**Zones from a picture**.
+somebody drew it, by hand or from a layer.
 
 ### Pictures dropped in
 
@@ -381,9 +382,7 @@ same few stretched across it.
 The view section holds day and night, footpaths, chimney smoke, boats, current,
 building labels, the water and path colors, how long the map waits before taking
 the whole window on its own, and the two drawing controls: whether to draw only
-what is on screen, and the zoom below which detail starts being shed. **Ground
-over the map picture** is there too: a map read from a picture on the map page
-is drawn as that picture, and this draws the generated ground over it instead.
+what is on screen, and the zoom below which detail starts being shed.
 
 **Weather** is in there too: whether clouds pass at all, how much of the sky
 they take, how fast they drift, how strongly their edges churn, and **Cloud

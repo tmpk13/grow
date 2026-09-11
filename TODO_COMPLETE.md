@@ -3,6 +3,12 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) Everything about drawing the map is in one place. The map page is a
+  plain tab of the sprite editor rather than a page behind the experiments
+  switch, so menu search finds it; the switch that draws the ground over the
+  map's picture moved onto it from the Land panel's View section; the Land
+  panel's older picture-to-zones tool is gone, its job being the map page's;
+  and the Land panel's Map section and the map page point at each other.
 - (LLM) A map read from a picture is drawn as that picture: the layers'
   colors flattened, or the picture being traced, go under everything, the
   generated ground is not drawn where the picture has something, and a cell

@@ -286,6 +286,18 @@ impl Brush {
     }
 }
 
+/// Whether two colors are within the threshold of each other, as a fraction
+/// of the furthest apart two colors can be. What the fill by color on the map
+/// page decides by.
+pub fn near(a: u32, b: u32, threshold: f64) -> bool {
+    let (a, b) = (unpack_rgba(a), unpack_rgba(b));
+    let d = ((a.r as f64 - b.r as f64).powi(2)
+        + (a.g as f64 - b.g as f64).powi(2)
+        + (a.b as f64 - b.b as f64).powi(2))
+    .sqrt();
+    d / (255.0 * 3.0f64.sqrt()) <= threshold.clamp(0.0, 1.0)
+}
+
 /// Where a layer says its thing is, one flag a pixel, and whether it had to
 /// be read by brightness. A layer out of a drawing program is clear wherever
 /// nothing was drawn, so a pixel that is not clear is the mark. One with no

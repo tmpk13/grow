@@ -1623,6 +1623,135 @@
     "kind": "button"
   },
   {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "label": "Map",
+    "hint": "the map tab of sprite editor",
+    "kind": "tab"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "The map editor",
+    "label": "Map size and seed",
+    "anchor": "map-size-and-seed",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "What to paint",
+    "label": "Water",
+    "anchor": "water",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "What to paint",
+    "label": "Rock face",
+    "anchor": "rock-face",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "What to paint",
+    "label": "Rock",
+    "anchor": "rock",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "What to paint",
+    "label": "Grass",
+    "anchor": "grass",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "What to paint",
+    "label": "Sand",
+    "anchor": "sand",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "What to paint",
+    "label": "Trees only",
+    "anchor": "trees-only",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "What to paint",
+    "label": "Low growth only",
+    "anchor": "low-growth-only",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "What to paint",
+    "label": "Nothing grows",
+    "anchor": "nothing-grows",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "What to paint",
+    "label": "Sky",
+    "anchor": "sky",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "The map",
+    "label": "Wipe the map to grass",
+    "anchor": "wipe-the-map-to-grass",
+    "kind": "button"
+  },
+  {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "The map",
+    "label": "Take every zone off",
+    "anchor": "take-every-zone-off",
+    "kind": "button"
+  },
+  {
     "mode": "settlement",
     "mode_label": "Settlement",
     "group": "View",
@@ -1718,6 +1847,16 @@
     "label": "Land",
     "hint": "the land tab of settlement",
     "kind": "tab"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "Map",
+    "label": "Draw the map by hand",
+    "anchor": "draw-the-map-by-hand",
+    "kind": "button"
   },
   {
     "mode": "settlement",
@@ -2068,37 +2207,6 @@
     "mode_label": "Settlement",
     "tab": "land",
     "tab_label": "Land",
-    "group": "Zones from a picture",
-    "label": "Make it",
-    "anchor": "make-it",
-    "kind": "field"
-  },
-  {
-    "mode": "settlement",
-    "mode_label": "Settlement",
-    "tab": "land",
-    "tab_label": "Land",
-    "group": "Zones from a picture",
-    "label": "How near the color",
-    "hint": "0 takes that exact color only; 1 takes the whole box",
-    "anchor": "how-near-the-color",
-    "kind": "field"
-  },
-  {
-    "mode": "settlement",
-    "mode_label": "Settlement",
-    "tab": "land",
-    "tab_label": "Land",
-    "group": "Zones from a picture",
-    "label": "Apply to the map",
-    "anchor": "apply-to-the-map",
-    "kind": "button"
-  },
-  {
-    "mode": "settlement",
-    "mode_label": "Settlement",
-    "tab": "land",
-    "tab_label": "Land",
     "group": "View",
     "label": "Day and night",
     "hint": "tints the map with the hour and lights the windows",
@@ -2243,17 +2351,6 @@
     "label": "Clouds past the map's edge",
     "hint": "the space around the map becomes the same sky: the gradient carries on and the clouds repeat across it",
     "anchor": "clouds-past-the-map-s-edge",
-    "kind": "field"
-  },
-  {
-    "mode": "settlement",
-    "mode_label": "Settlement",
-    "tab": "land",
-    "tab_label": "Land",
-    "group": "View",
-    "label": "Ground over the map picture",
-    "hint": "a map read from a picture is drawn as that picture and its cells only act as what they are; on, the generated ground is drawn over it instead",
-    "anchor": "ground-over-the-map-picture",
     "kind": "field"
   },
   {
