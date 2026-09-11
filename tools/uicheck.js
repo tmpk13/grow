@@ -1626,6 +1626,31 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
       problems.push(`putting the picture back left cells painted over: ${await tally()}`);
     }
   }
+
+  // A fill by color reads the picture rather than drawing over it - it says
+  // the sea already in the drawing is water - so the cells it covers keep the
+  // picture, unlike the pencil stroke above. It works off the map's own
+  // picture here: there is none laid under to trace.
+  await page.click('#panel-body [data-find="fill-by-color-in-the-picture"] .btn');
+  await page.waitForTimeout(400);
+  await page.click('#panel-body .chip:has-text("Sand")');
+  await page.waitForTimeout(200);
+  const wasSand = await count('Sand');
+  {
+    const c = await page.locator('#world-canvas').boundingBox();
+    await page.mouse.click(c.x + c.width * 0.5, c.y + c.height * 0.5);
+    await page.waitForTimeout(800);
+  }
+  if (!((await count('Sand')) > wasSand)) {
+    problems.push("a fill by the map's own picture covered nothing");
+  }
+  if (/painted over it/.test(await tally())) {
+    problems.push(`a fill by color took the picture off the cells it read: ${await tally()}`);
+  }
+  await page.click('#panel-body [data-find="fill-by-color-in-the-picture"] .btn');
+  await page.waitForTimeout(300);
+  await page.click('#btn-undo');
+  await page.waitForTimeout(600);
   // The switch that draws the generated ground over the picture lives here,
   // with the picture it is about. On, then a look at the settlement, then off.
   const groundOver = '#panel-body [data-find="ground-over-the-map-picture"] .btn';

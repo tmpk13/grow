@@ -1591,6 +1591,16 @@ visited grid of its own, unlike the ordinary flood: what a cell is painted does
 not change what the picture shows there, so a flood that decided by the picture
 alone would go round forever.
 
+Either picture will do: the one laid under the map to trace, and the map's own
+when there is none. That second case is what makes a map dropped as one drawing
+usable - the colors came in with the drawing, and this is how the sea in them
+is told that it is water - so the control sits with the brushes rather than in
+either picture's section, being about the tool. And a fill this way is the one
+press that does *not* take the picture off what it covers: it is reading the
+picture, not drawing over it, and taking it off would erase the very colors the
+press was aimed at. `MapTools::reading` is set around the loop in `fill_from`
+and is what `set` looks at.
+
 Wiping is the same machinery pointed at every cell at once: the ground the
 legend has selected, no zones, no sky marks, and one step of the page's history
 holding whatever actually moved. That is also why the history is trimmed by how
@@ -1621,8 +1631,19 @@ of trees. Each is a `map_panel::MapLayer` in `app.ui.map_edit`, kept as where
 it has something rather than as its pixels - `map_brush::layer_mask` reduces a
 picture to one flag a pixel on the way in - because that is all a layer is
 ever asked. A layer out of a drawing program is clear wherever nothing was
-drawn, so a pixel that is not clear is the mark; one with no clear pixel in
-it at all was drawn as a mask, light against dark, and is read by brightness.
+drawn, so a pixel that is not clear is the mark.
+
+A layer with no clear pixel in it may be either of two things, and only the
+colors tell them apart. A mask is gray and has a light half and a dark half:
+it says where its thing is by brightness, and there are no colors in it worth
+keeping, which is why `flatten_layers` leaves masks out of the map's picture.
+A picture that covers the whole map - a coastline drawn edge to edge, a
+photograph - is neither. Reading everything opaque as a mask, which
+`layer_mask` used to do, is how a map made from one drawing came out as
+nothing but the base ground: its dark half said "nothing here" and its colors
+were dropped with the mask they were mistaken for. So the test is opaque *and*
+gray *and* light-and-dark, and anything else that covers everything is a
+drawing that covers everything.
 
 What a layer is comes from its file name. `Brush::guess` tries a fixed list of
 words against the whole words of the name - "rock face" is a face before it

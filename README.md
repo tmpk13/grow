@@ -207,10 +207,19 @@ kept.
   set: wherever a layer has something drawn, the cell is that. What a layer is
   comes from its file name (`water.png`, `03 trees.png`, `rock face.png`) and
   can be changed on its row; a layer that says *Leave alone* is skipped. A
-  layer with nothing clear in it is read as a mask, light where the thing is.
-  Where two layers answer the same question the later one in the list wins, a
-  layer of trees over a layer of sand answers two, and every cell no ground
-  layer covers is the ground the legend has selected.
+  layer that covers everything says its thing about every cell, which is what a
+  base layer under the rest is; a layer that is gray with a light half and a
+  dark half is read as a mask, light where the thing is. Where two layers
+  answer the same question the later one in the list wins, a layer of trees
+  over a layer of sand answers two, and every cell no ground layer covers is
+  the ground the legend has selected.
+* **A whole map as one drawing.** Dropping a single picture that covers
+  everything works too, and it is the shortest way in: it has no transparency
+  to read kinds of ground out of, so it lends only its colors and every cell
+  comes up as the ground the legend has selected. The page says so before the
+  press. Say what the colors are afterwards with **Fill by color in the
+  picture** - one press on the sea in the drawing makes that sea water, and the
+  drawing still looks like itself.
 * **Picture pixels to a cell** is how much of a layer goes to one cell. It is
   guessed from the first layer - art drawn eight screen pixels to a pixel comes
   back as eight - and it is what decides how large a map the layers make. Every
@@ -258,12 +267,16 @@ kept.
   Zones and sky marks stay legible either way.
 * **Take the sky colors** reads the top and the bottom of whatever is marked
   sky out of the picture and sets the world's sky gradient to them.
-* **Fill by color in the picture** turns the fill tool into a magic wand over
-  the picture rather than over the map: press on the sea in a photograph and
-  every cell whose color stays near enough to that one, spreading out from
-  where you pressed, becomes whatever the legend has selected. **How near the
-  color** is how far "near enough" goes - 0 takes that exact color only, 1
-  takes the whole map whatever it looks like.
+* **Fill by color in the picture**, beside the legend, turns the fill tool into
+  a magic wand over the picture rather than over the map: press on the sea in a
+  photograph and every cell whose color stays near enough to that one,
+  spreading out from where you pressed, becomes whatever the legend has
+  selected. It works off whichever picture is under the map - the one laid
+  there to trace, or the map's own - and it is offered whenever there is one.
+  **How near the color** is how far "near enough" goes - 0 takes that exact
+  color only, 1 takes the whole map whatever it looks like. Filling this way
+  *reads* the picture rather than drawing over it, so the cells keep it, unlike
+  a stroke of the pencil.
 * **Wipe the map to ...** turns every cell into the ground the legend has
   selected and takes every zone and sky mark off with it: a blank sheet to draw
   on. Wipe to water and draw the land in, or wipe to grass and draw the sea.

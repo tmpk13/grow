@@ -14,7 +14,9 @@
 //! where a layer has something drawn, the cell is what the layer is. That is
 //! how a drawing program hands a map over - a layer of water, a layer of
 //! sand, a layer of trees - and it needs no exact colors, which a picture
-//! that carried every kind at once did.
+//! that carried every kind at once did. A layer that covers everything is a
+//! layer that says its thing about every cell, which is what a base layer
+//! under the rest is.
 //!
 //! A set of layers says two things at once, and both are kept. Where a layer
 //! has something drawn decides what kind of ground the cell is; what was
@@ -392,21 +394,57 @@ pub fn near(a: u32, b: u32, threshold: f64) -> bool {
     d / (255.0 * 3.0f64.sqrt()) <= threshold.clamp(0.0, 1.0)
 }
 
+/// How far a pixel's three channels may be apart and still read as gray. A
+/// mask drawn with a soft brush or saved through a lossy format is a few
+/// counts off neutral here and there, and that is still a mask.
+const GRAY_SPREAD: u8 = 12;
+
+/// Whether a pixel is the light half of a mask.
+fn lit(c: crate::util::Rgba) -> bool {
+    c.r as u32 * 299 + c.g as u32 * 587 + c.b as u32 * 114 >= 128 * 1000
+}
+
 /// Where a layer says its thing is, one flag a pixel, and whether it had to
 /// be read by brightness. A layer out of a drawing program is clear wherever
-/// nothing was drawn, so a pixel that is not clear is the mark. One with no
-/// clear pixel in it at all was drawn as a mask instead, light where the
-/// thing is and dark where it is not, and is read that way.
+/// nothing was drawn, so a pixel that is not clear is the mark.
+///
+/// A layer with no clear pixel in it may be either of two things, and the
+/// colors are what tell them apart. A mask is gray and has a light half and a
+/// dark half: it says where its thing is by brightness, and there are no
+/// colors in it worth keeping. A picture that covers the whole map - a
+/// coastline drawn edge to edge, a photograph - is neither, and reading it as
+/// a mask is how a map made from one came out as nothing but the base ground:
+/// its dark half said "nothing here" and its colors were dropped with the
+/// mask they were mistaken for. So a fully opaque layer is read by brightness
+/// only when it looks like a mask, and is otherwise a drawing that covers
+/// everything, which is what it is.
 pub fn layer_mask(w: i32, h: i32, px: &[u32]) -> (Vec<bool>, bool) {
     let n = (w.max(0) * h.max(0)) as usize;
     let cut = crate::civ::sprites::ALPHA_CUT;
     let pixel = |i: usize| unpack_rgba(px.get(i).copied().unwrap_or(0));
-    let by_light = (0..n).all(|i| pixel(i).a >= cut);
+    let (mut opaque, mut gray, mut light, mut dark) = (true, true, false, false);
+    for i in 0..n {
+        let c = pixel(i);
+        if c.a < cut {
+            opaque = false;
+            break;
+        }
+        if c.r.max(c.g).max(c.b) - c.r.min(c.g).min(c.b) > GRAY_SPREAD {
+            gray = false;
+            break;
+        }
+        if lit(c) {
+            light = true;
+        } else {
+            dark = true;
+        }
+    }
+    let by_light = opaque && gray && light && dark;
     let on = (0..n)
         .map(|i| {
             let c = pixel(i);
             if by_light {
-                c.r as u32 * 299 + c.g as u32 * 587 + c.b as u32 * 114 >= 128 * 1000
+                lit(c)
             } else {
                 c.a >= cut
             }

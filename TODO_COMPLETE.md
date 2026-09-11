@@ -3,6 +3,13 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A whole map dropped as one drawing works: a layer covering everything
+  is read as a drawing rather than as a light-against-dark mask, so its colors
+  become the map's picture instead of being thrown away - one opaque image used
+  to leave every cell as the base ground. Fill by color reads the map's own
+  picture as well as one laid under to trace, which is how the sea in a drawing
+  is told that it is water, and filling that way keeps the picture where a
+  pencil stroke takes it off.
 - (LLM) The picture a map is read from is the map, on the page as well as in
   the settlement: the map editor's stage draws the layers' own picture rather
   than the legend's colors, with a number for how strongly the land colors go

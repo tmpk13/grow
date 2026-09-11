@@ -108,9 +108,72 @@ fn a_layer_with_nothing_clear_in_it_is_read_light_against_dark() {
     assert!(by_light);
     assert_eq!(on[..6], [true; 6]);
     assert_eq!(on[6..], [false; 6]);
-    // A faint gray is the thing too: the line is the middle of the range.
-    let (on, _) = layer_mask(1, 1, &[pack_rgba(140, 140, 140, 255)]);
-    assert!(on[0]);
+    // A faint gray is the light half too: the line is the middle of the range.
+    let px: Vec<u32> = (0..4)
+        .map(|i| if i < 2 { pack_rgba(140, 140, 140, 255) } else { pack_rgba(10, 10, 10, 255) })
+        .collect();
+    let (on, by_light) = layer_mask(2, 2, &px);
+    assert!(by_light);
+    assert_eq!(on, [true, true, false, false]);
+    // A mask a lossy format has pushed a few counts off neutral is a mask.
+    let px: Vec<u32> = (0..4)
+        .map(|i| if i < 2 { pack_rgba(247, 252, 250, 255) } else { pack_rgba(6, 2, 9, 255) })
+        .collect();
+    let (on, by_light) = layer_mask(2, 2, &px);
+    assert!(by_light, "a mask a few counts off neutral was read as a drawing");
+    assert_eq!(on, [true, true, false, false]);
+}
+
+#[test]
+fn a_picture_covering_the_whole_map_is_a_drawing_and_not_a_mask() {
+    use grow::civ::map_brush::{flatten_layers, LayerArt};
+    // One opaque picture, edge to edge: sea, a shore, and land. Nothing in it
+    // is clear, which used to be the whole test for a mask - and reading it as
+    // one threw its colors away and left the dark half saying "nothing here",
+    // so a map made from it came out as the base ground and nothing else.
+    let (w, h) = (64, 32);
+    let sea = pack_rgba(40, 80, 170, 255);
+    let sand = pack_rgba(220, 200, 140, 255);
+    let land = pack_rgba(90, 150, 70, 255);
+    let px: Vec<u32> = (0..w * h)
+        .map(|i| match i % w {
+            x if x < 20 => sea,
+            x if x < 26 => sand,
+            _ => land,
+        })
+        .collect();
+    let (on, by_light) = layer_mask(w, h, &px);
+    assert!(!by_light, "a colored picture was read light against dark");
+    assert!(on.iter().all(|&v| v), "a picture that covers everything covers everything");
+
+    // Its colors are the map's picture, which is the whole point of dropping
+    // one: a mask's are not worth keeping and a drawing's are.
+    let art = flatten_layers(&[LayerArt { w, h, px: &px, by_light }])
+        .expect("a picture covering the map makes a picture");
+    assert_eq!((art.w, art.h), (w, h));
+    assert_eq!(art.px[0], sea);
+
+    // Told what it is, it says it about every cell rather than about the light
+    // half of itself.
+    let layers = [LayerMask { brush: Brush::Water, w, h, on: &on }];
+    let cells = read_layers(&layers, w, h, Cell::Grass);
+    assert!(
+        cells.ground.iter().all(|&g| Cell::from_u8(g) == Cell::Water),
+        "a layer covering the map left cells it did not cover"
+    );
+}
+
+#[test]
+fn one_flat_opaque_color_is_not_a_mask() {
+    // Gray, but with no dark half: there is nothing in it to tell apart, so
+    // reading it by brightness would say either "everywhere" or "nowhere"
+    // depending on which side of the middle the color fell.
+    let (on, by_light) = layer_mask(4, 2, &[pack_rgba(200, 200, 200, 255); 8]);
+    assert!(!by_light);
+    assert!(on.iter().all(|&v| v));
+    let (on, by_light) = layer_mask(4, 2, &[pack_rgba(20, 20, 20, 255); 8]);
+    assert!(!by_light, "a dark flat layer was read as a mask of nothing");
+    assert!(on.iter().all(|&v| v));
 }
 
 #[test]

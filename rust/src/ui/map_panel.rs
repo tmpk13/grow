@@ -168,6 +168,10 @@ pub struct MapTools {
     /// A stroke has changed the ground, so the coarse plant index owes a
     /// rebuild when the pointer lifts.
     ground_dirty: bool,
+    /// The press being served is a fill by color, which is reading the picture
+    /// rather than drawing over it, so the cells it covers keep it. Set for as
+    /// long as the one press lasts.
+    reading: bool,
 }
 
 impl Default for MapTools {
@@ -187,6 +191,7 @@ impl Default for MapTools {
             redone: Vec::new(),
             open: None,
             ground_dirty: false,
+            reading: false,
         }
     }
 }
@@ -386,8 +391,16 @@ impl Surface for MapSurface {
                     // and the ground painted here is what shows. A press that
                     // changed nothing counts: pressing water on water that was
                     // drawn as a rock pool is asking for the water.
-                    if let Some(sim) = app.settlement.as_mut() {
-                        sim.show_art(at, false);
+                    //
+                    // A fill by color is the exception, because it is not
+                    // drawing over the picture - it is reading it, saying that
+                    // the sea already in the drawing is water. Taking the
+                    // picture off there would erase the very colors the press
+                    // was aimed at.
+                    if !app.ui.map_edit.reading {
+                        if let Some(sim) = app.settlement.as_mut() {
+                            sim.show_art(at, false);
+                        }
                     }
                 }
             }
@@ -405,7 +418,7 @@ impl Surface for MapSurface {
     /// it lands on whichever layer the brush belongs to and goes onto the same
     /// step of the page's own history as any other stroke.
     fn fill_from(&self, app: &mut App, cell: (i32, i32), value: u32) -> bool {
-        if !app.ui.map_edit.by_color || app.ui.map_edit.image.is_none() {
+        if !app.ui.map_edit.by_color || !has_picture(app) {
             return false;
         }
         // A fill re-runs on every cell the pointer is dragged over, and this
@@ -416,9 +429,11 @@ impl Surface for MapSurface {
             return true;
         }
         let cells = color_region(app, cell);
+        app.ui.map_edit.reading = true;
         for (c, r) in &cells {
             self.set(app, *c, *r, value);
         }
+        app.ui.map_edit.reading = false;
         app.set_note(&format!("{} cells filled from the picture", cells.len()));
         true
     }
@@ -462,21 +477,31 @@ impl Surface for MapSurface {
 /// and a flood that decided by the picture alone would go round forever.
 fn color_region(app: &App, from: (i32, i32)) -> Vec<(i32, i32)> {
     let tools = &app.ui.map_edit;
-    let (iw, ih, px) = match tools.image.as_ref() {
-        Some(image) => image,
-        None => return Vec::new(),
-    };
     let (cols, rows) = match MapSurface::size(app) {
         Some(size) => size,
         None => return Vec::new(),
     };
-    // The picture is stretched over the map corner to corner, the same way it
-    // is drawn on the stage, so the color over a cell is the color under it.
+    // Whichever picture is under the map: the one being traced if there is
+    // one, and the map's own otherwise, which is what makes a map dropped as
+    // one drawing usable - the colors came in with it, and this is how the
+    // sea in them is told that it is water. Either is stretched over the map
+    // corner to corner, the same way it is drawn on the stage, so the color
+    // over a cell is the color under it.
+    let art = app.settlement.as_ref().and_then(|sim| sim.art.as_ref());
     let at = |c: i32, r: i32| -> u32 {
-        let x = (((c as f64 + 0.5) / cols as f64) * *iw as f64).floor() as i32;
-        let y = (((r as f64 + 0.5) / rows as f64) * *ih as f64).floor() as i32;
-        px.get((y.clamp(0, ih - 1) * iw + x.clamp(0, iw - 1)) as usize).copied().unwrap_or(0)
+        match (tools.image.as_ref(), art) {
+            (Some((iw, ih, px)), _) => {
+                let x = (((c as f64 + 0.5) / cols as f64) * *iw as f64).floor() as i32;
+                let y = (((r as f64 + 0.5) / rows as f64) * *ih as f64).floor() as i32;
+                px.get((y.clamp(0, ih - 1) * iw + x.clamp(0, iw - 1)) as usize).copied().unwrap_or(0)
+            }
+            (None, Some(art)) => art.cell(c, r, cols, rows),
+            (None, None) => 0,
+        }
     };
+    if tools.image.is_none() && art.is_none() {
+        return Vec::new();
+    }
     if from.0 < 0 || from.1 < 0 || from.0 >= cols || from.1 >= rows {
         return Vec::new();
     }
@@ -544,6 +569,13 @@ pub fn can_undo(app: &App) -> bool {
 
 pub fn can_redo(app: &App) -> bool {
     on_page(app) && !app.ui.map_edit.redone.is_empty()
+}
+
+/// Whether there is a picture under the map to decide by: one dropped to be
+/// traced, or the map's own.
+fn has_picture(app: &App) -> bool {
+    app.ui.map_edit.image.is_some()
+        || app.settlement.as_ref().is_some_and(|sim| sim.art.is_some())
 }
 
 fn on_page(app: &App) -> bool {
@@ -924,6 +956,50 @@ fn brushes_section(app: &App, h: &Handle) -> Element {
     }
     rows.push(chips);
     rows.push(note(current.hint()));
+    // The fill tool's second way of deciding what it covers belongs with the
+    // brushes rather than with either picture, because it is about the tool
+    // and either picture will do: the map's own is what a map dropped as one
+    // drawing has, and that is the case that most wants a magic wand.
+    if has_picture(app) {
+        let tools = &app.ui.map_edit;
+        let h2 = h.clone();
+        rows.push(crate::ui::bool_field(
+            "Fill by color in the picture",
+            tools.by_color,
+            Some(
+                "the fill tool spreads over the picture under the map rather than over what is \
+                 painted, so a drawn or photographed sea is one press",
+            ),
+            move |v| {
+                let mut sh = h2.borrow_mut();
+                sh.app.ui.map_edit.by_color = v;
+                if v {
+                    sh.app.ui.tool = crate::app::Tool::Fill;
+                }
+                sh.app.rebuild_panel = true;
+            },
+        ));
+        if tools.by_color {
+            let h2 = h.clone();
+            rows.push(number_field(
+                "How near the color",
+                tools.threshold,
+                NumOpts { min: 0.0, max: 1.0, step: 0.01 },
+                Some("0 spreads over that exact color only; 1 takes the whole map"),
+                move |v| {
+                    h2.borrow_mut().app.ui.map_edit.threshold = v;
+                },
+            ));
+            rows.push(note(
+                "Press on a color in the picture and every cell whose color stays near enough \
+                 to it, spreading out from there, becomes whatever is selected above. That is \
+                 how a map dropped as one drawing is told which of its colors is water: the \
+                 picture said what the map looks like, and this says what it is. Filling this \
+                 way reads the picture rather than drawing over it, so the cells keep it - \
+                 unlike a stroke of the pencil, which takes it off what it paints.",
+            ));
+        }
+    }
     section("What to paint", rows)
 }
 
@@ -934,7 +1010,9 @@ fn layers_section(app: &App, h: &Handle) -> Element {
         "Drop one picture per kind of thing - a layer of water, one of sand, one of trees - \
          and the map is read out of the set: wherever a layer has something drawn, the cell \
          is that. Which kind a layer is comes from its file name and can be changed here. A \
-         layer with nothing clear in it is read as a mask, light where the thing is.",
+         layer that covers everything says its thing about every cell, which is what a base \
+         layer under the rest is; one that is gray with a light half and a dark half is read \
+         as a mask, light where the thing is.",
     )];
     rows.push(drop_zone(h, "Drop layers, one per kind of thing", "layers", true, take_layers));
     if tools.layers.is_empty() {
@@ -976,6 +1054,19 @@ fn layers_section(app: &App, h: &Handle) -> Element {
         rows.push(note(&text));
     }
     let under = Brush::from_color(app.ui.brush_color).ground().unwrap_or(Cell::Grass);
+    // The case a single drawing dropped whole lands in: it carries the colors
+    // and nothing says which of them is water, so the map would come up as one
+    // kind of ground under a picture of a coastline. Worth saying before the
+    // press rather than after it.
+    if tools.layers.iter().all(|l| l.brush.ground().is_none()) {
+        rows.push(note(&format!(
+            "No layer here says what the ground is, so every cell would be {} and the map \
+             would only be drawn as these. Set a layer to a kind of ground, or read them in \
+             as they are and use Fill by color in the picture to say which of the colors is \
+             water.",
+            Brush::of_ground(under).label().to_lowercase()
+        )));
+    }
     rows.push(btn_row(vec![app_button(h, "Use the layers as the map", use_layers)]));
     rows.push(note(&format!(
         "Reading the layers founds the settlement again on the map they make, at that size. \
@@ -1084,37 +1175,6 @@ fn picture_section(app: &App, h: &Handle) -> Element {
                 sh.app.ui.map_edit.trace = v;
             },
         ));
-        let h2 = h.clone();
-        rows.push(crate::ui::bool_field(
-            "Fill by color in the picture",
-            tools.by_color,
-            Some(
-                "the fill tool spreads over the picture rather than the map, so a photographed \
-                 sea is one press",
-            ),
-            move |v| {
-                let mut sh = h2.borrow_mut();
-                sh.app.ui.map_edit.by_color = v;
-                if v {
-                    sh.app.ui.tool = crate::app::Tool::Fill;
-                }
-                sh.app.rebuild_panel = true;
-            },
-        ));
-        if tools.by_color {
-            let h2 = h.clone();
-            rows.push(number_field(
-                "How near the color",
-                tools.threshold,
-                NumOpts { min: 0.0, max: 1.0, step: 0.01 },
-                Some(
-                    "0 spreads over that exact color only; 1 takes the whole map",
-                ),
-                move |v| {
-                    h2.borrow_mut().app.ui.map_edit.threshold = v;
-                },
-            ));
-        }
         rows.push(btn_row(vec![app_button(h, "Take the sky colors", take_sky)]));
         rows.push(note(
             "Taking the sky colors reads the top and bottom of whatever is marked sky and sets \
