@@ -1599,6 +1599,33 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
   if (!/drawn as a picture64 by 32/.test(await tally())) {
     problems.push(`the map read from layers is not drawn as their picture: ${await tally()}`);
   }
+  // The stage shows that picture as the map rather than the legend's colors,
+  // and how strongly the legend goes over it is a number on the page.
+  await page.screenshot({ path: `${outDir}/19c2-map-as-its-picture.png` });
+  const legend = '#panel-body [data-find="how-strongly-the-legend-shows"] input.num';
+  if ((await page.locator(legend).count()) !== 1) {
+    problems.push('the map page does not ask how strongly the legend shows over its picture');
+  }
+
+  // Painting ground over a drawn map takes the picture off the cells painted,
+  // so the two are one map: the tally counts them, and a button puts it back.
+  await page.click('#panel-body .chip:has-text("Rock face")');
+  await page.waitForTimeout(200);
+  await stroke(0.3, 0.4, 0.45, 0.6);
+  const paintedOver = ((await tally()).match(/painted over it(\d+) cells/) ?? [])[1];
+  if (!(Number(paintedOver) > 0)) {
+    problems.push(`painting over the map's picture took it off nothing: ${await tally()}`);
+  }
+  const putBack = '#panel-body .btn:text-is("Put the picture back everywhere")';
+  if ((await page.locator(putBack).count()) !== 1) {
+    problems.push('nothing on the map page puts the picture back on the cells painted over');
+  } else {
+    await page.click(putBack);
+    await page.waitForTimeout(500);
+    if (/painted over it/.test(await tally())) {
+      problems.push(`putting the picture back left cells painted over: ${await tally()}`);
+    }
+  }
   // The switch that draws the generated ground over the picture lives here,
   // with the picture it is about. On, then a look at the settlement, then off.
   const groundOver = '#panel-body [data-find="ground-over-the-map-picture"] .btn';

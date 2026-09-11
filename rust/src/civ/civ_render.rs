@@ -323,12 +323,25 @@ pub fn paint_terrain(sim: &Settlement, state: &State, buf: &mut [u32]) {
     // where it is clear, and everything from here on - the current, the
     // deposits, paths, shadows and all that stands - goes over it. The front
     // face carries the last row down, the way the drawn ground does.
+    //
+    // Cells it has been taken off are left showing the ground: those are the
+    // ones somebody has painted since, and what they painted is what the map
+    // is there.
     if let Some(art) = sim.art.as_ref().filter(|_| !cfg.view.ground_over_art) {
         let cut = crate::civ::sprites::ALPHA_CUT;
         for y in world.sky_px..world.px_h {
             let gy = (y - world.sky_px).clamp(0, (world.ground_px - 1).max(0));
+            let cell_row = clamp(
+                ((y - world.sky_px) / world.depth_px) as f64,
+                0.0,
+                (world.rows - 1) as f64,
+            ) as i32;
             let row = (y * world.px_w) as usize;
             for x in 0..world.px_w {
+                let cell_col = clamp((x / world.cell_px) as f64, 0.0, (world.cols - 1) as f64) as i32;
+                if !art.shown((cell_row * world.cols + cell_col) as usize) {
+                    continue;
+                }
                 let c = art.at(x, gy, world.px_w, world.ground_px);
                 if crate::util::unpack_rgba(c).a < cut {
                     continue;

@@ -310,7 +310,7 @@ fn a_map_read_with_a_picture_is_drawn_as_that_picture() {
     let everywhere = vec![true; 24 * 12];
     let layers = [LayerMask { brush: Brush::Grass, w: 24, h: 12, on: &everywhere }];
     let mut cells = read_layers(&layers, 24, 12, Cell::Grass);
-    cells.art = Some(MapArt { w: 24, h: 12, px });
+    cells.art = Some(MapArt::new(24, 12, px));
     let mut sim = Settlement::new(&state);
     lay_cells(&mut sim, &cells);
     sim.bootstrap(&state);
@@ -345,6 +345,95 @@ fn a_map_read_with_a_picture_is_drawn_as_that_picture() {
 }
 
 #[test]
+fn painting_ground_takes_the_picture_off_that_cell() {
+    use grow::civ::map_brush::MapArt;
+    let mut state = State::new();
+    state.civ.world.cols = 24;
+    state.civ.world.rows = 12;
+    state.civ.terrain.warmup = 0.0;
+    state.civ.view.cull = false;
+    let paint = pack_rgba(200, 40, 40, 255);
+    let everywhere = vec![true; 24 * 12];
+    let layers = [LayerMask { brush: Brush::Grass, w: 24, h: 12, on: &everywhere }];
+    let mut cells = read_layers(&layers, 24, 12, Cell::Grass);
+    cells.art = Some(MapArt::new(24, 12, vec![paint; 24 * 12]));
+    let mut sim = Settlement::new(&state);
+    lay_cells(&mut sim, &cells);
+    sim.bootstrap(&state);
+
+    // Laying a map does not count as painting over it: the whole drawing is
+    // still on.
+    assert_eq!(sim.art.as_ref().map(|a| a.taken_off()), Some(0));
+    assert!(sim.art_shown(0));
+
+    // A lake painted into the drawing, the way a stroke on the map page does
+    // it: the ground changes and the picture comes off the cell.
+    let at = |c: i32, r: i32| (r * 24 + c) as usize;
+    assert!(sim.paint_cell(5, 5, Cell::Water));
+    sim.show_art(at(5, 5), false);
+    assert!(!sim.art_shown(at(5, 5)));
+    assert!(sim.art_shown(at(6, 5)), "a neighbor lost the picture too");
+    assert_eq!(sim.art.as_ref().map(|a| a.taken_off()), Some(1));
+
+    sim.process_raster_queue(&state, usize::MAX);
+    sim.composite(&state);
+    let world = sim.world().clone();
+    let px = |c: i32, r: i32| -> usize {
+        let x = c * world.cell_px + world.cell_px / 2;
+        let y = world.sky_px + r * world.depth_px + world.depth_px / 2;
+        (y * world.px_w + x) as usize
+    };
+    assert_ne!(sim.bg[px(5, 5)], paint, "the painted cell is still drawn as the picture");
+    assert_eq!(sim.bg[px(6, 5)], paint, "the rest of the map stopped being the picture");
+
+    // Putting it back is one call, and the cell is the drawing again.
+    sim.show_art(at(5, 5), true);
+    sim.composite(&state);
+    assert_eq!(sim.bg[px(5, 5)], paint, "the picture did not go back on");
+    // Off every cell at once, and back on every cell at once.
+    sim.show_all_art(false);
+    sim.composite(&state);
+    assert_ne!(sim.bg[px(6, 5)], paint);
+    sim.show_all_art(true);
+    sim.composite(&state);
+    assert_eq!(sim.bg[px(6, 5)], paint);
+}
+
+#[test]
+fn the_cells_painted_over_come_back_with_the_settlement() {
+    use grow::civ::map_brush::MapArt;
+    use grow::civ::save::{capture, restore, Snapshot};
+    let mut state = State::new();
+    state.civ.world.cols = 24;
+    state.civ.world.rows = 12;
+    state.civ.terrain.warmup = 0.0;
+    let paint = pack_rgba(90, 90, 160, 255);
+    let everywhere = vec![true; 24 * 12];
+    let layers = [LayerMask { brush: Brush::Grass, w: 24, h: 12, on: &everywhere }];
+    let mut cells = read_layers(&layers, 24, 12, Cell::Grass);
+    cells.art = Some(MapArt::new(24, 12, vec![paint; 24 * 12]));
+    let mut sim = Settlement::new(&state);
+    lay_cells(&mut sim, &cells);
+    sim.bootstrap(&state);
+    for c in 3..9 {
+        sim.paint_cell(c, 4, Cell::Water);
+        sim.show_art((4 * 24 + c) as usize, false);
+    }
+
+    let snapshot: Snapshot = serde_json::from_str(&capture(&sim, &state)).expect("readable");
+    let mut loaded = Settlement::new(&state);
+    restore(&mut loaded, &state, snapshot).expect("the world matches");
+    assert_eq!(loaded.art, sim.art, "the cells painted over did not come back");
+    assert!(!loaded.art_shown((4 * 24 + 5) as usize));
+    assert!(loaded.art_shown((4 * 24 + 9) as usize));
+
+    // Grown, they stay over the cells they were painted on.
+    assert!(sim.expand(&state, 48, 12));
+    assert!(!sim.art_shown((4 * 48 + 5) as usize), "a painted cell moved as the map grew");
+    assert!(sim.art_shown((4 * 48 + 30) as usize), "the new land came up painted over");
+}
+
+#[test]
 fn the_picture_grows_with_the_map_and_survives_a_save() {
     use grow::civ::map_brush::MapArt;
     use grow::civ::save::{capture, restore, Snapshot};
@@ -356,7 +445,7 @@ fn the_picture_grows_with_the_map_and_survives_a_save() {
     let everywhere = vec![true; 24 * 12];
     let layers = [LayerMask { brush: Brush::Grass, w: 24, h: 12, on: &everywhere }];
     let mut cells = read_layers(&layers, 24, 12, Cell::Grass);
-    cells.art = Some(MapArt { w: 48, h: 24, px: vec![paint; 48 * 24] });
+    cells.art = Some(MapArt::new(48, 24, vec![paint; 48 * 24]));
     let mut sim = Settlement::new(&state);
     lay_cells(&mut sim, &cells);
     sim.bootstrap(&state);

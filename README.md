@@ -220,19 +220,34 @@ kept.
   again on it, at the layers' own size at that scale. There is no ceiling on
   the size. A very large map costs memory and a long wilderness warmup, and
   the panel says so rather than refusing.
-* **The picture is the map.** A map read from layers is drawn as the layers'
-  own colors, flattened, later over earlier, masks left out - so a layer set
-  to *Leave alone* still lends its colors. The generated ground is not drawn:
-  a cell that is dirt acts as dirt and looks like whatever was drawn there,
-  and everything - the current, paths, shadows, plants, buildings, people -
-  goes over it. Where the picture is clear the generated ground shows
-  through, which is what land the map grows later looks like. With a picture
-  to trace loaded when the layers are used, that picture is the map's picture
-  instead, as the drawing whole. **Ground over the map picture**, in the map
-  section of this page, draws the generated ground over it again, and **Take
-  the picture off the map** drops it for good. The picture is written down
-  with the settlement, so a photograph costs its size every time the
-  settlement is saved.
+* **The picture is the map.** A set of layers says two things at once and both
+  are kept: where a layer has something drawn decides what kind of ground the
+  cell is, and what was drawn there decides what color it is. The layers
+  flattened - later over earlier, masks left out, so a layer set to *Leave
+  alone* still lends its colors - become the picture the map is drawn as. The
+  generated ground is not drawn: a cell that is dirt acts as dirt and looks
+  like whatever was drawn there, and everything - the current, paths, shadows,
+  plants, buildings, people - goes over it. Where the picture is clear the
+  generated ground shows through, which is what land the map grows later looks
+  like. With a picture to trace loaded when the layers are used, that picture
+  is the map's picture instead, as the drawing whole. The stage shows the
+  picture as the map, not the legend's colors, so the page shows what the
+  settlement will look like. The picture is written down with the settlement,
+  so a photograph costs its size every time the settlement is saved.
+* **Drawing over the picture.** Painting ground over a cell takes the picture
+  off that cell, and the ground painted there is what shows: a lake drawn into
+  a photograph is a lake rather than a lake-colored patch of shore. The drawing
+  and what is drawn by hand are one map that way, and a stroke is one step back
+  like any other - undo puts the picture back with the ground. Zones leave the
+  picture alone; they say what may take root, not how a cell looks. Wiping the
+  map takes the picture off all of it, and **Put the picture back everywhere**
+  covers every cell painted over since it was read in.
+* **How strongly the legend shows** is how much of the land colors go over
+  that picture on the stage. It starts at nothing - the picture is the map -
+  and turning it up reads back which of those colors the map thinks is water,
+  which the drawing itself does not say. **Ground over the map picture** does
+  the same for the settlement, and **Take the picture off the map** drops the
+  picture for good.
 * **Drop a picture** and it is laid under the map, corner to corner, to trace
   over. It is never read in and never part of the project or a settlement: the
   picture goes when the page does, and what is kept is the map painted with it

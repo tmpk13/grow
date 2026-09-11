@@ -677,18 +677,24 @@ flowchart LR
 
 ## Drawing on the map
 
-Everything about the ground is generated from the seed, and two things can be
-drawn over it by hand from a picture laid corner to corner over the map: what a
-cell is made of, and what may take root in it.
+Everything about the ground is generated from the seed, and three things can be
+drawn over it by hand on the map page: what a cell is made of, what may take
+root in it, and what the whole map looks like.
 
 ```mermaid
 flowchart LR
-  img["a picture, stretched over the map"] --> press["press: take the color under it"]
-  press --> drag["drag: the box to work in"]
-  drag --> match["cells in the box within<br/>the threshold of that color"]
-  match --> ground["ground: water, rock, grass, sand<br/>Settlement::paint_cells"]
-  match --> zone["growth: nothing, trees only,<br/>low only, anything<br/>Settlement::zone_cells"]
+  layers["layers dropped,<br/>one per kind of thing"] --> mask["layer_mask:<br/>where each has something"]
+  layers --> flat["flatten_layers:<br/>later over earlier"]
+  mask --> read["read_layers: ground,<br/>zone and sky a cell"]
+  flat --> art["MapArt, the picture<br/>the map is drawn as"]
+  read --> ground["ground: water, rock,<br/>a face, grass, sand<br/>Settlement::paint_cell"]
+  read --> zone["growth: nothing, trees only,<br/>low only, anything<br/>Terrain::set_zone"]
+  stroke["a stroke on the page"] --> ground
+  stroke --> zone
+  ground -. "takes the picture<br/>off that cell" .-> art
+  art --> bg["paint_terrain: stamped over<br/>the generated ground"]
   ground --> save["written down with the settlement,<br/>which is otherwise made from its seed"]
+  art --> save
   zone --> sim["Sim::zones, asked by try_spawn"]
   zone --> save
 ```
@@ -1666,6 +1672,32 @@ over the map picture** leaves the stamp out and is part of the ground cache's
 key. The picture is written down with the settlement as runs of pixels, since
 nothing could make it again, and `MapArt::grown` pads it with clear pixels
 when the map grows so the new land shows the ground that grew there.
+
+The two things a set of layers says come apart again cell by cell. A layer
+answered what kind of ground a cell is and what color it is at once, and
+painting ground over that cell by hand answers the first of those again: the
+picture no longer describes it, so `MapArt::off` - one byte a cell, empty
+until the first cell comes off, and written down as runs beside the pixels -
+records that it has been taken off, `paint_terrain` skips it there and the
+generated ground shows instead. `Settlement::show_art` is what a stroke calls
+and what undo calls to put it back, so `map_panel::Was` carries the flag
+beside the ground and the zone; `show_all_art` is the wipe and the page's
+**Put the picture back everywhere**. A press counts even where it changed no
+ground: pressing water on water that was drawn as a rock pool is asking for
+the water.
+
+The stage shows the picture as the map. `map_panel::draw` lays the checker
+down, then the map's own picture where it is still on the cell -
+`MapArt::cell` samples it at the middle of the cell, the point the layers
+were read at - then the picture being traced over that, and only then the
+legend, at whatever strength the number for that picture says. The legend is
+an overlay rather than the base, so what is on the page is what the
+settlement will look like; where neither picture covers a cell there is
+nothing else to show and the legend is the whole of it, which is every cell
+of a map nobody has read a picture into. The two numbers are opposite ways
+round on purpose: a picture being traced is something to draw over, so it
+starts mostly hidden, and the map's own picture *is* the map, so it starts
+whole.
 
 The picture being traced is otherwise separate from all of this. It is in
 `app.ui` rather than in the project - a photograph is megabytes and the map

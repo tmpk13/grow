@@ -15,6 +15,13 @@
 //! how a drawing program hands a map over - a layer of water, a layer of
 //! sand, a layer of trees - and it needs no exact colors, which a picture
 //! that carried every kind at once did.
+//!
+//! A set of layers says two things at once, and both are kept. Where a layer
+//! has something drawn decides what kind of ground the cell is; what was
+//! drawn there decides what color it is, the layers flattened being the
+//! picture the map is drawn as. The two come apart again cell by cell: paint
+//! ground over a cell by hand and the picture comes off that cell, so the
+//! drawing and what is drawn by hand are one map rather than two.
 
 use serde::{Deserialize, Serialize};
 
@@ -29,15 +36,74 @@ use crate::world::Zone;
 /// is dirt acts as dirt and looks like whatever was drawn there. Where it is
 /// clear the generated ground shows through, which is what land the map grew
 /// after the picture was read looks like.
+///
+/// It is taken off cell by cell as well. A picture read in says two things
+/// about every cell it covers - what color it is and, through the layer it
+/// was drawn on, what kind of ground it is - and painting over one of those
+/// cells by hand answers the second question again. The picture no longer
+/// describes that cell, so it comes off it and the ground drawn there shows
+/// instead: a lake painted into a drawing is a lake, not a lake-colored patch
+/// of whatever the drawing had.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MapArt {
     pub w: i32,
     pub h: i32,
     #[serde(with = "crate::art::px_rle")]
     pub px: Vec<u32>,
+    /// The cells it has been taken off, one byte a cell, at the size of the
+    /// map it is laid on. Empty while it is still on all of them, which is
+    /// every map nobody has painted over.
+    #[serde(default, with = "off_rle")]
+    pub off: Vec<u8>,
+}
+
+/// The taken-off cells, written down as runs the way every other byte a cell
+/// grid in a settlement is.
+mod off_rle {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(off: &[u8], s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&crate::civ::save::bytes_rle(off))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let raw = String::deserialize(d)?;
+        Ok(crate::civ::save::bytes_from_rle(&raw))
+    }
 }
 
 impl MapArt {
+    /// A picture on every cell of whatever map it is laid on.
+    pub fn new(w: i32, h: i32, px: Vec<u32>) -> MapArt {
+        MapArt { w, h, px, off: Vec::new() }
+    }
+
+    /// Whether the picture is drawn on cell `i`, which it is on every cell
+    /// until somebody paints ground over one.
+    pub fn shown(&self, i: usize) -> bool {
+        self.off.get(i) != Some(&1)
+    }
+
+    /// Takes it off one cell of a map of `cells` cells, or puts it back. The
+    /// grid is only made when the first cell comes off: a picture nobody has
+    /// drawn over carries nothing.
+    pub fn show(&mut self, i: usize, cells: usize, on: bool) {
+        if on && self.off.is_empty() {
+            return;
+        }
+        if self.off.len() != cells {
+            self.off = vec![0; cells];
+        }
+        if let Some(slot) = self.off.get_mut(i) {
+            *slot = u8::from(!on);
+        }
+    }
+
+    /// How many cells it has been taken off.
+    pub fn taken_off(&self) -> usize {
+        self.off.iter().filter(|&&v| v == 1).count()
+    }
+
     /// The pixel over point `x`, `y` of a ground `of_w` by `of_h` pixels: the
     /// picture stretched corner to corner over it, nearest pixel.
     pub fn at(&self, x: i32, y: i32, of_w: i32, of_h: i32) -> u32 {
@@ -47,6 +113,20 @@ impl MapArt {
         let sx = (x as i64 * self.w as i64 / of_w.max(1) as i64).clamp(0, self.w as i64 - 1);
         let sy = (y as i64 * self.h as i64 / of_h.max(1) as i64).clamp(0, self.h as i64 - 1);
         self.px.get((sy * self.w as i64 + sx) as usize).copied().unwrap_or(0)
+    }
+
+    /// The pixel over one cell of a `cols` by `rows` map: the middle of the
+    /// cell, which is the point the layers were read at, so what the stage
+    /// shows for a cell is the color the map was told that cell is.
+    pub fn cell(&self, col: i32, row: i32, cols: i32, rows: i32) -> u32 {
+        if self.w <= 0 || self.h <= 0 {
+            return 0;
+        }
+        let x = (((col as f64 + 0.5) / cols.max(1) as f64) * self.w as f64).floor() as i32;
+        let y = (((row as f64 + 0.5) / rows.max(1) as f64) * self.h as f64).floor() as i32;
+        let x = x.clamp(0, self.w - 1);
+        let y = y.clamp(0, self.h - 1);
+        self.px.get((y * self.w + x) as usize).copied().unwrap_or(0)
     }
 
     /// Whether anything in it shows.
@@ -73,7 +153,21 @@ impl MapArt {
                 dst.copy_from_slice(src);
             }
         }
-        MapArt { w, h, px }
+        // The cells it was taken off keep their numbers, the same as
+        // everything else standing on the land that was already there.
+        let mut off = Vec::new();
+        if !self.off.is_empty() {
+            off = vec![0u8; (cols.max(0) * rows.max(0)) as usize];
+            for r in 0..old_rows.min(rows) {
+                for c in 0..old_cols.min(cols) {
+                    let was = self.off.get((r * old_cols + c) as usize).copied().unwrap_or(0);
+                    if let Some(slot) = off.get_mut((r * cols + c) as usize) {
+                        *slot = was;
+                    }
+                }
+            }
+        }
+        MapArt { w, h, px, off }
     }
 }
 
@@ -363,10 +457,8 @@ pub struct LayerArt<'a> {
 pub fn flatten_layers(layers: &[LayerArt]) -> Option<MapArt> {
     let mut out: Option<MapArt> = None;
     for layer in layers.iter().filter(|l| !l.by_light && l.w > 0 && l.h > 0) {
-        let art = out.get_or_insert_with(|| MapArt {
-            w: layer.w,
-            h: layer.h,
-            px: vec![0; (layer.w * layer.h) as usize],
+        let art = out.get_or_insert_with(|| {
+            MapArt::new(layer.w, layer.h, vec![0; (layer.w * layer.h) as usize])
         });
         for y in 0..art.h {
             let sy = (y as i64 * layer.h as i64 / art.h as i64).clamp(0, layer.h as i64 - 1);

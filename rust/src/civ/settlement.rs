@@ -2615,6 +2615,49 @@ impl Settlement {
         self.buffer_dirty = true;
     }
 
+    /// Whether the map's picture is drawn on a cell. A map with no picture
+    /// says yes to every cell: there is nothing covering the ground, which is
+    /// the same answer as far as anybody asking gets.
+    pub fn art_shown(&self, at: usize) -> bool {
+        self.art.as_ref().is_none_or(|art| art.shown(at))
+    }
+
+    /// Takes the picture off one cell, or puts it back. What painting ground
+    /// over a drawn map does: the cell has been made something else by hand,
+    /// so it is drawn as the ground it now is rather than as the drawing.
+    pub fn show_art(&mut self, at: usize, on: bool) {
+        let cells = (self.world().cols * self.world().rows) as usize;
+        let art = match self.art.as_mut() {
+            Some(art) => art,
+            None => return,
+        };
+        if art.shown(at) == on {
+            return;
+        }
+        art.show(at, cells, on);
+        self.terrain_version += 1;
+        self.ground_dirty = true;
+        self.buffer_dirty = true;
+    }
+
+    /// The picture off every cell at once, or back on every cell. Wiping the
+    /// map takes it off; the button on the map page puts it back.
+    pub fn show_all_art(&mut self, on: bool) {
+        let cells = (self.world().cols * self.world().rows) as usize;
+        let art = match self.art.as_mut() {
+            Some(art) => art,
+            None => return,
+        };
+        let was = std::mem::take(&mut art.off);
+        art.off = if on { Vec::new() } else { vec![1; cells] };
+        if was == art.off {
+            return;
+        }
+        self.terrain_version += 1;
+        self.ground_dirty = true;
+        self.buffer_dirty = true;
+    }
+
     /// A whole selection turned into something else in one go. The coarse
     /// plant index is rebuilt once at the end rather than once a cell, which
     /// is the difference between painting a lake and waiting for one.

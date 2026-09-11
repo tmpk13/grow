@@ -22,6 +22,15 @@
 //! makes - how many of a layer's pixels go to one cell - and it is guessed
 //! when the first layer arrives.
 //!
+//! What the layers are is only half of what they say. Flattened, they are
+//! also the picture the map is drawn as, and the stage shows that picture as
+//! the map rather than the legend's colors: what is on the page is what the
+//! settlement will look like. The legend goes over it as faintly or as
+//! strongly as somebody asks, because the colors of a drawing say nothing
+//! about which of them is water. Painting ground over a cell takes the
+//! picture off that cell, so the drawing and what is drawn by hand are one
+//! map: a lake painted into a photograph is a lake.
+//!
 //! A picture can also be laid under the map to trace. It is never read in;
 //! it is something to draw over, and a second number says how strongly it
 //! shows through the map drawn on it, which is a matter of what somebody is
@@ -48,6 +57,12 @@ use crate::world::Zone;
 /// are doing: reading a coastline off a photograph, or reading back what they
 /// have drawn over it.
 const TRACE_SHOWS: f64 = 0.45;
+
+/// How strongly the legend shows over a map that is drawn as a picture, to
+/// begin with. Nothing: the picture is the map, and the ground is not drawn
+/// over what was drawn. Turn it up to read back which of those colors the map
+/// thinks is water, which the drawing itself does not say.
+const LEGEND_SHOWS: f64 = 0.0;
 
 /// How near a color has to be to the one pressed to begin with. Wide enough
 /// that a photographed sea is one press and narrow enough that the shore is
@@ -108,6 +123,8 @@ pub struct Was {
     kind: u8,
     zone: u8,
     sky: u8,
+    /// Whether the map's picture was still drawn on it.
+    art: u8,
 }
 
 /// One stroke, in the order it was painted.
@@ -130,6 +147,11 @@ pub struct MapTools {
     /// How strongly the picture shows through the map over it, nothing to
     /// fully. Only ever asked while there is a picture.
     pub trace: f64,
+    /// How strongly the legend shows over the picture the map itself is drawn
+    /// as. The other way round from `trace`: that one is about a photograph
+    /// nobody has read in, this one about the map's own picture, which is the
+    /// map and so starts out showing whole.
+    pub legend: f64,
     /// The fill tool spreads over the picture rather than over the map.
     pub by_color: bool,
     /// How near a cell's color in the picture has to be to the one pressed for
@@ -156,6 +178,7 @@ impl Default for MapTools {
             layers: Vec::new(),
             px: 0,
             trace: TRACE_SHOWS,
+            legend: LEGEND_SHOWS,
             by_color: false,
             threshold: NEAR_ENOUGH,
             sky: Vec::new(),
@@ -169,13 +192,17 @@ impl Default for MapTools {
 }
 
 impl MapTools {
-    /// How much of the map's own color goes over the picture: the other side
-    /// of what the slider says, and one with nothing under it at all.
-    pub fn over(&self) -> f64 {
-        if self.image.is_none() {
-            return 1.0;
+    /// How much of the legend's color goes over a cell with a picture under
+    /// it. The picture being traced is asked about one way round and the
+    /// map's own picture the other, because they are not the same question:
+    /// a photograph is something to draw over, and the map's own picture is
+    /// the map. A cell with neither under it is the legend and nothing else.
+    pub fn over(&self, under: Under) -> f64 {
+        match under {
+            Under::Nothing => 1.0,
+            Under::Trace => 1.0 - self.trace.clamp(0.0, 1.0),
+            Under::Art => self.legend.clamp(0.0, 1.0),
         }
-        1.0 - self.trace.clamp(0.0, 1.0)
     }
 
     /// The sky marks, grown to the map they are being drawn on. A map that has
@@ -230,6 +257,16 @@ impl MapTools {
     pub fn marked_sky(&self) -> usize {
         self.sky.iter().filter(|&&v| v != 0).count()
     }
+}
+
+/// What is under the legend on a cell of the stage: the picture the map is
+/// drawn as, the picture being traced over it, or the checker, which is
+/// nothing.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Under {
+    Nothing,
+    Art,
+    Trace,
 }
 
 /// Which of the three things a press paints on. The brush decides: it is one
@@ -344,11 +381,19 @@ impl Surface for MapSurface {
                     if app.settlement.as_mut().is_some_and(|sim| sim.paint_cell(x, y, kind)) {
                         app.ui.map_edit.ground_dirty = true;
                     }
+                    // Whatever the cell was, it has been answered for by hand
+                    // now, so the picture the map was read from comes off it
+                    // and the ground painted here is what shows. A press that
+                    // changed nothing counts: pressing water on water that was
+                    // drawn as a rock pool is asking for the water.
+                    if let Some(sim) = app.settlement.as_mut() {
+                        sim.show_art(at, false);
+                    }
                 }
             }
         }
         let now = held(app, at);
-        if now.kind != was.kind || now.zone != was.zone || now.sky != was.sky {
+        if now != was {
             if let Some(step) = app.ui.map_edit.open.as_mut() {
                 step.push(was);
             }
@@ -463,14 +508,15 @@ fn color_region(app: &App, from: (i32, i32)) -> Vec<(i32, i32)> {
 /// One cell as it stands. Read before a press and again after it, which is how
 /// a stroke knows whether it changed anything worth putting back.
 fn held(app: &App, at: usize) -> Was {
-    let (kind, zone) = match app.settlement.as_ref() {
+    let (kind, zone, art) = match app.settlement.as_ref() {
         Some(sim) => (
             sim.terrain.kind.get(at).copied().unwrap_or(0),
             sim.terrain.zone.get(at).copied().unwrap_or(0),
+            u8::from(sim.art_shown(at)),
         ),
-        None => (0, 0),
+        None => (0, 0, 1),
     };
-    Was { at, kind, zone, sky: app.ui.map_edit.sky.get(at).copied().unwrap_or(0) }
+    Was { at, kind, zone, sky: app.ui.map_edit.sky.get(at).copied().unwrap_or(0), art }
 }
 
 /// What a stroke leaves for the rest of the program to do: one rebuild of the
@@ -549,6 +595,9 @@ fn take_step(app: &mut App, forward: bool) -> bool {
         }
         if let Some(sim) = app.settlement.as_mut() {
             sim.terrain.set_zone(c, r, Zone::from_u8(was.zone));
+            // The picture goes back on with the ground: painting took it off,
+            // so putting the paint back has to put it back.
+            sim.show_art(was.at, was.art == 1);
         }
         if let Some(slot) = app.ui.map_edit.sky.get_mut(was.at) {
             *slot = was.sky;
@@ -563,9 +612,17 @@ fn take_step(app: &mut App, forward: bool) -> bool {
     true
 }
 
-/// The buffer the stage shows: the picture underneath, the map's own ground
-/// over it, the zones over that, and the sky marks on top. One pixel per cell,
-/// which the camera then scales to whatever zoom the page is at.
+/// The buffer the stage shows: the picture the map is drawn as, the one being
+/// traced over it, the legend over that, the zones over that, and the sky
+/// marks on top. One pixel per cell, which the camera then scales to whatever
+/// zoom the page is at.
+///
+/// The legend is an overlay rather than the picture. A map read from a set of
+/// layers is drawn as those layers, and the page shows it as the settlement
+/// will: the land colors go over it only as far as the number on the page
+/// says, which starts at nothing. Where neither picture covers a cell there is
+/// nothing else to show, so the legend is the whole of it there - which is
+/// what a map nobody has read a picture into looks like everywhere.
 pub fn draw(app: &mut App) {
     let (w, h) = match MapSurface::size(app) {
         Some(d) => d,
@@ -577,7 +634,7 @@ pub fn draw(app: &mut App) {
         Some(sim) => sim,
         None => return draw_empty(app),
     };
-    let over = tools.over();
+    let cut = crate::civ::sprites::ALPHA_CUT;
     let mut buf = vec![0u32; (w * h) as usize];
     for y in 0..h {
         for x in 0..w {
@@ -589,6 +646,14 @@ pub fn draw(app: &mut App) {
             } else {
                 crate::util::pack_rgba(20, 25, 32, 255)
             };
+            let mut under = Under::Nothing;
+            if let Some(art) = sim.art.as_ref().filter(|art| art.shown(i)) {
+                let v = art.cell(x, y, w, h);
+                if crate::util::unpack_rgba(v).a >= cut {
+                    c = v;
+                    under = Under::Art;
+                }
+            }
             if let Some((iw, ih, px)) = &tools.image {
                 let sx = (((x as f64 + 0.5) / w as f64) * *iw as f64).floor() as i32;
                 let sy = (((y as f64 + 0.5) / h as f64) * *ih as f64).floor() as i32;
@@ -596,9 +661,14 @@ pub fn draw(app: &mut App) {
                 let sy = sy.clamp(0, ih - 1);
                 if let Some(&v) = px.get((sy * iw + sx) as usize) {
                     c = v;
+                    under = Under::Trace;
                 }
             }
-            c = crate::util::mix_packed(c, Brush::of_ground(sim.terrain.type_at(x, y)).color(), over);
+            c = crate::util::mix_packed(
+                c,
+                Brush::of_ground(sim.terrain.type_at(x, y)).color(),
+                tools.over(under),
+            );
             let zone = sim.terrain.zone_at(x, y);
             if zone != Zone::Any {
                 // Over the ground rather than instead of it: a zone is a
@@ -739,15 +809,55 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     ];
     if app.settlement.as_ref().is_some_and(|sim| sim.art.is_some()) {
         map_rows.push(note(
-            "The map is drawn as the picture it was read from, and what is painted here \
-             changes what a cell is without changing how it looks. The switch draws the \
-             generated ground over the picture for a look at the ground as it is; taking the \
-             picture off draws it that way for good.",
+            "The map is drawn as the picture it was read from: the stage above shows that \
+             picture rather than the land colors, because it is what the settlement will \
+             look like. Painting ground over a cell takes the picture off that cell, so the \
+             ground painted there is what shows - a lake drawn into a photograph is a lake. \
+             Zones leave the picture alone: they say what may take root, not how a cell \
+             looks.",
+        ));
+        let h2 = h.clone();
+        map_rows.push(number_field(
+            "How strongly the legend shows",
+            app.ui.map_edit.legend,
+            NumOpts { min: 0.0, max: 1.0, step: 0.05 },
+            Some(
+                "the land colors over the picture on the stage, for reading back which of \
+                 those colors the map thinks is water; it changes nothing about the map",
+            ),
+            move |v| {
+                // The stage redraws every frame in this mode, so changing what
+                // it shows needs nothing said to it.
+                h2.borrow_mut().app.ui.map_edit.legend = v;
+            },
         ));
         map_rows.push(app_bool(h, "Ground over the map picture", app.state.civ.view.ground_over_art,
             Some("draws the generated ground over the picture the map was read from, so the \
                   cells look like what they are rather than like the drawing"),
             |app, v| { app.state.civ.view.ground_over_art = v; app.civ_repaint(); }));
+        // Always offered rather than only once something has been painted
+        // over: a stroke redraws the tally and not the panel, so a button that
+        // came and went with the count would not be there when it was wanted.
+        // The tally above says how many cells it would put the picture back on.
+        map_rows.push(btn_row(vec![button("Put the picture back everywhere", Scope::Panel, {
+            let h2 = h.clone();
+            move || {
+                let mut sh = h2.borrow_mut();
+                if let Some(sim) = sh.app.settlement.as_mut() {
+                    sim.show_all_art(true);
+                }
+                sh.app.ui.map_edit.steps.clear();
+                sh.app.ui.map_edit.redone.clear();
+                sh.app.civ_stepped = true;
+                sh.app.civ_repaint();
+                sh.app.rebuild_panel = true;
+            }
+        })]));
+        map_rows.push(note(
+            "Putting the picture back covers every cell painted over since it was read in, \
+             the drawing being what the map looks like again. It is not a step back: the \
+             ground painted stays what it was painted.",
+        ));
         map_rows.push(danger_button("Take the picture off the map", Scope::Panel, {
             let h2 = h.clone();
             move || {
@@ -876,13 +986,14 @@ fn layers_section(app: &App, h: &Handle) -> Element {
     )));
     rows.push(note(if tools.image.is_some() {
         "The picture to trace is the drawing whole, so it becomes the map's own picture: the \
-         ground is drawn as it and the cells only act as what they are. The map section below \
-         has a switch to draw the generated ground over it."
+         map is drawn as it, here and in the settlement, and what the layers said each cell \
+         is is what it acts as. Paint ground over a cell afterwards and the picture comes \
+         off that cell."
     } else {
         "The layers flattened - later over earlier, masks left out - become the map's own \
-         picture: the ground is drawn as it and the cells only act as what they are, so a \
-         layer set to Leave alone still lends its colors. The map section below has a switch \
-         to draw the generated ground over it."
+         picture: the map is drawn as it, here and in the settlement, and what the layers \
+         said each cell is is what it acts as. A layer set to Leave alone still lends its \
+         colors. Paint ground over a cell afterwards and the picture comes off that cell."
     }));
     let h2 = h.clone();
     rows.push(danger_button("Forget the layers", Scope::Panel, move || {
@@ -1045,6 +1156,9 @@ fn wipe(app: &mut App) {
         Some(sim) => {
             let done = sim.paint_cells(&every, kind);
             sim.terrain.zone.fill(0);
+            // A blank sheet is blank: the picture the map was read from comes
+            // off every cell, the same as painting over each of them would.
+            sim.show_all_art(false);
             sim.sync_zones();
             done
         }
@@ -1098,7 +1212,7 @@ fn use_layers(app: &mut App) {
     // The picture the map is drawn as: the one being traced if there is one,
     // since that is the drawing whole, and the layers flattened otherwise.
     cells.art = match app.ui.map_edit.image.as_ref() {
-        Some((w, h, px)) => Some(MapArt { w: *w, h: *h, px: px.clone() }),
+        Some((w, h, px)) => Some(MapArt::new(*w, *h, px.clone())),
         None => {
             let arts: Vec<LayerArt> = app
                 .ui
@@ -1347,6 +1461,13 @@ impl Panel for MapPanel {
             let _ = self
                 .tally
                 .append_child(&stat("drawn as a picture", &format!("{} by {}", art.w, art.h)));
+            let off = art.taken_off();
+            if off > 0 {
+                let _ = self.tally.append_child(&stat(
+                    "painted over it",
+                    &format!("{off} cells, {:.0}%", off as f64 / total * 100.0),
+                ));
+            }
         }
     }
 }

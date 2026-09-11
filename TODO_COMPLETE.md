@@ -3,6 +3,13 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) The picture a map is read from is the map, on the page as well as in
+  the settlement: the map editor's stage draws the layers' own picture rather
+  than the legend's colors, with a number for how strongly the land colors go
+  over it, starting at nothing. Painting ground over a cell takes the picture
+  off that cell, so the drawing and what is drawn by hand are one map, and
+  undo puts it back with the ground. Wiping takes it off the whole map and a
+  button puts it back everywhere.
 - (LLM) Everything about drawing the map is in one place. The map page is a
   plain tab of the sprite editor rather than a page behind the experiments
   switch, so menu search finds it; the switch that draws the ground over the
