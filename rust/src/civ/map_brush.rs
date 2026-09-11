@@ -16,9 +16,66 @@
 //! sand, a layer of trees - and it needs no exact colors, which a picture
 //! that carried every kind at once did.
 
+use serde::{Deserialize, Serialize};
+
+use crate::civ::sprites::ALPHA_CUT;
 use crate::civ::terrain::Cell;
 use crate::util::unpack_rgba;
 use crate::world::Zone;
+
+/// The map as a picture: the colors under everything on a map that was read
+/// out of one. It is stretched over the ground when the ground is drawn, and
+/// the generated ground is not drawn where it has something, so a cell that
+/// is dirt acts as dirt and looks like whatever was drawn there. Where it is
+/// clear the generated ground shows through, which is what land the map grew
+/// after the picture was read looks like.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MapArt {
+    pub w: i32,
+    pub h: i32,
+    #[serde(with = "crate::art::px_rle")]
+    pub px: Vec<u32>,
+}
+
+impl MapArt {
+    /// The pixel over point `x`, `y` of a ground `of_w` by `of_h` pixels: the
+    /// picture stretched corner to corner over it, nearest pixel.
+    pub fn at(&self, x: i32, y: i32, of_w: i32, of_h: i32) -> u32 {
+        if self.w <= 0 || self.h <= 0 {
+            return 0;
+        }
+        let sx = (x as i64 * self.w as i64 / of_w.max(1) as i64).clamp(0, self.w as i64 - 1);
+        let sy = (y as i64 * self.h as i64 / of_h.max(1) as i64).clamp(0, self.h as i64 - 1);
+        self.px.get((sy * self.w as i64 + sx) as usize).copied().unwrap_or(0)
+    }
+
+    /// Whether anything in it shows.
+    pub fn shows(&self) -> bool {
+        self.px.iter().any(|&v| unpack_rgba(v).a >= ALPHA_CUT)
+    }
+
+    /// The same picture over a map grown from `old_cols` by `old_rows` to
+    /// `cols` by `rows`: what was drawn stays at the top left over the land it
+    /// was drawn for, and the new land is clear, so the generated ground
+    /// shows there.
+    pub fn grown(&self, old_cols: i32, old_rows: i32, cols: i32, rows: i32) -> MapArt {
+        let scale = |px: i32, old: i32, new: i32| {
+            ((px as f64 * new as f64 / old.max(1) as f64).round() as i32).max(px)
+        };
+        let w = scale(self.w, old_cols, cols);
+        let h = scale(self.h, old_rows, rows);
+        let mut px = vec![0u32; (w.max(0) * h.max(0)) as usize];
+        for y in 0..self.h.min(h) {
+            let n = self.w.min(w) as usize;
+            let from = (y * self.w) as usize;
+            let to = (y * w) as usize;
+            if let (Some(src), Some(dst)) = (self.px.get(from..from + n), px.get_mut(to..to + n)) {
+                dst.copy_from_slice(src);
+            }
+        }
+        MapArt { w, h, px }
+    }
+}
 
 /// What one press paints.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -264,7 +321,8 @@ pub struct LayerMask<'a> {
 /// The map a set of layers makes: the ground of every cell, the zone of
 /// every cell and which cells are marked sky, one byte a cell each. Three
 /// grids rather than one, because they are three questions about a cell and
-/// a layer of trees over a layer of sand answers two of them.
+/// a layer of trees over a layer of sand answers two of them. With them, the
+/// picture the map is drawn as, if there is one.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapCells {
     pub cols: i32,
@@ -272,6 +330,44 @@ pub struct MapCells {
     pub ground: Vec<u8>,
     pub zone: Vec<u8>,
     pub sky: Vec<u8>,
+    pub art: Option<MapArt>,
+}
+
+/// One layer's pixels as they were dropped, for flattening into the map's
+/// picture.
+pub struct LayerArt<'a> {
+    pub w: i32,
+    pub h: i32,
+    pub px: &'a [u32],
+    /// Read light against dark: a mask rather than a drawing, with no colors
+    /// worth keeping.
+    pub by_light: bool,
+}
+
+/// The layers flattened into one picture. The first drawing sets the size and
+/// each later one goes over the earlier where it has something, the way the
+/// layers stack in the program they came out of; a layer read as a mask is
+/// left out. Nothing if no layer was a drawing, or none of them shows.
+pub fn flatten_layers(layers: &[LayerArt]) -> Option<MapArt> {
+    let mut out: Option<MapArt> = None;
+    for layer in layers.iter().filter(|l| !l.by_light && l.w > 0 && l.h > 0) {
+        let art = out.get_or_insert_with(|| MapArt {
+            w: layer.w,
+            h: layer.h,
+            px: vec![0; (layer.w * layer.h) as usize],
+        });
+        for y in 0..art.h {
+            let sy = (y as i64 * layer.h as i64 / art.h as i64).clamp(0, layer.h as i64 - 1);
+            for x in 0..art.w {
+                let sx = (x as i64 * layer.w as i64 / art.w as i64).clamp(0, layer.w as i64 - 1);
+                let v = layer.px.get((sy * layer.w as i64 + sx) as usize).copied().unwrap_or(0);
+                if unpack_rgba(v).a >= ALPHA_CUT {
+                    art.px[(y * art.w + x) as usize] = v;
+                }
+            }
+        }
+    }
+    out.filter(|art| art.shows())
 }
 
 /// Every cell of a map, read out of a set of layers. Each layer is stretched
@@ -290,6 +386,7 @@ pub fn read_layers(layers: &[LayerMask], cols: i32, rows: i32, base: Cell) -> Ma
         ground: vec![base as u8; n],
         zone: vec![Zone::Any as u8; n],
         sky: vec![0; n],
+        art: None,
     };
     for layer in layers {
         if layer.brush == Brush::Clear || layer.w <= 0 || layer.h <= 0 {
@@ -320,15 +417,17 @@ pub fn read_layers(layers: &[LayerMask], cols: i32, rows: i32, base: Cell) -> Ma
     out
 }
 
-/// Lays a read map over a settlement's, one cell at a time. Meant for a
-/// settlement that has been made and not yet founded, so the wilderness grows
-/// on the painted ground rather than being flattened by it afterwards. The
-/// sky marks are not laid: they belong to the page, not the map.
+/// Lays a read map over a settlement's, one cell at a time, and hands it the
+/// picture to be drawn as. Meant for a settlement that has been made and not
+/// yet founded, so the wilderness grows on the painted ground rather than
+/// being flattened by it afterwards. The sky marks are not laid: they belong
+/// to the page, not the map.
 pub fn lay_cells(sim: &mut crate::civ::settlement::Settlement, cells: &MapCells) {
     let (cols, rows) = (sim.world().cols, sim.world().rows);
     if (cols, rows) != (cells.cols, cells.rows) {
         return;
     }
+    sim.set_art(cells.art.clone());
     for r in 0..rows {
         for c in 0..cols {
             let i = (r * cols + c) as usize;

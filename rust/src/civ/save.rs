@@ -92,6 +92,11 @@ pub struct Snapshot {
     pub kind_paint: String,
     #[serde(default)]
     pub zone_paint: String,
+    /// The picture the map is drawn as, on a map that was read out of one.
+    /// Runs of pixels, and nothing on a map that was generated or drawn by
+    /// hand.
+    #[serde(default)]
+    pub art: Option<crate::civ::map_brush::MapArt>,
     /// What is left in each deposit, in the order the terrain lays them out.
     /// The rest of the map is made fresh from the seed.
     pub deposits: Vec<f64>,
@@ -147,6 +152,7 @@ struct SnapshotRef<'a> {
     plant_cover: &'a [u8],
     kind_paint: String,
     zone_paint: String,
+    art: Option<&'a crate::civ::map_brush::MapArt>,
     deposits: Vec<f64>,
     time: f64,
     day: i32,
@@ -202,6 +208,7 @@ pub fn capture(sim: &Settlement, state: &State) -> String {
         } else {
             String::new()
         },
+        art: sim.art.as_ref(),
         deposits: sim.terrain.deposits.iter().map(|d| d.amount).collect(),
         time: sim.time,
         day: sim.day,
@@ -282,6 +289,7 @@ pub fn restore(sim: &mut Settlement, state: &State, snap: Snapshot) -> Result<()
         }
     }
     sim.sync_zones();
+    sim.set_art(snap.art.filter(|a| a.px.len() == (a.w.max(0) * a.h.max(0)) as usize));
 
     // ---- what was dug out of the ground ----
     for (i, amount) in snap.deposits.iter().enumerate() {

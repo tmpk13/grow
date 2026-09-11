@@ -3,6 +3,13 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A map read from a picture is drawn as that picture: the layers'
+  colors flattened, or the picture being traced, go under everything, the
+  generated ground is not drawn where the picture has something, and a cell
+  that is dirt acts as dirt and looks like what was drawn there. A switch in
+  the View section draws the generated ground over it again, the map page
+  takes the picture off for good, it is written down with the settlement,
+  and a map grown afterward shows the ground on the new land.
 - (LLM) The cloud setting is a base rather than a start: how far up from the
   horizon the weather begins, as a share of the sky. It is a line the middle
   of every cloud stays above rather than a cut - a cloud just above it hangs

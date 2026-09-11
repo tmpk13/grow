@@ -2251,6 +2251,17 @@
     "tab": "land",
     "tab_label": "Land",
     "group": "View",
+    "label": "Ground over the map picture",
+    "hint": "a map read from a picture is drawn as that picture and its cells only act as what they are; on, the generated ground is drawn over it instead",
+    "anchor": "ground-over-the-map-picture",
+    "kind": "field"
+  },
+  {
+    "mode": "settlement",
+    "mode_label": "Settlement",
+    "tab": "land",
+    "tab_label": "Land",
+    "group": "View",
     "label": "Building labels",
     "anchor": "building-labels",
     "kind": "field"

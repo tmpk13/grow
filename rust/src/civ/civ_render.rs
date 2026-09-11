@@ -318,6 +318,26 @@ pub fn paint_terrain(sim: &Settlement, state: &State, buf: &mut [u32]) {
         }
     }
 
+    // A map read out of a picture is that picture. It goes over the ground
+    // just drawn, whole where it has something and letting the ground through
+    // where it is clear, and everything from here on - the current, the
+    // deposits, paths, shadows and all that stands - goes over it. The front
+    // face carries the last row down, the way the drawn ground does.
+    if let Some(art) = sim.art.as_ref().filter(|_| !cfg.view.ground_over_art) {
+        let cut = crate::civ::sprites::ALPHA_CUT;
+        for y in world.sky_px..world.px_h {
+            let gy = (y - world.sky_px).clamp(0, (world.ground_px - 1).max(0));
+            let row = (y * world.px_w) as usize;
+            for x in 0..world.px_w {
+                let c = art.at(x, gy, world.px_w, world.ground_px);
+                if crate::util::unpack_rgba(c).a < cut {
+                    continue;
+                }
+                buf[row + x as usize] = c;
+            }
+        }
+    }
+
     paint_current(sim, state, buf);
     paint_deposits(sim, state, buf);
 }
@@ -1737,13 +1757,16 @@ fn ensure_ground(sim: &mut Settlement, state: &State) {
     let len = sim.buffer.len();
     let world_px = (sim.world().px_w, sim.world().px_h);
     let bg_key = format!(
-        "{}x{}:{}:{}:{}:{}:{}:{:016x}",
+        "{}x{}:{}:{}:{}:{}:{}:{}:{:016x}",
         world_px.0,
         world_px.1,
         state.materials.version,
         state.civ.view.water_top,
         state.civ.view.water_deep,
         state.civ.view.current,
+        // The picture the map was read from is painted into this buffer, or
+        // not, by the switch; the picture itself moves the terrain version.
+        state.civ.view.ground_over_art,
         sim.terrain_version,
         // What stands behind the map is painted into this buffer too, so
         // moving a mountain is the background changing.

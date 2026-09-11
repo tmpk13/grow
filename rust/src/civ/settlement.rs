@@ -498,6 +498,9 @@ pub struct Settlement {
     pub name: String,
     pub center: Option<(i32, i32)>,
     pub buffer: Vec<u32>,
+    /// The picture the map is drawn as, where the map was read out of one.
+    /// Written down with the settlement, since nothing could make it again.
+    pub art: Option<crate::civ::map_brush::MapArt>,
     pub bg: Vec<u32>,
     pub bg_key: String,
     pub ground: Vec<u32>,
@@ -591,6 +594,7 @@ impl Settlement {
             name: String::new(),
             center: None,
             buffer: Vec::new(),
+            art: None,
             bg: Vec::new(),
             bg_key: String::new(),
             ground: Vec::new(),
@@ -632,6 +636,7 @@ impl Settlement {
         self.plant_sim.wild_scale = cfg.terrain.wildness.max(0.1);
         self.terrain = Terrain::new(self.world(), &cfg.terrain, seed);
         self.terrain_painted = false;
+        self.art = None;
         self.plant_sim.zones = Vec::new();
         self.blocked = vec![0; n];
         for i in 0..n {
@@ -732,6 +737,11 @@ impl Settlement {
 
         let world = self.plant_sim.world.clone();
         self.terrain.expand(&world, &state.civ.terrain);
+        // The picture stays over the land it was drawn for; the new land is
+        // clear of it and shows the ground that grew there.
+        if let Some(art) = &self.art {
+            self.art = Some(art.grown(old_cols, old_rows, cols, rows));
+        }
         // New land can put water within reach of fields that had none.
         for b in &mut self.buildings {
             b.soak = None;
@@ -2591,6 +2601,18 @@ impl Settlement {
             }
         }
         self.piles.retain(|p| p.col != col || p.row != row);
+    }
+
+    /// Gives the map a picture to be drawn as, or takes it away. The cached
+    /// ground is painted from the terrain and this, so it has to be told.
+    pub fn set_art(&mut self, art: Option<crate::civ::map_brush::MapArt>) {
+        if self.art == art {
+            return;
+        }
+        self.art = art;
+        self.terrain_version += 1;
+        self.ground_dirty = true;
+        self.buffer_dirty = true;
     }
 
     /// A whole selection turned into something else in one go. The coarse

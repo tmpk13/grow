@@ -218,6 +218,19 @@ kept.
   again on it, at the layers' own size at that scale. There is no ceiling on
   the size. A very large map costs memory and a long wilderness warmup, and
   the panel says so rather than refusing.
+* **The picture is the map.** A map read from layers is drawn as the layers'
+  own colors, flattened, later over earlier, masks left out - so a layer set
+  to *Leave alone* still lends its colors. The generated ground is not drawn:
+  a cell that is dirt acts as dirt and looks like whatever was drawn there,
+  and everything - the current, paths, shadows, plants, buildings, people -
+  goes over it. Where the picture is clear the generated ground shows
+  through, which is what land the map grows later looks like. With a picture
+  to trace loaded when the layers are used, that picture is the map's picture
+  instead, as the drawing whole. **Ground over the map picture** in the Land
+  panel's View section draws the generated ground over it again, and **Take
+  the picture off the map** on the map page drops it for good. The picture is
+  written down with the settlement, so a photograph costs its size every time
+  the settlement is saved.
 * **Drop a picture** and it is laid under the map, corner to corner, to trace
   over. It is never read in and never part of the project or a settlement: the
   picture goes when the page does, and what is kept is the map painted with it
@@ -368,7 +381,9 @@ same few stretched across it.
 The view section holds day and night, footpaths, chimney smoke, boats, current,
 building labels, the water and path colors, how long the map waits before taking
 the whole window on its own, and the two drawing controls: whether to draw only
-what is on screen, and the zoom below which detail starts being shed.
+what is on screen, and the zoom below which detail starts being shed. **Ground
+over the map picture** is there too: a map read from a picture on the map page
+is drawn as that picture, and this draws the generated ground over it instead.
 
 **Weather** is in there too: whether clouds pass at all, how much of the sky
 they take, how fast they drift, how strongly their edges churn, and **Cloud

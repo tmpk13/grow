@@ -1664,10 +1664,25 @@ and the wilderness warms onto it rather than being painted over afterwards.
 `lay_cells` refuses cells of any other size than the map it is handed, which
 is the one way the two could disagree.
 
-The picture being traced is separate from all of this. It is in `app.ui` on
-the same terms as the landscape dropped on the Land panel - a photograph is
-megabytes and the map painted with it there is what is worth keeping - and it
-is never read in: it is something to draw over, and to read a sky out of.
+The map keeps its picture. `MapCells` carries a `map_brush::MapArt` - the
+layers flattened by `flatten_layers`, later over earlier and masks left out,
+or the picture being traced if one is loaded, since that is the drawing whole
+- and `lay_cells` hands it to `Settlement::set_art`, which bumps the terrain
+version so the cached ground is painted again. `paint_terrain` stamps it over
+the ground it has just drawn, whole where a pixel is opaque and letting the
+ground through where it is clear, before the current, the deposits, paths and
+shadows go on, so a cell that is dirt acts as dirt and looks like what was
+drawn there while everything else stands over it. The View section's **Ground
+over the map picture** leaves the stamp out and is part of the ground cache's
+key. The picture is written down with the settlement as runs of pixels, since
+nothing could make it again, and `MapArt::grown` pads it with clear pixels
+when the map grows so the new land shows the ground that grew there.
+
+The picture being traced is otherwise separate from all of this. It is in
+`app.ui` on the same terms as the landscape dropped on the Land panel - a
+photograph is megabytes and the map painted with it there is what is worth
+keeping - and it is not laid under the map cell by cell: it is something to
+draw over, and to read a sky out of.
 
 ### The same number, on the way in
 

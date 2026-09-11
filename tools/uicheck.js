@@ -1642,9 +1642,14 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
     problems.push(`the trees layer zoned nothing: ${made}`);
   }
   await page.screenshot({ path: `${outDir}/19c-map-from-layers.png` });
+  if (!/drawn as a picture64 by 32/.test(await tally())) {
+    problems.push(`the map read from layers is not drawn as their picture: ${await tally()}`);
+  }
 }
 await page.click('.mode:text-is("Settlement")');
 await page.waitForTimeout(1500);
+// The map drawn as the layers' own picture, with the town on top of it.
+await page.screenshot({ path: `${outDir}/19d-map-picture.png` });
 await page.click('.tab[data-tab="experimental"]');
 await page.waitForTimeout(400);
 
@@ -1698,6 +1703,14 @@ await page.waitForTimeout(600);
 await page.screenshot({ path: `${outDir}/11i-space-clouds.png` });
 await page.click(spaceClouds);
 await page.waitForTimeout(200);
+
+// The generated ground over the map's picture, and the picture back again.
+const groundOver = '#panel-body [data-find="ground-over-the-map-picture"] .btn';
+await page.click(groundOver);
+await page.waitForTimeout(600);
+await page.screenshot({ path: `${outDir}/11j-ground-over-picture.png` });
+await page.click(groundOver);
+await page.waitForTimeout(300);
 await resume();
 
 // Back to the lab and in again: both sims have to survive the switch.

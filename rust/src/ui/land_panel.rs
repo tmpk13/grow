@@ -270,6 +270,10 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             Some("the space around the map becomes the same sky: the gradient carries on and \
                   the clouds repeat across it"),
             |app, v| { app.state.civ.view.cloud_space = v; app.request_save(); }),
+        app_bool(h, "Ground over the map picture", view.ground_over_art,
+            Some("a map read from a picture is drawn as that picture and its cells only act \
+                  as what they are; on, the generated ground is drawn over it instead"),
+            |app, v| { app.state.civ.view.ground_over_art = v; app.civ_repaint(); }),
         app_bool(h, "Building labels", view.labels, None,
             |app, v| { app.state.civ.view.labels = v; app.civ_repaint(); }),
         app_bool(h, "Boats", view.boats, None,

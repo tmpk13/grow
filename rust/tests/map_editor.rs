@@ -266,3 +266,111 @@ fn a_town_founded_on_read_layers_keeps_its_water() {
         assert!(!sim.in_water(c, r) || sim.people[pi].aboard != 0, "somebody was founded in the lake");
     }
 }
+
+// ---- the picture the map is drawn as ------------------------------------
+
+#[test]
+fn layers_flatten_into_one_picture_later_over_earlier() {
+    use grow::civ::map_brush::{flatten_layers, LayerArt};
+    let red = pack_rgba(200, 40, 40, 255);
+    let blue = pack_rgba(40, 40, 200, 255);
+    // Four by two: the first layer paints the top row, the second the left
+    // column, and a mask says nothing about colors at all.
+    let first: Vec<u32> = (0..8).map(|i| if i < 4 { red } else { 0 }).collect();
+    let second: Vec<u32> = (0..8).map(|i| if i % 4 == 0 { blue } else { 0 }).collect();
+    let mask: Vec<u32> = vec![pack_rgba(255, 255, 255, 255); 8];
+    let art = flatten_layers(&[
+        LayerArt { w: 4, h: 2, px: &first, by_light: false },
+        LayerArt { w: 4, h: 2, px: &second, by_light: false },
+        LayerArt { w: 4, h: 2, px: &mask, by_light: true },
+    ])
+    .expect("two drawings make a picture");
+    assert_eq!((art.w, art.h), (4, 2));
+    assert_eq!(art.px[0], blue, "the later layer did not go over the earlier");
+    assert_eq!(art.px[1], red);
+    assert_eq!(art.px[4], blue);
+    assert_eq!(art.px[5], 0, "a clear pixel took a color from somewhere");
+    // Masks alone make no picture, and neither does a drawing with nothing on it.
+    assert!(flatten_layers(&[LayerArt { w: 4, h: 2, px: &mask, by_light: true }]).is_none());
+    let empty = vec![0u32; 8];
+    assert!(flatten_layers(&[LayerArt { w: 4, h: 2, px: &empty, by_light: false }]).is_none());
+}
+
+#[test]
+fn a_map_read_with_a_picture_is_drawn_as_that_picture() {
+    use grow::civ::map_brush::MapArt;
+    let mut state = State::new();
+    state.civ.world.cols = 24;
+    state.civ.world.rows = 12;
+    state.civ.terrain.warmup = 0.0;
+    state.civ.view.cull = false;
+    let paint = pack_rgba(200, 40, 40, 255);
+    // One pixel a cell, every cell painted but the top left one.
+    let px: Vec<u32> = (0..24 * 12).map(|i| if i == 0 { 0 } else { paint }).collect();
+    let everywhere = vec![true; 24 * 12];
+    let layers = [LayerMask { brush: Brush::Grass, w: 24, h: 12, on: &everywhere }];
+    let mut cells = read_layers(&layers, 24, 12, Cell::Grass);
+    cells.art = Some(MapArt { w: 24, h: 12, px });
+    let mut sim = Settlement::new(&state);
+    lay_cells(&mut sim, &cells);
+    sim.bootstrap(&state);
+    sim.process_raster_queue(&state, usize::MAX);
+    sim.composite(&state);
+
+    let world = sim.world().clone();
+    let at = |c: i32, r: i32| -> usize {
+        let x = c * world.cell_px + world.cell_px / 2;
+        let y = world.sky_px + r * world.depth_px + world.depth_px / 2;
+        (y * world.px_w + x) as usize
+    };
+    assert_eq!(sim.bg[at(5, 5)], paint, "the ground is not drawn as the picture");
+    assert_ne!(sim.bg[at(0, 0)], paint, "the generated ground does not show through a clear pixel");
+    assert_eq!(sim.terrain.type_at(5, 5), Cell::Grass, "the cell stopped being what it is");
+    // The front face below the map carries the picture's last row down.
+    let front = ((world.sky_px + world.ground_px + 1) * world.px_w + at(5, 0) as i32 % world.px_w) as usize;
+    assert_eq!(sim.bg[front], paint, "the front face is not the picture");
+
+    // The switch puts the generated ground over it again.
+    state.civ.view.ground_over_art = true;
+    sim.composite(&state);
+    assert_ne!(sim.bg[at(5, 5)], paint, "the ground is still the picture with the switch on");
+    state.civ.view.ground_over_art = false;
+    sim.composite(&state);
+    assert_eq!(sim.bg[at(5, 5)], paint);
+
+    // Taking the picture off is for good, and the ground follows.
+    sim.set_art(None);
+    sim.composite(&state);
+    assert_ne!(sim.bg[at(5, 5)], paint);
+}
+
+#[test]
+fn the_picture_grows_with_the_map_and_survives_a_save() {
+    use grow::civ::map_brush::MapArt;
+    use grow::civ::save::{capture, restore, Snapshot};
+    let mut state = State::new();
+    state.civ.world.cols = 24;
+    state.civ.world.rows = 12;
+    state.civ.terrain.warmup = 0.0;
+    let paint = pack_rgba(60, 120, 60, 255);
+    let everywhere = vec![true; 24 * 12];
+    let layers = [LayerMask { brush: Brush::Grass, w: 24, h: 12, on: &everywhere }];
+    let mut cells = read_layers(&layers, 24, 12, Cell::Grass);
+    cells.art = Some(MapArt { w: 48, h: 24, px: vec![paint; 48 * 24] });
+    let mut sim = Settlement::new(&state);
+    lay_cells(&mut sim, &cells);
+    sim.bootstrap(&state);
+
+    let snapshot: Snapshot = serde_json::from_str(&capture(&sim, &state)).expect("readable");
+    let mut loaded = Settlement::new(&state);
+    restore(&mut loaded, &state, snapshot).expect("the world matches");
+    assert_eq!(loaded.art, sim.art, "the picture did not come back with the settlement");
+
+    // Grown to twice the width: the picture stays over the old land at twice
+    // the width too, and the new land is clear of it.
+    assert!(sim.expand(&state, 48, 12));
+    let art = sim.art.as_ref().expect("the picture went with the growing");
+    assert_eq!((art.w, art.h), (96, 24));
+    assert_eq!(art.at(0, 0, 96, 24), paint);
+    assert_eq!(art.at(95, 0, 96, 24), 0, "the new land carries the old picture");
+}

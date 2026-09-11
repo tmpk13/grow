@@ -213,6 +213,10 @@ pub struct ViewConfig {
     /// The empty space around the map becomes the same sky: the gradient
     /// carries on past the edge and the clouds repeat across all of it.
     pub cloud_space: bool,
+    /// A map read out of a picture is drawn as that picture, with the cells
+    /// only acting as what they are. On, the generated ground is drawn over
+    /// it instead: the map as it would look had it been made from the seed.
+    pub ground_over_art: bool,
     pub water_top: String,
     pub water_deep: String,
     pub path_color: String,
@@ -337,6 +341,7 @@ impl Default for ViewConfig {
             cloud_wobble: 0.1,
             cloud_base: 0.0,
             cloud_space: false,
+            ground_over_art: false,
             water_top: "#2b4f63".into(),
             water_deep: "#16303f".into(),
             path_color: "#6b5a44".into(),

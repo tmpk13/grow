@@ -31,7 +31,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{DragEvent, Element, Event, HtmlCanvasElement};
 
 use crate::app::{App, Handle, Panel};
-use crate::civ::map_brush::{Brush, LayerMask, BRUSHES};
+use crate::civ::map_brush::{Brush, LayerArt, LayerMask, MapArt, BRUSHES};
 use crate::civ::terrain::Cell;
 use crate::ui::paint::Surface;
 use crate::ui::{
@@ -83,6 +83,9 @@ pub struct MapLayer {
     /// Read by brightness rather than by what is clear, because nothing in
     /// it was.
     pub by_light: bool,
+    /// The pixels as they were dropped, for the picture the layers flatten
+    /// into when they are used as the map.
+    pub px: Vec<u32>,
 }
 
 impl MapLayer {
@@ -659,82 +662,91 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
     append(root, picture_section(app, h));
 
     let tally = el("div").class("stat-grid").get();
-    append(
-        root,
-        section(
-            "The map",
-            vec![
-                if app.settlement.is_some() {
-                    note(
-                        "What is standing on the map is left where it is: a cell somebody has \
-                         built on keeps its ground whatever is painted over it. Zones are drawn \
-                         nowhere but here - they say what may take root, which is about a \
-                         cell's future rather than how it looks.",
-                    )
-                } else {
-                    // The page paints the settlement's map, and there is not
-                    // one until somebody has been to the settlement. Rather
-                    // than send them away, the button does what walking in
-                    // there would have done.
-                    btn_row(vec![{
-                        // A plain button: founding the map is not a change to
-                        // the project, so there is nothing for an undo step to
-                        // put back.
-                        let h2 = h.clone();
-                        button("Make a map to paint on", Scope::Panel, move || {
-                            let mut sh = h2.borrow_mut();
-                            if sh.app.settlement.is_some() {
-                                return;
-                            }
-                            sh.app.set_note("growing the wilderness...");
-                            let civ = crate::civ::settlement::Settlement::new(&sh.app.state);
-                            sh.app.settlement = Some(civ);
-                            sh.app.pending_bootstrap = true;
-                        })
-                    }])
-                },
-                tally.clone(),
-                btn_row(vec![{
-                    // A plain button rather than one that records: wiping the
-                    // map changes nothing in the project for a snapshot to
-                    // put back, and the page's own history covers it.
-                    let h2 = h.clone();
-                    let ground = Brush::from_color(app.ui.brush_color)
-                        .ground()
-                        .unwrap_or(Cell::Grass);
-                    let label = format!(
-                        "Wipe the map to {}",
-                        Brush::of_ground(ground).label().to_lowercase()
-                    );
-                    danger_button(&label, Scope::Panel, move || {
-                        let mut sh = h2.borrow_mut();
-                        wipe(&mut sh.app);
-                    })
-                }]),
-                note(
-                    "Wiping turns every cell to the ground selected in the legend and takes \
-                     every zone and sky mark with it: a blank sheet to draw a map on. Wipe to \
-                     water and draw the land in, or wipe to grass and draw the sea. It is one \
-                     step back like any other stroke.",
-                ),
-                danger_button("Take every zone off", Scope::Panel, {
-                    let h2 = h.clone();
-                    move || {
-                        let mut sh = h2.borrow_mut();
-                        if let Some(sim) = sh.app.settlement.as_mut() {
-                            sim.terrain.zone.fill(0);
-                            sim.sync_zones();
-                        }
-                        sh.app.ui.map_edit.steps.clear();
-                        sh.app.ui.map_edit.redone.clear();
-                        sh.app.civ_stepped = true;
-                        sh.app.civ_repaint();
-                        sh.app.rebuild_panel = true;
+    let mut map_rows = vec![
+        if app.settlement.is_some() {
+            note(
+                "What is standing on the map is left where it is: a cell somebody has built \
+                 on keeps its ground whatever is painted over it. Zones are drawn nowhere but \
+                 here - they say what may take root, which is about a cell's future rather \
+                 than how it looks.",
+            )
+        } else {
+            // The page paints the settlement's map, and there is not one
+            // until somebody has been to the settlement. Rather than send
+            // them away, the button does what walking in there would have
+            // done.
+            btn_row(vec![{
+                // A plain button: founding the map is not a change to the
+                // project, so there is nothing for an undo step to put back.
+                let h2 = h.clone();
+                button("Make a map to paint on", Scope::Panel, move || {
+                    let mut sh = h2.borrow_mut();
+                    if sh.app.settlement.is_some() {
+                        return;
                     }
-                }),
-            ],
+                    sh.app.set_note("growing the wilderness...");
+                    let civ = crate::civ::settlement::Settlement::new(&sh.app.state);
+                    sh.app.settlement = Some(civ);
+                    sh.app.pending_bootstrap = true;
+                })
+            }])
+        },
+        tally.clone(),
+        btn_row(vec![{
+            // A plain button rather than one that records: wiping the map
+            // changes nothing in the project for a snapshot to put back, and
+            // the page's own history covers it.
+            let h2 = h.clone();
+            let ground = Brush::from_color(app.ui.brush_color).ground().unwrap_or(Cell::Grass);
+            let label =
+                format!("Wipe the map to {}", Brush::of_ground(ground).label().to_lowercase());
+            danger_button(&label, Scope::Panel, move || {
+                let mut sh = h2.borrow_mut();
+                wipe(&mut sh.app);
+            })
+        }]),
+        note(
+            "Wiping turns every cell to the ground selected in the legend and takes every \
+             zone and sky mark with it: a blank sheet to draw a map on. Wipe to water and \
+             draw the land in, or wipe to grass and draw the sea. It is one step back like \
+             any other stroke.",
         ),
-    );
+        danger_button("Take every zone off", Scope::Panel, {
+            let h2 = h.clone();
+            move || {
+                let mut sh = h2.borrow_mut();
+                if let Some(sim) = sh.app.settlement.as_mut() {
+                    sim.terrain.zone.fill(0);
+                    sim.sync_zones();
+                }
+                sh.app.ui.map_edit.steps.clear();
+                sh.app.ui.map_edit.redone.clear();
+                sh.app.civ_stepped = true;
+                sh.app.civ_repaint();
+                sh.app.rebuild_panel = true;
+            }
+        }),
+    ];
+    if app.settlement.as_ref().is_some_and(|sim| sim.art.is_some()) {
+        map_rows.push(note(
+            "The map is drawn as the picture it was read from, and what is painted here \
+             changes what a cell is without changing how it looks. Taking the picture off \
+             draws the map as the ground it is instead, for good.",
+        ));
+        map_rows.push(danger_button("Take the picture off the map", Scope::Panel, {
+            let h2 = h.clone();
+            move || {
+                let mut sh = h2.borrow_mut();
+                if let Some(sim) = sh.app.settlement.as_mut() {
+                    sim.set_art(None);
+                }
+                sh.app.civ_stepped = true;
+                sh.app.civ_repaint();
+                sh.app.rebuild_panel = true;
+            }
+        }));
+    }
+    append(root, section("The map", map_rows));
 
     let mut panel = MapPanel { tally };
     panel.redraw(app);
@@ -847,6 +859,16 @@ fn layers_section(app: &App, h: &Handle) -> Element {
          the ground the legend has selected.",
         Brush::of_ground(under).label().to_lowercase()
     )));
+    rows.push(note(if tools.image.is_some() {
+        "The picture to trace is the drawing whole, so it becomes the map's own picture: the \
+         ground is drawn as it and the cells only act as what they are. The Land panel's View \
+         section has a switch to draw the generated ground over it."
+    } else {
+        "The layers flattened - later over earlier, masks left out - become the map's own \
+         picture: the ground is drawn as it and the cells only act as what they are, so a \
+         layer set to Leave alone still lends its colors. The Land panel's View section has a \
+         switch to draw the generated ground over it."
+    }));
     let h2 = h.clone();
     rows.push(danger_button("Forget the layers", Scope::Panel, move || {
         let mut sh = h2.borrow_mut();
@@ -1057,7 +1079,22 @@ fn use_layers(app: &mut App) {
         .iter()
         .map(|l| LayerMask { brush: l.brush, w: l.w, h: l.h, on: &l.on })
         .collect();
-    let cells = crate::civ::map_brush::read_layers(&masks, cols, rows, under);
+    let mut cells = crate::civ::map_brush::read_layers(&masks, cols, rows, under);
+    // The picture the map is drawn as: the one being traced if there is one,
+    // since that is the drawing whole, and the layers flattened otherwise.
+    cells.art = match app.ui.map_edit.image.as_ref() {
+        Some((w, h, px)) => Some(MapArt { w: *w, h: *h, px: px.clone() }),
+        None => {
+            let arts: Vec<LayerArt> = app
+                .ui
+                .map_edit
+                .layers
+                .iter()
+                .map(|l| LayerArt { w: l.w, h: l.h, px: &l.px, by_light: l.by_light })
+                .collect();
+            crate::civ::map_brush::flatten_layers(&arts)
+        }
+    };
     app.state.civ.world.cols = cols;
     app.state.civ.world.rows = rows;
     // The map is about to be exactly what these say, so nothing is left
@@ -1224,7 +1261,7 @@ fn take_layers(h: &Handle, files: web_sys::FileList) {
             }
             let (on, by_light) = crate::civ::map_brush::layer_mask(w, height, &px);
             let brush = Brush::guess(&name);
-            sh.app.ui.map_edit.layers.push(MapLayer { name, brush, w, h: height, on, by_light });
+            sh.app.ui.map_edit.layers.push(MapLayer { name, brush, w, h: height, on, by_light, px });
             added += 1;
         }
         match added {
@@ -1290,6 +1327,11 @@ impl Panel for MapPanel {
         let sky = app.ui.map_edit.marked_sky();
         if sky > 0 {
             let _ = self.tally.append_child(&stat("marked sky", &format!("{sky} cells")));
+        }
+        if let Some(art) = &sim.art {
+            let _ = self
+                .tally
+                .append_child(&stat("drawn as a picture", &format!("{} by {}", art.w, art.h)));
         }
     }
 }
