@@ -2164,7 +2164,7 @@ fn a_finished_building_with_a_picture_is_drawn_from_it() {
 
     let mut cache = SpriteCache::default();
     let plain =
-        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, false, Detail::Full);
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, false, Detail::Full, 0.0);
 
     // One flat color, so what is drawn from it is unmistakable.
     let pink = grow::util::pack_rgba(255, 0, 255, 255);
@@ -2174,7 +2174,7 @@ fn a_finished_building_with_a_picture_is_drawn_from_it() {
 
     let mut cache = SpriteCache::default();
     let art =
-        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, false, Detail::Full);
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, false, Detail::Full, 0.0);
     let kept = state.civ.made.slot(def.id).expect("the picture is in its slot");
     let want = kept.drawn_size(sim.world().cell_px, state.civ.art_px_per_cell);
     assert_eq!((art.w, art.h), want, "the picture should come out at the size it was drawn");
@@ -2190,8 +2190,86 @@ fn a_finished_building_with_a_picture_is_drawn_from_it() {
     state.civ.made.enabled = false;
     let mut cache = SpriteCache::default();
     let back =
-        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, false, Detail::Full);
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[at], false, false, Detail::Full, 0.0);
     assert_eq!((back.w, back.h), (plain.w, plain.h));
+}
+
+/// A picture of more than one frame is an animation wherever it is dropped.
+/// A kiln with a fire in it and a mill with a turning wheel are the same
+/// thing a walk cycle is, and for a long time they were drawn from their
+/// first frame and never moved.
+#[test]
+fn a_picture_of_several_frames_plays_on_the_thing_it_was_dropped_on() {
+    use grow::civ::civ_render::{building_sprite, Detail, SpriteCache};
+    use grow::civ::sprites::Clip;
+
+    let (mut sim, mut state) = peopled(48, 24);
+    let dt = 1.0 / state.civ.sim.tick_hz;
+    for _ in 0..2000 {
+        sim.step(&state, dt);
+    }
+    let at = sim
+        .buildings
+        .iter()
+        .position(|b| b.built)
+        .expect("something should have been finished by now");
+    let def = sim.buildings[at].def;
+
+    // Two frames side by side, each one flat color, so which is showing is
+    // unmistakable. Two a second, so one frame is half a second wide.
+    let pink = grow::util::pack_rgba(255, 0, 255, 255);
+    let green = grow::util::pack_rgba(0, 255, 0, 255);
+    let mut px = Vec::new();
+    for _ in 0..4 {
+        px.extend([pink; 4]);
+        px.extend([green; 4]);
+    }
+    let mut clip = Clip::from_strip(8, 4, px, 2, "test".into()).expect("a strip");
+    clip.fps = 2.0;
+    state.civ.made.enabled = true;
+    state.civ.made.set(def.id, clip);
+
+    // One cache across the lot: the frame is part of what it is keyed on, or
+    // the first frame drawn would be the only one ever seen again.
+    let mut cache = SpriteCache::default();
+    let b = &sim.buildings[at];
+    let world = sim.world();
+    fn shot(
+        cache: &mut SpriteCache,
+        state: &State,
+        world: &grow::world::World,
+        b: &grow::civ::settlement::Building,
+        t: f64,
+    ) -> Vec<u32> {
+        building_sprite(cache, state, world, b, false, false, Detail::Full, t).px.clone()
+    }
+    let first = shot(&mut cache, &state, world, b, 0.0);
+    assert!(first.iter().all(|v| *v == pink), "the first frame should be showing at zero");
+    assert_eq!(
+        shot(&mut cache, &state, world, b, 0.25),
+        first,
+        "the frame turned over inside its own half second"
+    );
+    let second = shot(&mut cache, &state, world, b, 0.5);
+    assert!(second.iter().all(|v| *v == green), "the second frame should be showing by then");
+    assert_eq!(
+        shot(&mut cache, &state, world, b, 1.0),
+        first,
+        "the clip should have come round again"
+    );
+
+    // One frame is a picture and stands still, which is what a drawing of a
+    // barn dropped on a slot is.
+    if let Some(slot) = state.civ.made.slot_mut(def.id) {
+        slot.frames = 1;
+    }
+    state.civ.made.touch();
+    let mut cache = SpriteCache::default();
+    assert_eq!(
+        shot(&mut cache, &state, world, b, 0.0),
+        shot(&mut cache, &state, world, b, 0.5),
+        "a single frame should not move"
+    );
 }
 
 #[test]
@@ -2223,7 +2301,7 @@ fn a_half_built_building_is_still_drawn_rising_out_of_the_ground() {
 
     let mut cache = SpriteCache::default();
     let drawn =
-        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[site], false, false, Detail::Full);
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[site], false, false, Detail::Full, 0.0);
     let kept = state.civ.made.slot(def.id).expect("the picture is in its slot");
     let (w, h) = kept.drawn_size(sim.world().cell_px, state.civ.art_px_per_cell);
     assert!(
@@ -2577,7 +2655,7 @@ fn a_site_is_never_drawn_from_the_finished_picture() {
     );
     let mut cache = SpriteCache::default();
     let drawn =
-        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[site], false, false, Detail::Full);
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[site], false, false, Detail::Full, 0.0);
     let (w, h) = state
         .civ
         .made
@@ -2596,7 +2674,7 @@ fn a_site_is_never_drawn_from_the_finished_picture() {
     );
     let mut cache = SpriteCache::default();
     let now =
-        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[site], false, false, Detail::Full);
+        building_sprite(&mut cache, &state, sim.world(), &sim.buildings[site], false, false, Detail::Full, 0.0);
     assert_eq!((now.w, now.h), (w, h));
     assert!(now.px.iter().all(|v| *v == pink));
 }
@@ -2813,6 +2891,26 @@ fn the_clouds_are_seamless_settable_and_on_the_clock() {
     assert_eq!(heavy.row_at(base - h as i32 / 2, base).unwrap(), &heavy.edge[..w]);
     assert_eq!(heavy.row_at(base, base).unwrap(), &heavy.edge[(h / 2) * w..(h / 2 + 1) * w]);
     assert!(heavy.row_at(base + h as i32 / 2, base).is_none());
+
+    // How far a cloud's middle is from one of its pixels has to change
+    // smoothly across the tile. It is a cloud's own number, so it steps at
+    // the seam with the next cloud unless something softens it, and a seam
+    // found by climbing a lattice field is a straight diagonal: left to step,
+    // the base cuts triangles of sky out of the weather along it.
+    let mut across = 0.0f64;
+    let mut down = 0.0f64;
+    for y in 0..heavy.h {
+        for x in 0..heavy.w {
+            let r = heavy.rise_at(x, y);
+            across = across.max((r - heavy.rise_at(x + 1, y)).abs());
+            // Inside one cloud the middle is a fixed row, so the distance to
+            // it shortens by exactly one per row down; that much is the shape
+            // being right rather than a step.
+            down = down.max((r - heavy.rise_at(x, y + 1)).abs() - 1.0);
+        }
+    }
+    assert!(across < 5.0, "cloud middles step {across} rows between neighbors across");
+    assert!(down < 5.0, "cloud middles step {down} rows between neighbors down");
 
     // Wobble is the edge movement: with it the shapes churn from step to
     // step, without it the same shapes drift whole and nothing regenerates.

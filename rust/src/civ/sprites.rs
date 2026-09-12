@@ -12,6 +12,12 @@
 //! There is one clip per motion, and a motion with nothing dropped on it falls
 //! back to a related one, so a single walk sheet is enough to stand in for the
 //! generated person everywhere.
+//!
+//! The things people make take clips out of the same box. A picture for a
+//! building is one frame and stands still; cut into more, it plays off the
+//! clock like a motion does, which is what a kiln with a fire in it or a mill
+//! with a turning wheel is. Nothing about the playing is particular to people,
+//! so both families read `frame_index`.
 
 use serde::{Deserialize, Serialize};
 
@@ -906,8 +912,10 @@ pub fn made_entries() -> Vec<crate::find::Entry> {
 }
 
 /// Pictures for the things people make. A person has a clip per motion; a
-/// building has one picture, drawn at the size the generator would have drawn
-/// it, so art and generated things stand together on the same map.
+/// thing people make has one picture per state it can be in, drawn at the size
+/// its own art asks for, so art and generated things stand together on the
+/// same map. A picture is a clip like any other and is played the same way:
+/// one frame stands still, several run off the clock.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct MadeSprites {

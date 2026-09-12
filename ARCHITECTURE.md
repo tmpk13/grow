@@ -92,7 +92,7 @@ flowchart TD
     pdb["civ/people_db.rs<br/>the register of people"]
     social["civ/social.rs<br/>who has met whom, and what they made of it"]
     csprites["civ/sprites.rs<br/>clips per person motion and per made thing's state"]
-    cclouds["civ/clouds.rs<br/>one seamless tile of weather, and which cloud each pixel belongs to"]
+    cclouds["civ/clouds.rs<br/>one seamless tile of weather, and how far each cloud has sunk past the base"]
     brush["civ/map_brush.rs<br/>what a stroke on the map means, and a map read from layers"]
     boats["civ/boats.rs<br/>hulls, cargoes, voyages"]
     ball["civ/balloons.rs<br/>canopies aloft, and what they are worth"]
@@ -729,6 +729,63 @@ flowchart LR
   drag --> ground["the cached ground is stale"]
   panel["the Land panel"] --> adjust["what it is made of,<br/>how far off, the snow line"]
   adjust --> ground
+```
+
+## The base of the weather
+
+Clouds are one seamless tile of wrapped value noise, stamped over the sky band
+and repeated across the empty space around the map by the camera. The cloud
+base is a line across the sky that the middle of a cloud stays above, and the
+awkward part is that it must not be a cut: a shape whose middle is above the
+line has to hang whole below it, and one whose middle has gone under has to be
+absent even where it reaches up past the line.
+
+So the tile carries, per pixel, how far it is to the middle of the cloud it
+belongs to. Every pixel climbs the broad octave to a local top by steepest
+ascent, the basin round a top is one cloud, and `rise` is the rows from a
+pixel to its own top. `base - h/2 .. base + h/2` is then a band precomputed
+once per rebuild, in which `e + rise - h/2` is how far that pixel's middle has
+sunk below the base - the same number for every pixel of one cloud, so a cloud
+is dealt with as a whole. Above the band every cloud is whole and below it
+none is, because a middle is never more than half a tile from its pixel.
+
+What that number does is raise the pixel's threshold, over `SINK_ROWS`, until
+nothing of the cloud is left. It is deliberately not a mask: a mask's boundary
+is the seam between one basin and the next, and a seam found by steepest
+ascent on a lattice field is a **straight diagonal line**, which the eye reads
+as a triangle bitten out of the weather. A raised threshold instead gives back
+sky along the shape's own contour, dithered like every other cloud edge.
+
+The sink is also smoothed sideways (`blur_wrapped`, a wrapped box blur) before
+it is used, because it is a cloud's own number and would otherwise step at
+that same seam. Rises are wrapped into half a tile either way, so they are
+pinned to `SINK_REACH` first: without that, two pixels on opposite sides of a
+seam read as a whole tile apart and the blur averages them into a middle that
+is nowhere.
+
+None of that is per tile. The climb and the smoothing run once per seed
+(`ensure_middles`), on a broad octave built with no wobble in it: what the
+wobble churns is the edge of a shape, not where its middle is. The tile
+itself is rebuilt several times a second at any wobble at all, and the climb
+was the most expensive thing in it.
+
+```mermaid
+flowchart TD
+  noise["two octaves of wrapped value noise"] --> mix["the mixed field"]
+  noise --> broad["the broad octave alone,<br/>no wobble, once per seed"]
+  mix --> px["px: the tile, thresholded and dithered"]
+  broad --> climb["steepest ascent to a local top"]
+  climb --> rise["rise: rows to this cloud's middle"]
+  rise --> pin["pinned to SINK_REACH,<br/>so the wrap is not averaged"]
+  pin --> blur["blurred, so the seam is not a step"]
+  blur --> sunk["sunk = how far this cloud's<br/>middle is below the base"]
+  sunk --> lift["threshold + sunk / SINK_ROWS"]
+  mix --> lift
+  lift --> edge["edge: the band across the base"]
+  px --> read["row_at: the tile above the band,<br/>the band across it, nothing below"]
+  edge --> read
+  read --> map["the sky band of the map"]
+  read --> space["the letterbox, as two patterns"]
 ```
 
 ## Rivers
@@ -1884,9 +1941,10 @@ flowchart TD
     state["going up / at work / after dark"] --> key["id:state"]
     key --> fall["falls back to id"]
     fall --> stand["stood on the footprint's front edge,<br/>centered across its width"]
+    stand --> play["one frame stands still;<br/>several play off the clock"]
   end
   clip --> size["source px * cell_px / art_px_per_cell * scale<br/>one ratio, both sides"]
-  stand --> size
+  play --> size
   size --> draw["drawn on the map"]
   none["no picture"] --> gen["generated from the sampling boxes"]
   gen --> draw
@@ -1895,6 +1953,16 @@ flowchart TD
 A site is the one place the fallback does not apply: a half built thing never
 borrows the finished picture, because one image cannot say how far a wall has
 got.
+
+Both families play the same way. A `Clip` is a sheet read as a row of equal
+frames plus `frames`, `fps` and `stride`, and `Clip::frame_index` is the whole
+of the playing; the caller hands it the clock, and a person's walk hands it
+the step count as well. What separates the two is only the default: a person's
+motion is an animation, so a single image dropped on one is guessed at for
+columns, while a thing people make is one picture until the Frames box beside
+its slot cuts it - guessing there would chop a wide drawing of a barn into
+pieces of one. The frame is part of `SpriteKey::Made`, so the cache holds one
+scaled sprite per frame rather than the first one forever.
 
 The generated person has four poses rather than one: the walk cycle, a swimmer
 (head and shoulders over a waterline, an arm out with the stroke), somebody

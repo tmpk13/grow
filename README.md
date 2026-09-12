@@ -417,11 +417,11 @@ they take, how fast they drift, how strongly their edges churn, and **Cloud
 base height** - how far up from the horizon the weather begins, as a share of
 the sky. Zero brings the clouds down to the horizon; raising it lifts them and
 leaves clear air over the land. The line is one the middle of a cloud stays
-above rather than a cut: a cloud just above it hangs whole below it and one
-just below it is not there, so the underside of the weather is ragged the way
-a real one is. It is the same line the sky past the map's edge is drawn
-against, so with **Clouds past the map's edge** on a shape carries across the
-boundary rather than stepping at it.
+above rather than a cut: a cloud just above it hangs whole below it, and one
+whose middle has sunk past it thins from every edge and goes, so the underside
+of the weather is ragged the way a real one is. It is the same line the sky
+past the map's edge is drawn against, so with **Clouds past the map's edge** on
+a shape carries across the boundary rather than stepping at it.
 
 **Grow it instead** makes the map larger without starting the settlement over.
 The new land goes on the right and along the bottom, so every column and row
@@ -491,6 +491,14 @@ A picture is scaled to the box the generator would have filled: as wide as the
 footprint, as tall as the walls and roof over the depth of it, standing on the
 front edge, so art and generated things stand together on the same map. **Draw
 made things from pictures** turns the lot off without losing any of them.
+
+A picture can move. One image is one picture and stands still; several images
+are read as one frame each, and a single sheet is cut into frames by the
+**Frames** box beside the slot, which is left at one so a wide drawing of a
+barn is not chopped up on the way in. More than one frame plays off the clock
+at the **Rate** set there - a fire in a kiln, a wheel turning on a mill, a
+banner moving on a wall. The count and the rate outlive the art they were set
+on, so dropping a redrawn sheet on a slot does not stop it.
 
 That is a hundred and thirty slots, so the list is searched rather than shown.
 The box over it runs the same ranking the menu search does, over its own index

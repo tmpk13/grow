@@ -3,6 +3,19 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) The weather stopped cutting triangles out of itself. A cloud whose
+  middle has sunk below the base thins from every edge and goes, its own
+  threshold raised, rather than being masked off along the seam between it and
+  the next cloud - a seam found by climbing a lattice field is a straight
+  diagonal, and the sky it gave back read as a triangle bitten out of a cloud.
+  How far a cloud has sunk is smoothed sideways before it is read, so nothing
+  steps at that seam either.
+- (LLM) A picture dropped on a thing people make plays if it has more than one
+  frame. Buildings, boats and loads in hand were drawn from their first frame
+  and never moved, whatever was dropped on them; they now take the clock the
+  way a person's motion does, with Frames and Rate beside every slot. One
+  image is still one picture: a wide drawing of a barn is not chopped up on
+  the way in.
 - (LLM) A whole map dropped as one drawing works: a layer covering everything
   is read as a drawing rather than as a light-against-dark mask, so its colors
   become the map's picture instead of being thrown away - one opaque image used

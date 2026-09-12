@@ -584,7 +584,8 @@ pub fn made_box(world: &World, def: &crate::civ::buildings::BuildingDef) -> (i32
 
 /// `working` says somebody is at it right now, which is a state a picture can
 /// be drawn for. The caller works it out because it takes the clock, which a
-/// sprite has no business holding.
+/// sprite has no business holding; the clock itself comes in because a picture
+/// of more than one frame is played off it.
 #[allow(clippy::too_many_arguments)]
 pub fn building_sprite(
     cache: &mut SpriteCache,
@@ -594,6 +595,7 @@ pub fn building_sprite(
     night: bool,
     working: bool,
     detail: Detail,
+    time: f64,
 ) -> Rc<Sprite> {
     // Which state to draw it in, most particular first. A building still
     // going up only takes a picture if one was drawn for that: the generator
@@ -621,7 +623,8 @@ pub fn building_sprite(
         // drawn wider than the thing it stands for hangs evenly either side
         // rather than growing out of one corner of it.
         let ox = (w - made_box(world, b.def).0) / 2;
-        return made_sprite(cache, clip, &key, 0, w, h, ox, state.civ.made.rev);
+        let frame = clip.frame_index(0.0, time);
+        return made_sprite(cache, clip, &key, frame, w, h, ox, state.civ.made.rev);
     }
     let key = building_key(state, world, b, night, detail);
     if let Some(hit) = cache.map.get(&key) {
@@ -1443,6 +1446,7 @@ pub fn boat_sprite(
     world: &World,
     boat: &Boat,
     banner: u32,
+    time: f64,
 ) -> Rc<Sprite> {
     let hull_w = ((world.cell_px as f64 * 1.5).round() as i32).max(4);
     let hull_h = ((world.cell_px as f64 * 0.4).round() as i32).max(2);
@@ -1451,7 +1455,8 @@ pub fn boat_sprite(
     if let Some(clip) = state.civ.made.clip_in("boat", want) {
         let (w, h) = clip.drawn_size(world.cell_px, state.civ.art_px_per_cell);
         let key = crate::civ::sprites::made_key("boat", want);
-        return made_sprite(cache, clip, &key, 0, w, h, w / 2, state.civ.made.rev);
+        let frame = clip.frame_index(0.0, time);
+        return made_sprite(cache, clip, &key, frame, w, h, w / 2, state.civ.made.rev);
     }
     let key = SpriteKey::Boat {
         seed: (boat.seed & 255) as u8,
@@ -1725,6 +1730,7 @@ fn draw_carry(
     sprite: &Sprite,
     sx: i32,
     sy: i32,
+    time: f64,
 ) {
     let res = match p.carry.res {
         Some(res) => res,
@@ -1736,7 +1742,8 @@ fn draw_carry(
     // height their hand is.
     if let Some(clip) = state.civ.made.clip(&slot) {
         let (w, h) = clip.drawn_size(world.cell_px, state.civ.art_px_per_cell);
-        let art = made_sprite(cache, clip, &slot, 0, w, h, 0, state.civ.made.rev);
+        let frame = clip.frame_index(0.0, time);
+        let art = made_sprite(cache, clip, &slot, frame, w, h, 0, state.civ.made.rev);
         let x = sx + if p.facing > 0 { sprite.ox } else { -sprite.ox - w + 1 };
         let y = sy - sprite.oy + (sprite.h as f64 * 0.35).round() as i32 + h;
         blit(buf, world, &art, x, y, false);
@@ -2173,7 +2180,8 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                 // Stamped by whoever is at the bench; a couple of seconds of
                 // grace so the picture does not flicker between swings.
                 let busy = b.active > 0.0 && time - b.active < 2.0;
-                let sprite = building_sprite(&mut sprites, state, world, b, lit, busy, detail);
+                let sprite =
+                    building_sprite(&mut sprites, state, world, b, lit, busy, detail, time);
                 blit(&mut buf, world, &sprite, sx, sy, false);
                 if detail.flourishes() {
                     draw_occupancy(&mut buf, world, b, sx + b.w * world.cell_px / 2, sy);
@@ -2243,7 +2251,17 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                 } else {
                     blit(&mut buf, world, &sprite, sx, sy, true);
                     if p.carrying() && detail.flourishes() && !swimming && !held {
-                        draw_carry(&mut sprites, state, world, &mut buf, p, &sprite, sx, sy);
+                        draw_carry(
+                            &mut sprites,
+                            state,
+                            world,
+                            &mut buf,
+                            p,
+                            &sprite,
+                            sx,
+                            sy,
+                            time,
+                        );
                     }
                 }
             }
@@ -2258,7 +2276,7 @@ pub fn composite_settlement(sim: &mut Settlement, state: &State) {
                     fill_rect(&mut buf, world, sx - 1, sy - 1, sx + 2, sy + 1, banner);
                     continue;
                 }
-                let sprite = boat_sprite(&mut sprites, state, world, boat, banner);
+                let sprite = boat_sprite(&mut sprites, state, world, boat, banner, time);
                 blit(&mut buf, world, &sprite, sx, sy, false);
             }
         }

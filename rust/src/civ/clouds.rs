@@ -12,12 +12,16 @@
 //! slowly rather than sliding as one rigid picture.
 //!
 //! The weather has a base: a line across the sky that the middle of a cloud
-//! stays above. It is not a cut. A cloud is drawn whole or not at all by where
-//! its middle is, so the ones just above the line hang below it and the ones
-//! just below it are not there, and the underside of the weather is ragged
-//! the way a real one is rather than ruled. The tile carries what that needs,
-//! which cloud every pixel belongs to, and answers for any base line, so
-//! moving the line rebuilds nothing.
+//! stays above. It is not a cut. Where a cloud's middle sinks below the line
+//! that cloud thins and goes, whole and on its own, so the ones just above
+//! the line hang below it and the underside of the weather is ragged the way
+//! a real one is rather than ruled. What thins a cloud is its own threshold
+//! being raised, never a mask laid over it: the sky it gives back is bounded
+//! by the shape's own contour, dithered like every other cloud edge, instead
+//! of by the seam between one cloud and the next - which is a straight
+//! diagonal line, and read as a triangle bitten out of the weather. The tile
+//! carries what that needs, which cloud every pixel belongs to, and answers
+//! for any base line, so moving the line rebuilds nothing.
 
 use crate::state::State;
 use crate::util::{hex_to_packed, mix_packed, pack_rgba};
@@ -43,11 +47,11 @@ pub struct CloudLayer {
     /// Packed pixels, zero where the sky shows through.
     pub px: Vec<u32>,
     /// The tile as it is drawn across the band that straddles the cloud base.
-    /// Row `e` of it is world row `base - h / 2 + e`, and a pixel is kept only
-    /// if the cloud it belongs to has its middle above the base. Above the
-    /// band the tile is `px` whole; below it there is nothing. Both readers
-    /// go through `row_at`, which is what keeps the map and the space around
-    /// it the same sky.
+    /// Row `e` of it is world row `base - h / 2 + e`, shaded against a
+    /// threshold raised by how far the middle of each pixel's cloud has sunk
+    /// below the base. Above the band the tile is `px` whole; below it there
+    /// is nothing. Both readers go through `row_at`, which is what keeps the
+    /// map and the space around it the same sky.
     pub edge: Vec<u32>,
     /// What the tile was built from, so a frame that changed nothing reuses
     /// it. Doubles as the camera's key for knowing when to re-upload.
@@ -56,11 +60,18 @@ pub struct CloudLayer {
     pub drift: i32,
     /// The field the pixels were colored from, kept for the underside pass.
     scratch: Vec<f32>,
-    /// The broad octave alone, which is what a cloud's middle is found in.
+    /// The broad octave alone, with no wobble in it, which is what a cloud's
+    /// middle is found in.
     broad: Vec<f32>,
+    /// What the middles were worked out for, so they are worked out once per
+    /// seed rather than once per tile. Zero means never.
+    sink_key: u64,
     /// Rows from each pixel to the middle of the cloud it belongs to,
-    /// negative upward, wrapped so the tile's seam is not a cliff.
-    rise: Vec<i16>,
+    /// negative upward, softened across the seams between one cloud and the
+    /// next.
+    sink: Vec<f32>,
+    /// Scratch for the smoothing pass, kept so it is allocated once.
+    blur: Vec<f32>,
 }
 
 impl CloudLayer {
@@ -83,6 +94,20 @@ impl CloudLayer {
         };
         let at = sy as usize * w;
         rows.get(at..at + w)
+    }
+
+    /// Rows from one tile pixel to the middle of the cloud it belongs to,
+    /// negative upward. This is what the band reads to decide how far a cloud
+    /// has sunk past the base, and it is smoothed across the seam between one
+    /// cloud and the next rather than stepping at it. Public for the test
+    /// that holds it to that, since a step here is a straight diagonal line
+    /// of sky on the map.
+    pub fn rise_at(&self, x: i32, y: i32) -> f64 {
+        if self.w <= 0 || self.h <= 0 {
+            return 0.0;
+        }
+        let i = (y.rem_euclid(self.h) * self.w + x.rem_euclid(self.w)) as usize;
+        self.sink.get(i).copied().unwrap_or(0.0) as f64
     }
 }
 
@@ -155,11 +180,10 @@ fn lattices(seed: i32, t: f64, wobble: f64) -> (Lattice, Lattice) {
     (Lattice::new(48, seed, t, wobble), Lattice::new(16, seed ^ 0x9e37, t * 1.7, wobble))
 }
 
-/// The broad octave on its own and the two mixed, at one pixel.
-fn sample(broad: &Lattice, fine: &Lattice, x: i32, y: i32) -> (f64, f64) {
+/// The two octaves mixed, at one pixel.
+fn sample(broad: &Lattice, fine: &Lattice, x: i32, y: i32) -> f64 {
     let (xf, yf) = (x as f64, (y * VERTICAL_SQUASH) as f64);
-    let b = broad.at(xf, yf);
-    (b, b * 0.62 + fine.at(xf, yf) * 0.38)
+    broad.at(xf, yf) * 0.62 + fine.at(xf, yf) * 0.38
 }
 
 /// Public for the tests, which check the tile is seamless where it wraps.
@@ -167,16 +191,47 @@ fn sample(broad: &Lattice, fine: &Lattice, x: i32, y: i32) -> (f64, f64) {
 /// and samples the same way.
 pub fn field(x: i32, y: i32, seed: i32, t: f64, wobble: f64) -> f64 {
     let (broad, fine) = lattices(seed, t, wobble);
-    sample(&broad, &fine, x, y).1
+    sample(&broad, &fine, x, y)
+}
+
+/// Which cloud every pixel belongs to, worked out once per seed. The wobble
+/// is deliberately left out of the octave this climbs: what churns is the
+/// edge of a shape, not where the middle of it is, so neither the climb nor
+/// the smoothing after it has to be redone every time the tile is rebuilt -
+/// which at any wobble at all is several times a second.
+fn ensure_middles(layer: &mut CloudLayer, seed: i32) {
+    let n = (TILE_W * TILE_H) as usize;
+    // The low bit is set so a seed of zero is still a key that has been used.
+    let key = (seed as u32 as u64) << 1 | 1;
+    if layer.sink_key == key && layer.sink.len() == n {
+        return;
+    }
+    layer.sink_key = key;
+    let broad = Lattice::new(48, seed, 0.0, 0.0);
+    layer.broad.clear();
+    layer.broad.resize(n, 0.0);
+    for y in 0..TILE_H {
+        for x in 0..TILE_W {
+            layer.broad[(y * TILE_W + x) as usize] =
+                broad.at(x as f64, (y * VERTICAL_SQUASH) as f64) as f32;
+        }
+    }
+    find_middles(&layer.broad, TILE_W, TILE_H, &mut layer.sink);
+    blur_wrapped(&mut layer.sink, &mut layer.blur, TILE_W, TILE_H, SINK_BLUR);
 }
 
 /// Which cloud each pixel belongs to, as rows from the pixel to the middle
 /// of it. A middle is a local top of the broad octave, every pixel climbs to
-/// one, and the basin round a top is one cloud; where two basins meet is the
-/// thinnest part of the mass between them, which is where a cloud would come
-/// apart anyway. The broad octave alone is climbed: the fine one has a top
-/// every few pixels and would cut the sky into confetti.
-fn find_middles(broad: &[f32], w: i32, h: i32, rise: &mut Vec<i16>) {
+/// one, and the basin round a top is one cloud. The broad octave alone is
+/// climbed: the fine one has a top every few pixels and would cut the sky
+/// into confetti.
+///
+/// Where two basins meet is not where a cloud comes apart, whatever it looks
+/// like on the broad octave: the shape that is drawn is the two octaves
+/// mixed, and the fine one welds neighboring basins into one mass, so a seam
+/// runs through the thick of a cloud as often as not. Nothing may be cut
+/// along one - see what the caller does with this instead.
+fn find_middles(broad: &[f32], w: i32, h: i32, rise: &mut Vec<f32>) {
     let n = (w * h) as usize;
     // Where each pixel steps next: its highest neighbor, or itself at a top.
     // Steps only ever go up, so there is no ring to walk round.
@@ -223,13 +278,112 @@ fn find_middles(broad: &[f32], w: i32, h: i32, rise: &mut Vec<i16>) {
     }
     let half = h / 2;
     rise.clear();
-    rise.resize(n, 0);
+    rise.resize(n, 0.0);
     for y in 0..h {
         for x in 0..w {
             let i = (y * w + x) as usize;
             let ty = top_of[i] as i32 / w;
-            rise[i] = ((ty - y + half).rem_euclid(h) - half) as i16;
+            let r = ((ty - y + half).rem_euclid(h) - half) as f32;
+            rise[i] = r.clamp(-SINK_REACH, SINK_REACH);
         }
+    }
+}
+
+/// A box blur over the tile, wrapping both ways, run once across and once
+/// down. The running sum is what keeps it cheap enough to sit inside a tile
+/// that is rebuilt several times a second, and the window's two ends are
+/// walked round by hand rather than taken modulo: at this size the divisions
+/// a `rem_euclid` per pixel costs are most of the pass.
+fn blur_wrapped(v: &mut [f32], tmp: &mut Vec<f32>, w: i32, h: i32, r: i32) {
+    let span = (2 * r + 1) as f32;
+    tmp.clear();
+    tmp.resize(v.len(), 0.0);
+    for y in 0..h {
+        let row = (y * w) as usize;
+        let mut sum: f32 = (-r..=r).map(|d| v[row + d.rem_euclid(w) as usize]).sum();
+        // The pixel the window is about to leave behind, and the one it is
+        // about to take in.
+        let mut out = (-r).rem_euclid(w) as usize;
+        let mut into = (r + 1).rem_euclid(w) as usize;
+        for x in 0..w {
+            tmp[row + x as usize] = sum / span;
+            sum -= v[row + out];
+            sum += v[row + into];
+            out = if out + 1 == w as usize { 0 } else { out + 1 };
+            into = if into + 1 == w as usize { 0 } else { into + 1 };
+        }
+    }
+    let stride = w as usize;
+    let last = ((h - 1) * w) as usize;
+    for x in 0..w as usize {
+        let mut sum: f32 = (-r..=r).map(|d| tmp[(d.rem_euclid(h) * w) as usize + x]).sum();
+        let mut out = ((-r).rem_euclid(h) * w) as usize;
+        let mut into = ((r + 1).rem_euclid(h) * w) as usize;
+        let mut at = x;
+        for _ in 0..h {
+            v[at] = sum / span;
+            sum -= tmp[out + x];
+            sum += tmp[into + x];
+            out = if out == last { 0 } else { out + stride };
+            into = if into == last { 0 } else { into + stride };
+            at += stride;
+        }
+    }
+}
+
+/// How far below the base a cloud's middle has to sink before the cloud is
+/// gone. Over these rows its threshold climbs to one, which is past anything
+/// the field reaches, so it thins from every edge at once and disappears. A
+/// couple of rows would read as a cut; a hundred would leave haze hanging
+/// under the weather for the whole height of the sky.
+const SINK_ROWS: f64 = 22.0;
+
+/// How far a cloud's middle is allowed to be read as being from one of its
+/// own pixels. Rises are wrapped into half a tile either way, so two pixels
+/// on opposite sides of a seam can come out a whole tile apart; nothing past
+/// this distance changes a decision - the cloud is long gone or untouched -
+/// so the value is pinned here before it is smoothed, and the wrap never
+/// averages into a middle that is nowhere.
+const SINK_REACH: f32 = 48.0;
+
+/// How far the sink is smoothed sideways. It is a cloud's own number, so it
+/// steps at the seam with the next cloud, and a seam found by climbing a
+/// lattice field is a straight diagonal: left alone it cuts triangles of sky
+/// out of the weather. Spread over a few pixels the step stops being a line
+/// and the thinning falls back on the field's own contour.
+const SINK_BLUR: i32 = 12;
+
+/// The three tones a cloud pixel can take, mixed from the sky once per
+/// rebuild.
+struct Palette {
+    core: u32,
+    body: u32,
+    under: u32,
+}
+
+/// One pixel of the tile against a threshold, or zero for sky. The threshold
+/// is a parameter rather than a constant because the band round the base
+/// shades the same field again with it raised, which is how a sinking cloud
+/// thins along its own contour instead of being cut along the seam with its
+/// neighbor.
+fn shade(scratch: &[f32], x: i32, y: i32, seed: i32, cut: f64, p: &Palette) -> u32 {
+    let d = scratch[(y * TILE_W + x) as usize] as f64 - cut;
+    if d < 0.0 {
+        return 0;
+    }
+    // A ragged pixel edge rather than a hard contour.
+    if d < 0.045 && crate::util::hash2(x, y, seed ^ 0x2f1) > d / 0.045 {
+        return 0;
+    }
+    // The bottom of a shape is in shade; the thick of it is brightest.
+    let below = (y + 3).rem_euclid(TILE_H);
+    let thins_below = (scratch[(below * TILE_W + x) as usize] as f64) < cut + 0.02;
+    if thins_below {
+        p.under
+    } else if d > 0.16 {
+        p.core
+    } else {
+        p.body
     }
 }
 
@@ -269,70 +423,73 @@ pub fn refresh(layer: &mut CloudLayer, state: &State, time: f64) {
     let n = (TILE_W * TILE_H) as usize;
     let (broad, fine) = lattices(seed, t, wobble);
     layer.scratch.resize(n, 0.0);
-    layer.broad.resize(n, 0.0);
     for y in 0..TILE_H {
         for x in 0..TILE_W {
-            let (b, v) = sample(&broad, &fine, x, y);
-            layer.scratch[(y * TILE_W + x) as usize] = v as f32;
-            layer.broad[(y * TILE_W + x) as usize] = b as f32;
+            layer.scratch[(y * TILE_W + x) as usize] = sample(&broad, &fine, x, y) as f32;
         }
     }
+    ensure_middles(layer, seed);
 
     // The palette leans on the sky it hangs in, so recoloring the sky
     // recolors the weather.
     let sky_top = hex_to_packed(&state.civ.world.sky_top);
     let sky_bottom = hex_to_packed(&state.civ.world.sky_bottom);
     let white = pack_rgba(236, 242, 248, 255);
-    let core = mix_packed(white, sky_top, 0.08);
-    let body = mix_packed(white, sky_top, 0.24);
-    let under = mix_packed(white, sky_bottom, 0.48);
+    let pal = Palette {
+        core: mix_packed(white, sky_top, 0.08),
+        body: mix_packed(white, sky_top, 0.24),
+        under: mix_packed(white, sky_bottom, 0.48),
+    };
 
+    // Lent out for the two shading passes, which read the field while they
+    // write the tiles, and handed back at the end.
+    let scratch = std::mem::take(&mut layer.scratch);
     let threshold = 0.86 - view.cloud_cover.clamp(0.0, 1.0) * 0.52;
     layer.px.clear();
     layer.px.resize(n, 0);
     for y in 0..TILE_H {
         for x in 0..TILE_W {
-            let i = (y * TILE_W + x) as usize;
-            let d = layer.scratch[i] as f64 - threshold;
-            if d < 0.0 {
-                continue;
-            }
-            // A ragged pixel edge rather than a hard contour.
-            if d < 0.045 && crate::util::hash2(x, y, seed ^ 0x2f1) > d / 0.045 {
-                continue;
-            }
-            // The bottom of a shape is in shade; the thick of it is brightest.
-            let below = (y + 3).rem_euclid(TILE_H);
-            let thins_below = (layer.scratch[(below * TILE_W + x) as usize] as f64) < threshold + 0.02;
-            layer.px[i] = if thins_below {
-                under
-            } else if d > 0.16 {
-                core
-            } else {
-                body
-            };
+            layer.px[(y * TILE_W + x) as usize] =
+                shade(&scratch, x, y, seed, threshold, &pal);
         }
     }
 
     // The band across the base. A pixel in row `e` of it is at world row
-    // `base - h / 2 + e`, and it is drawn if the middle of its cloud is above
-    // the base: `e + rise < h / 2`. The band is exactly a tile tall because
-    // a middle is never more than half a tile from its pixel, so above the
-    // band every cloud is whole and below it none is.
-    find_middles(&layer.broad, TILE_W, TILE_H, &mut layer.rise);
+    // `base - h / 2 + e`, and `e + sink - h / 2` is how far the middle of the
+    // cloud it belongs to has sunk below the base - the same number for every
+    // pixel of one cloud, since the pixel's own row cancels out, which is what
+    // lets a cloud thin as a whole. The band is exactly a tile tall because a
+    // middle is never more than half a tile from its pixel, so above the band
+    // every cloud is whole and below it none is.
     let half = TILE_H / 2;
     layer.edge.clear();
     layer.edge.resize(n, 0);
     for e in 0..TILE_H {
         let sy = (e + half) % TILE_H;
+        let drop = (e - half) as f32;
         for x in 0..TILE_W {
             let i = (sy * TILE_W + x) as usize;
-            if e + layer.rise[i] as i32 >= half {
+            // Raising a threshold only ever takes pixels away, so sky in the
+            // whole tile is sky here too and nothing has to be shaded again
+            // to find that out.
+            let src = layer.px[i];
+            if src == 0 {
                 continue;
             }
-            layer.edge[(e * TILE_W + x) as usize] = layer.px[i];
+            let sunk = (drop + layer.sink[i]) as f64;
+            if sunk >= SINK_ROWS {
+                continue;
+            }
+            // Above the base the threshold is the one the whole tile was
+            // shaded against, which is the pixel already worked out.
+            layer.edge[(e * TILE_W + x) as usize] = if sunk <= 0.0 {
+                src
+            } else {
+                shade(&scratch, x, sy, seed, threshold + sunk / SINK_ROWS, &pal)
+            };
         }
     }
+    layer.scratch = scratch;
 }
 
 fn mix_key(a: u64, b: u64, c: u64, d: u64, e: u64) -> u64 {

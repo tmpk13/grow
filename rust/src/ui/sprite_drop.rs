@@ -141,7 +141,10 @@ pub fn made_section(app: &App, h: &Handle) -> Element {
              boxes unless there is a picture for them. A picture comes out at the size it was \
              drawn - its own pixels against the art resolution below, never stretched - stood \
              on the front edge of the footprint, the rest hanging evenly either side. A thing \
-             with a picture for one state only is generated the rest of the time.",
+             with a picture for one state only is generated the rest of the time. One image \
+             is one picture and stands still; several images, or one sheet cut by the Frames \
+             box beside it, play at the rate set there, which is how a kiln gets a fire in \
+             it.",
         ),
         art_scale_row(app, h),
         crate::ui::decode::scale_field(
@@ -298,7 +301,35 @@ fn made_row(app: &App, h: &Handle, entry: &Entry) -> Element {
                 ))
                 .get(),
         );
-        let _ = row.append_child(&made_num(h, &key, c.scale));
+        let _ = row.append_child(&made_num(
+            h,
+            &key,
+            "Scale",
+            c.scale,
+            NumOpts { min: MIN_SCALE, max: MAX_SCALE, step: 0.05 },
+            None,
+            |clip, v| clip.scale = v,
+        ));
+        let _ = row.append_child(&made_num(
+            h,
+            &key,
+            "Frames",
+            c.frame_count() as f64,
+            NumOpts { min: 1.0, max: MAX_FRAMES as f64, step: 1.0 },
+            Some("how many equal columns the sheet is read as"),
+            |clip, v| clip.frames = (v.round() as i32).clamp(1, MAX_FRAMES),
+        ));
+        if c.frame_count() > 1 {
+            let _ = row.append_child(&made_num(
+                h,
+                &key,
+                "Rate",
+                c.fps,
+                NumOpts { min: 0.0, max: 24.0, step: 0.5 },
+                Some("frames per second"),
+                |clip, v| clip.fps = v,
+            ));
+        }
     }
     if clip.is_some() {
         let h2 = h.clone();
@@ -313,27 +344,31 @@ fn made_row(app: &App, h: &Handle, entry: &Entry) -> Element {
     row
 }
 
-/// The scale of one picture, changed in place. A made slot has no playback to
-/// tune, so this is the whole of it: how large the art comes out, against what
-/// it was drawn at.
-fn made_num(h: &Handle, key: &str, value: f64) -> Element {
+/// One number of one picture, changed in place. How large it comes out
+/// against what it was drawn at, how many columns the sheet is read as, and
+/// how fast those columns play: a picture of one frame stands still, and a
+/// picture cut into several is an animation like a person's.
+fn made_num(
+    h: &Handle,
+    key: &str,
+    label: &str,
+    value: f64,
+    opts: NumOpts,
+    hint: Option<&str>,
+    set: fn(&mut Clip, f64),
+) -> Element {
     let h2 = h.clone();
     let key = key.to_string();
-    number_field(
-        "Scale",
-        value,
-        NumOpts { min: MIN_SCALE, max: MAX_SCALE, step: 0.05 },
-        None,
-        move |v| {
-            let mut sh = h2.borrow_mut();
-            sh.app.record("made scale", true);
-            if let Some(clip) = sh.app.state.civ.made.slot_mut(&key) {
-                clip.scale = v;
-            }
-            sh.app.state.civ.made.touch();
-            sh.app.sprites_changed();
-        },
-    )
+    let what = format!("made {}", label.to_lowercase());
+    number_field(label, value, opts, hint, move |v| {
+        let mut sh = h2.borrow_mut();
+        sh.app.record(&what, true);
+        if let Some(clip) = sh.app.state.civ.made.slot_mut(&key) {
+            set(clip, v);
+        }
+        sh.app.state.civ.made.touch();
+        sh.app.sprites_changed();
+    })
 }
 
 fn size_text(bytes: usize) -> String {
@@ -708,9 +743,10 @@ fn apply(h: &Handle, slot: Slot, frames: Vec<Frame>, strip: bool, source: &str) 
     let want = crate::ui::decode::scale_of(&sh.app, slot.scale_key());
     let (frames, n) = crate::ui::decode::scaled(frames, want);
     // A person's motion is an animation, so a single image is read as a strip
-    // of equal frames. A thing people make stands still and is drawn from its
-    // first frame, so guessing at columns there would only cut a wide picture
-    // of a barn into pieces of one.
+    // of equal frames. A thing people make is one picture until it is said
+    // otherwise: guessing at columns there would cut a wide drawing of a barn
+    // into pieces of one, and the Frames field beside the slot is where a
+    // sheet that really is a strip gets cut.
     let animated = matches!(slot, Slot::Motion(_));
     let built = if strip {
         frames.into_iter().next().and_then(|(w, height, px)| {
@@ -744,11 +780,26 @@ pub fn apply_to(app: &mut App, slot: &Slot, clip: Clip) {
     }
 }
 
-/// A picture for a thing people make. Nothing here has playback to keep: a
-/// building stands still, and how large it is drawn is the box it fills rather
-/// than a number on the clip.
-pub fn apply_made(app: &mut App, id: &str, clip: Clip) {
+/// A picture for a thing people make. Playback tuned on the slot outlives the
+/// art it was tuned on, the same way a motion's does, so dropping a redrawn
+/// sheet on a kiln that was already turning does not stop it. A fresh slot
+/// takes the count the drop itself came out with: one image is one picture
+/// until somebody cuts it, several images are the frames they were dropped as.
+pub fn apply_made(app: &mut App, id: &str, mut clip: Clip) {
     app.record("made art", false);
+    if let Some(old) = app.state.civ.made.slot(id) {
+        clip.fps = old.fps;
+        // A scale the new art brought with it is that art putting back what it
+        // lost fitting the cap, and outranks the old tuning.
+        if clip.scale == 1.0 {
+            clip.scale = old.scale;
+        }
+        // A sheet that came in as one picture keeps the cut the slot had, so a
+        // redraw of a strip does not have to be cut a second time.
+        if clip.frames <= 1 {
+            clip.frames = old.frames.clamp(1, MAX_FRAMES);
+        }
+    }
     let count = clip.frame_count();
     app.state.civ.made.enabled = true;
     app.state.civ.made.set(id, clip);
