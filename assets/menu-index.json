@@ -1752,6 +1752,16 @@
     "kind": "button"
   },
   {
+    "mode": "sprites",
+    "mode_label": "Sprite editor",
+    "tab": "map",
+    "tab_label": "Map",
+    "group": "The map",
+    "label": "Clear the map and start over",
+    "anchor": "clear-the-map-and-start-over",
+    "kind": "button"
+  },
+  {
     "mode": "settlement",
     "mode_label": "Settlement",
     "group": "View",

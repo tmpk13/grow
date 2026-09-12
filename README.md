@@ -195,7 +195,11 @@ of what land is, and it covers three different questions:
   one: it is a thing about what a cell will become rather than about how it
   looks. The eraser takes one off again.
 * **Sky** is not on the map at all. It is a mark on this page, kept only while
-  the page is open, saying which part of the picture underneath is sky.
+  the page is open, saying which part of the picture underneath is sky. A
+  *layer* of sky read in with a map says more than that: the band of it across
+  the top of the drawing is cut off the map altogether and becomes the
+  settlement's own sky, at that height and in those colors, rather than a
+  stripe of ground painted like a sky across the back of the map.
 
 A stroke can be taken back with undo, the same button and the same keys as
 everywhere else, though these strokes are not part of the project's own history
@@ -224,7 +228,11 @@ kept.
   guessed from the first layer - art drawn eight screen pixels to a pixel comes
   back as eight - and it is what decides how large a map the layers make. Every
   layer is stretched over that map corner to corner, so a set exported from one
-  drawing lands cell for cell.
+  drawing lands together. The map takes more rows than the drawing has pixels
+  down it, and deliberately: the ground is a plane seen at an angle, a row of
+  cells drawn shorter than a column is wide, so a drawing laid cell for cell
+  would arrive squashed to five eighths of its height. The panel says what size
+  the layers make before the press.
 * **Use the layers as the map** reads the set in and founds the settlement
   again on it, at the layers' own size at that scale. There is no ceiling on
   the size. A very large map costs memory and a long wilderness warmup, and
@@ -283,6 +291,12 @@ kept.
   The button says which it would use, and it is one step back like any other
   stroke.
 * **Take every zone off** clears the zones and leaves the ground alone.
+* **Clear the map and start over** grows the land again from the seed and
+  forgets everything the page was holding: the layers, the picture being
+  traced, the picture the map was read from, the sky marks and the steps back.
+  It is the way out of a map that has gone wrong altogether, and unlike a wipe
+  it is not a step back - there is no way out of it. The map's size, its seed
+  and its sky are settings and stay where they are.
 
 **Rock face** is the one kind of ground that is new. Water is crossed by
 swimming and rock is walked on and built on; a face of rock is neither. Nobody

@@ -3,6 +3,16 @@
 Newest first. One line each; the reasoning lives in ARCHITECTURE.md and the
 README.
 
+- (LLM) A map read in from a drawing arrives the shape it was drawn. It used
+  to be squashed twice over: the ground plane is seen at an angle, so a
+  drawing laid cell for cell came out five eighths as tall as it was drawn,
+  and a sky layer was read as ground, putting a band painted like a sky across
+  the back of the map with the settlement's own sky above it. The map now
+  takes more rows than the drawing has pixels down it, and the sky across the
+  top is cut off every layer and becomes the settlement's sky, at that height
+  and in those colors. **Clear the map and start over** on the same page grows
+  the land again from the seed and forgets the layers, the pictures, the marks
+  and the steps back.
 - (LLM) The weather stopped cutting triangles out of itself. A cloud whose
   middle has sunk below the base thins from every edge and goes, its own
   threshold raised, rather than being masked off along the seam between it and

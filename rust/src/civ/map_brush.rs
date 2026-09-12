@@ -512,6 +512,118 @@ pub fn flatten_layers(layers: &[LayerArt]) -> Option<MapArt> {
     out.filter(|art| art.shows())
 }
 
+/// The smallest map a drawing is allowed to make. There is no ceiling on the
+/// size - a drawing is worth however many cells it was drawn with - but there
+/// is a floor, because a town cannot be founded on a map of nine cells and a
+/// picture dropped by mistake should not be the thing that finds that out.
+pub const MIN_COLS: i32 = 16;
+pub const MIN_ROWS: i32 = 8;
+
+/// The most of a drawing that is ever taken for sky. A drawing that is sky
+/// all the way down says nothing about any land, and cutting all of it off
+/// would leave no map at all, so what is left below is land whatever it looks
+/// like.
+const MOST_SKY: f64 = 0.9;
+
+/// The map a drawing makes: how many cells across, and how many deep.
+///
+/// Across is one cell per `px` of its pixels, which is the number on the
+/// page. Deep is not, and this is the whole of why a map read in used to come
+/// out squashed: the ground is a plane seen at an angle, a row of it drawn
+/// `depth_px` tall where a column is `cell_px` wide, so a drawing laid cell
+/// for cell is drawn five eighths as tall as it was drawn. Taking a row per
+/// `px * depth_px / cell_px` pixels instead - more rows than pixels, at every
+/// angle the ground is ever seen from - is what puts the drawing on the
+/// screen the shape somebody drew it.
+///
+/// The cells are the map rather than the drawing, so nothing is lost by
+/// there being more of them than there were pixels: each layer is stretched
+/// over the map it makes, and a cell is the nearest pixel of it.
+pub fn map_cells(w: i32, h: i32, px: i32, cell_px: i32, depth_px: i32) -> (i32, i32) {
+    let px = px.max(1) as f64;
+    let tilt = cell_px.max(1) as f64 / depth_px.max(1) as f64;
+    let cols = (w.max(0) as f64 / px).floor() as i32;
+    let rows = ((h.max(0) as f64 / px) * tilt).round() as i32;
+    (cols.max(MIN_COLS), rows.max(MIN_ROWS))
+}
+
+/// How much of a drawing is sky, as a share of its height: the run of rows
+/// from the top that are more sky than not.
+///
+/// A drawing of a place has a sky in it and the sky is not land. Laid on the
+/// ground plane with everything else it becomes a band of ground painted like
+/// a sky across the back of the map, which crushes the land into what is left
+/// below it - and the settlement has a sky of its own to draw, right above
+/// where that band ends. So the band is cut off and the world's sky stands
+/// where it was.
+///
+/// A run from the top rather than every row that has sky in it, because a
+/// drawing has sky between the trees as well as over them, and only what
+/// reaches the top of the picture is a sky anybody stands under. Mostly sky
+/// rather than wholly, because a horizon is not a straight line: a row with a
+/// hill in it is still a row of sky.
+pub fn sky_band(layers: &[LayerMask]) -> f64 {
+    let mut share: f64 = 0.0;
+    for layer in layers.iter().filter(|l| l.brush == Brush::Sky && l.w > 0 && l.h > 0) {
+        let mut rows = 0;
+        for y in 0..layer.h {
+            let on = (0..layer.w)
+                .filter(|x| layer.on.get((y * layer.w + x) as usize).copied().unwrap_or(false))
+                .count();
+            if on * 2 <= layer.w as usize {
+                break;
+            }
+            rows += 1;
+        }
+        share = share.max(rows as f64 / layer.h as f64);
+    }
+    share.clamp(0.0, MOST_SKY)
+}
+
+/// How many rows off the top of a picture `h` tall that share is, never all
+/// of them.
+pub fn sky_rows(h: i32, share: f64) -> i32 {
+    ((h as f64 * share.clamp(0.0, 1.0)).round() as i32).clamp(0, (h - 1).max(0))
+}
+
+/// A picture with the top `cut` rows taken off it: the land under a sky.
+/// Whatever the picture is made of - where a layer has something, or the
+/// pixels themselves - the cut is the same rows of it.
+pub fn below<T: Copy>(w: i32, h: i32, cut: i32, data: &[T]) -> Vec<T> {
+    let cut = cut.clamp(0, h.max(0));
+    let from = (cut.max(0) * w.max(0)) as usize;
+    let to = ((w.max(0) * h.max(0)) as usize).min(data.len());
+    data.get(from..to).map(<[T]>::to_vec).unwrap_or_default()
+}
+
+/// The colors of a sky that was drawn: the top of the band and the row above
+/// the horizon, each averaged across the width so that one bird does not
+/// become the sky. They are the two ends of the gradient the settlement draws
+/// its own sky with, which is how a drawing's weather arrives with its land.
+/// Nothing if there is no band, or nothing opaque in it.
+pub fn sky_colors(w: i32, h: i32, px: &[u32], cut: i32) -> Option<(u32, u32)> {
+    if w <= 0 || cut <= 0 || cut > h {
+        return None;
+    }
+    let row = |y: i32| -> Option<u32> {
+        let (mut r, mut g, mut b, mut n) = (0u32, 0u32, 0u32, 0u32);
+        for x in 0..w {
+            let c = unpack_rgba(px.get((y * w + x) as usize).copied().unwrap_or(0));
+            if c.a < ALPHA_CUT {
+                continue;
+            }
+            r += c.r as u32;
+            g += c.g as u32;
+            b += c.b as u32;
+            n += 1;
+        }
+        (n > 0).then(|| {
+            crate::util::pack_rgba((r / n) as i32, (g / n) as i32, (b / n) as i32, 255)
+        })
+    };
+    Some((row(0)?, row(cut - 1)?))
+}
+
 /// Every cell of a map, read out of a set of layers. Each layer is stretched
 /// corner to corner over the map, so a set exported from one drawing lands
 /// cell for cell and a stray one of another size still lands somewhere

@@ -22,6 +22,15 @@
 //! makes - how many of a layer's pixels go to one cell - and it is guessed
 //! when the first layer arrives.
 //!
+//! A drawing read in that way arrives the shape it was drawn, which takes two
+//! things neither of which is the scale. The map is given more rows of cells
+//! than the drawing has pixels down it, because the ground is a plane seen at
+//! an angle and a row of it is drawn shorter than a column is wide; and the
+//! band of sky across the top of the drawing is cut off the map altogether
+//! and becomes the settlement's own sky, at that height and in those colors,
+//! rather than a stripe of ground painted like a sky across the back of the
+//! map with the real sky above it.
+//!
 //! What the layers are is only half of what they say. Flattened, they are
 //! also the picture the map is drawn as, and the stage shows that picture as
 //! the map rather than the legend's colors: what is on the page is what the
@@ -76,13 +85,12 @@ const NEAR_ENOUGH: f64 = 0.12;
 /// over.
 const CELLS_KEPT: usize = 2_000_000;
 
-/// The smallest map a set of layers is allowed to make. There is no ceiling
-/// on the size - a drawing is worth however many cells it was drawn with -
-/// but there is a floor, because a town cannot be founded on a map of nine
-/// cells and a picture dropped by mistake should not be the thing that finds
-/// that out.
-const MIN_COLS: i32 = 16;
-const MIN_ROWS: i32 = 8;
+/// How tall a sky band a drawing is allowed to ask the settlement for. A
+/// drawing that is mostly sky would otherwise buy a band of it several
+/// thousand pixels tall, which is a picture buffer nobody asked for; past
+/// this the sky is as tall as it goes and the land keeps its own shape, which
+/// is the half of the two that matters.
+const MOST_SKY_PX: i32 = 400;
 
 /// One layer dropped to be read as the map: where one kind of thing is, at
 /// the size it was drawn.
@@ -227,12 +235,36 @@ impl MapTools {
         self.px.max(1)
     }
 
-    /// The map the layers make at that scale, in cells: the first layer's
-    /// size, which every other layer is stretched to.
-    pub fn layer_cells(&self) -> Option<(i32, i32)> {
+    /// What the layers would make, worked out before anything is read in: the
+    /// map's size in cells, the band of sky across the top of the drawing, and
+    /// how tall that band is once the settlement draws it.
+    ///
+    /// The first layer's size is the drawing's, every other layer being
+    /// stretched to it. The ground the cells make is not that size on the
+    /// screen, because a row of cells is drawn shorter than a column is wide;
+    /// `map_cells` is where that is answered for.
+    pub fn plan(&self, cell_px: i32, depth_px: i32) -> Option<Plan> {
+        use crate::civ::map_brush::{map_cells, sky_band, sky_rows};
         let first = self.layers.first()?;
         let n = self.scale();
-        Some(((first.w / n).max(MIN_COLS), (first.h / n).max(MIN_ROWS)))
+        let masks: Vec<LayerMask> = self.masks();
+        let share = sky_band(&masks);
+        let cut = sky_rows(first.h, share);
+        let (cols, rows) = map_cells(first.w, first.h - cut, n, cell_px, depth_px);
+        // The whole drawing goes onto the screen at one scale: the sky band is
+        // as many screen pixels tall as the cut is drawing pixels wide of a
+        // cell, the same as the land below it.
+        let sky = (cut as f64 * cell_px.max(1) as f64 / n as f64).round() as i32;
+        Some(Plan { cols, rows, share, sky_px: sky.clamp(0, MOST_SKY_PX) })
+    }
+
+    /// The layers as the reader sees them: what each is and where it has
+    /// something.
+    pub fn masks(&self) -> Vec<LayerMask<'_>> {
+        self.layers
+            .iter()
+            .map(|l| LayerMask { brush: l.brush, w: l.w, h: l.h, on: &l.on })
+            .collect()
     }
 
     /// Sky marks read in with a map, at the size of that map, so the page
@@ -262,6 +294,22 @@ impl MapTools {
     pub fn marked_sky(&self) -> usize {
         self.sky.iter().filter(|&&v| v != 0).count()
     }
+}
+
+/// What a set of layers would make of the map. Worked out twice: once for the
+/// line on the panel that says how large a map they are, and again by the
+/// press that reads them, so what was offered is what arrives.
+pub struct Plan {
+    pub cols: i32,
+    pub rows: i32,
+    /// How much of every layer's height is sky, as a share. The same share of
+    /// each, because the layers are one drawing at whatever sizes they were
+    /// exported at.
+    pub share: f64,
+    /// How tall the settlement's own sky band is drawn, so the sky in the
+    /// drawing is the sky over the map rather than a stripe across the back
+    /// of it.
+    pub sky_px: i32,
 }
 
 /// What is under the legend on a cell of the stage: the picture the map is
@@ -903,6 +951,24 @@ pub fn build(root: &Element, app: &mut App, h: &Handle) -> Box<dyn Panel> {
             }
         }));
     }
+    if app.settlement.is_some() {
+        map_rows.push(el("h4").text("Or start over").get());
+        map_rows.push(btn_row(vec![danger_button("Clear the map and start over", Scope::Panel, {
+            let h2 = h.clone();
+            move || {
+                let mut sh = h2.borrow_mut();
+                start_over(&mut sh.app);
+            }
+        })]));
+        map_rows.push(note(
+            "Starting over grows the land again from the seed and forgets everything dropped \
+             on this page: the layers, the picture being traced, the picture the map was read \
+             from, the sky marks and the steps back. What is left is the map nobody has drawn \
+             on yet. It is not a step back - there is no way back out of it - and it leaves \
+             the map's size, its seed and its sky where they are, those being settings rather \
+             than drawing.",
+        ));
+    }
     append(root, section("The map", map_rows));
 
     let mut panel = MapPanel { tally };
@@ -1039,12 +1105,25 @@ fn layers_section(app: &App, h: &Handle) -> Element {
             sh.app.rebuild_panel = true;
         },
     ));
-    if let Some((cols, rows_n)) = tools.layer_cells() {
+    let world = &app.state.civ.world;
+    if let Some(plan) = tools.plan(world.cell_px, world.depth_px) {
+        let (cols, rows_n) = (plan.cols, plan.rows);
         let cells = cols as f64 * rows_n as f64;
         let mut text = format!(
             "At that scale the layers are {cols} by {rows_n} cells, which is the map they \
-             would make."
+             would make. There are more rows than there are pixels down the drawing because \
+             a row of cells is drawn shorter than a column is wide: that is what puts the \
+             drawing on the screen the shape it was drawn."
         );
+        if plan.share > 0.0 {
+            text.push_str(&format!(
+                " The top {:.0}% of the drawing is sky and is cut off the map: it becomes the \
+                 settlement's own sky, {} pixels of it, drawn above the land rather than \
+                 across the back of it.",
+                plan.share * 100.0,
+                plan.sky_px
+            ));
+        }
         if cells > 400_000.0 {
             text.push_str(
                 " That is a very large map: it costs memory for its pixel buffers and a \
@@ -1247,37 +1326,111 @@ fn wipe(app: &mut App) {
     app.rebuild_panel();
 }
 
-/// The layers as the whole map. The map takes the first layer's size at the
-/// scale it was read at, with no ceiling on it: a drawing of a coastline is
-/// worth however many cells it was drawn with. The cells are read here and
-/// laid down on the next frame, between the map being made and the town
-/// being founded on it.
+/// The map as it was before anybody drew on it: the land grown again from the
+/// seed, and everything this page was holding let go of.
+///
+/// What goes is what was dropped here or drawn here - the layers, the picture
+/// being traced, the picture the map was read from, the sky marks and the
+/// steps back. What stays is what a map is made from rather than drawn on it:
+/// its size, its seed and its sky, which are settings and live on the Land
+/// panel, so starting over on a map read in from a drawing gives back the
+/// wilderness at the size that drawing asked for.
+///
+/// It is not a step back and it does not leave one. A wipe is a stroke, and
+/// strokes can be put back; this is the way out of a map that has gone wrong
+/// altogether, which is a different thing to ask for and would be a poor one
+/// to arrive at by pressing undo one time too many.
+fn start_over(app: &mut App) {
+    app.ui.map_edit.layers.clear();
+    app.ui.map_edit.image = None;
+    app.ui.map_edit.name = String::new();
+    app.ui.map_edit.sky.fill(0);
+    app.ui.map_edit.steps.clear();
+    app.ui.map_edit.redone.clear();
+    app.ui.map_edit.open = None;
+    // The picture the map was drawn as goes with the land: a restart makes the
+    // settlement again from the seed, and a fresh one carries no picture.
+    app.civ_restart();
+    app.set_note("the map is the land the seed grew");
+    app.rebuild_panel();
+    crate::ui::sync_undo_buttons(app);
+}
+
+/// The layers as the whole map. The map is the first layer at the scale it
+/// was read at, with no ceiling on it: a drawing of a coastline is worth
+/// however many cells it was drawn with. The cells are read here and laid
+/// down on the next frame, between the map being made and the town being
+/// founded on it.
+///
+/// Two things are settled before a single cell is read, and both are about
+/// the drawing arriving the shape it was drawn. The sky across the top is cut
+/// off every layer and becomes the settlement's own sky, because the ground
+/// plane is no place for one; and the land that is left is given a row of
+/// cells per pixel of it foreshortened, since a row is drawn shorter than a
+/// column is wide.
 fn use_layers(app: &mut App) {
-    let (cols, rows) = match app.ui.map_edit.layer_cells() {
-        Some(size) => size,
+    use crate::civ::map_brush::{below, sky_colors, sky_rows};
+    let (cell_px, depth_px) = (app.state.civ.world.cell_px, app.state.civ.world.depth_px);
+    let plan = match app.ui.map_edit.plan(cell_px, depth_px) {
+        Some(plan) => plan,
         None => {
             app.set_note("no layers to read a map out of");
             return;
         }
     };
+    let (cols, rows) = (plan.cols, plan.rows);
     let under = Brush::from_color(app.ui.brush_color).ground().unwrap_or(Cell::Grass);
-    let masks: Vec<LayerMask> = app
+    // The sky the drawing had, before it is cut away: the top of the band and
+    // the row above the horizon are the two ends of the gradient the
+    // settlement draws its sky with. Read off a sky layer that is a drawing,
+    // or off the picture being traced, which is the drawing whole.
+    let colors = app
         .ui
         .map_edit
         .layers
+        .iter()
+        .filter(|l| l.brush == Brush::Sky && !l.by_light)
+        .find_map(|l| sky_colors(l.w, l.h, &l.px, sky_rows(l.h, plan.share)))
+        .or_else(|| {
+            let (w, h, px) = app.ui.map_edit.image.as_ref()?;
+            sky_colors(*w, *h, px, sky_rows(*h, plan.share))
+        });
+    // Every layer cut to its land. The same share of each, so layers exported
+    // at different sizes lose the same sky.
+    let land: Vec<MapLayer> = app
+        .ui
+        .map_edit
+        .layers
+        .iter()
+        .map(|l| {
+            let cut = sky_rows(l.h, plan.share);
+            MapLayer {
+                name: l.name.clone(),
+                brush: l.brush,
+                w: l.w,
+                h: l.h - cut,
+                on: below(l.w, l.h, cut, &l.on),
+                by_light: l.by_light,
+                px: below(l.w, l.h, cut, &l.px),
+            }
+        })
+        .collect();
+    let masks: Vec<LayerMask> = land
         .iter()
         .map(|l| LayerMask { brush: l.brush, w: l.w, h: l.h, on: &l.on })
         .collect();
     let mut cells = crate::civ::map_brush::read_layers(&masks, cols, rows, under);
     // The picture the map is drawn as: the one being traced if there is one,
     // since that is the drawing whole, and the layers flattened otherwise.
+    // Either is cut to the land the same way, so what is drawn on a cell is
+    // what that cell was read from.
     cells.art = match app.ui.map_edit.image.as_ref() {
-        Some((w, h, px)) => Some(MapArt::new(*w, *h, px.clone())),
+        Some((w, h, px)) => {
+            let cut = sky_rows(*h, plan.share);
+            Some(MapArt::new(*w, *h - cut, below(*w, *h, cut, px)))
+        }
         None => {
-            let arts: Vec<LayerArt> = app
-                .ui
-                .map_edit
-                .layers
+            let arts: Vec<LayerArt> = land
                 .iter()
                 .map(|l| LayerArt { w: l.w, h: l.h, px: &l.px, by_light: l.by_light })
                 .collect();
@@ -1286,11 +1439,21 @@ fn use_layers(app: &mut App) {
     };
     app.state.civ.world.cols = cols;
     app.state.civ.world.rows = rows;
+    if plan.share > 0.0 {
+        app.state.civ.world.sky_px = plan.sky_px;
+        if let Some((top, bottom)) = colors {
+            app.state.civ.world.sky_top = crate::util::packed_to_hex(top);
+            app.state.civ.world.sky_bottom = crate::util::packed_to_hex(bottom);
+        }
+    }
     // The map is about to be exactly what these say, so nothing is left
     // waiting on Apply.
     app.civ_restart();
     app.pending_map = Some(cells);
-    app.set_note(&format!("reading the layers as a {cols} by {rows} map..."));
+    app.set_note(&format!(
+        "reading the layers as a {cols} by {rows} map{}...",
+        if plan.share > 0.0 { ", the sky over it" } else { "" }
+    ));
     app.request_save();
 }
 

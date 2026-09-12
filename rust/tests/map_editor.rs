@@ -526,3 +526,134 @@ fn the_picture_grows_with_the_map_and_survives_a_save() {
     assert_eq!(art.at(0, 0, 96, 24), paint);
     assert_eq!(art.at(95, 0, 96, 24), 0, "the new land carries the old picture");
 }
+
+// ---- a drawing arrives the shape it was drawn ----------------------------
+
+/// How wide and tall the ground plane of a map is on the screen.
+fn ground_rect(cols: i32, rows: i32, cell_px: i32, depth_px: i32) -> (f64, f64) {
+    ((cols * cell_px) as f64, (rows * depth_px) as f64)
+}
+
+#[test]
+fn a_drawing_is_not_squashed_by_the_ground_being_seen_at_an_angle() {
+    use grow::civ::map_brush::map_cells;
+    // A square drawing. Laid cell for cell it used to come out five eighths as
+    // tall as it was drawn, because a row of cells is drawn five pixels tall
+    // where a column is eight wide.
+    let (cell_px, depth_px) = (8, 5);
+    let (cols, rows) = map_cells(400, 400, 4, cell_px, depth_px);
+    assert_eq!(cols, 100, "a cell per four pixels across");
+    let (w, h) = ground_rect(cols, rows, cell_px, depth_px);
+    assert!((w / h - 1.0).abs() < 0.02, "a square drawing made a {w} by {h} ground");
+
+    // And the same for a wide one, at every angle the ground is seen from.
+    for depth_px in [2, 3, 5, 8, 12] {
+        let (cols, rows) = map_cells(960, 320, 8, cell_px, depth_px);
+        let (w, h) = ground_rect(cols, rows, cell_px, depth_px);
+        assert!(
+            (w / h - 3.0).abs() < 0.05,
+            "a drawing three times as wide as it is tall made {w} by {h} at depth {depth_px}"
+        );
+    }
+}
+
+#[test]
+fn a_ground_drawn_square_takes_a_cell_per_pixel() {
+    use grow::civ::map_brush::map_cells;
+    // Nothing is compensated for when there is nothing to compensate: a world
+    // whose cells are as tall as they are wide is a drawing laid cell for
+    // cell, which is what the number on the page says it is.
+    assert_eq!(map_cells(256, 128, 4, 6, 6), (64, 32));
+}
+
+#[test]
+fn a_drawing_of_nothing_but_sky_still_leaves_a_map() {
+    use grow::civ::map_brush::{sky_band, sky_rows};
+    let everywhere = vec![true; 40 * 20];
+    let layers = [LayerMask { brush: Brush::Sky, w: 40, h: 20, on: &everywhere }];
+    let share = sky_band(&layers);
+    assert!(share <= 0.9, "a drawing that is all sky cut {share} of itself away");
+    assert!(sky_rows(20, share) < 20, "every row of a drawing was taken for sky");
+}
+
+#[test]
+fn the_sky_across_the_top_of_a_drawing_is_not_land() {
+    use grow::civ::map_brush::{below, map_cells, sky_band, sky_colors, sky_rows};
+    // A drawing of a place: sky across the top eight rows of thirty two, with
+    // a hill breaking the horizon, and grass under it. Laid on the ground
+    // whole, the sky became a band of ground painted like a sky across the
+    // back of the map and crushed the land into what was left.
+    let (w, h) = (64, 32);
+    let band = 8;
+    let sky_px: Vec<u32> = (0..w * h)
+        .map(|i| {
+            let (x, y) = (i % w, i / w);
+            // The hill: a few columns of land reaching a row above the horizon.
+            let hill = (28..36).contains(&x) && y >= band - 1;
+            if y < band && !hill {
+                pack_rgba(60, 120, 200, 255)
+            } else {
+                0
+            }
+        })
+        .collect();
+    let (on_sky, by_light) = layer_mask(w, h, &sky_px);
+    assert!(!by_light);
+    let on_grass = drawn(w, h, |_, y| y >= band - 1);
+
+    let all = [
+        LayerMask { brush: Brush::Grass, w, h, on: &on_grass },
+        LayerMask { brush: Brush::Sky, w, h, on: &on_sky },
+    ];
+    let share = sky_band(&all);
+    let cut = sky_rows(h, share);
+    assert_eq!(cut, band, "the band of sky was not the rows that are mostly sky");
+
+    // The colors of the gradient the settlement draws its own sky with come
+    // off the band before it goes.
+    let (top, horizon) = sky_colors(w, h, &sky_px, cut).expect("a drawn sky has colors");
+    assert_eq!(top, pack_rgba(60, 120, 200, 255));
+    assert_eq!(horizon, pack_rgba(60, 120, 200, 255), "the horizon row averaged in the hill");
+
+    // What is read is the land: no cell of the map is marked sky, and the top
+    // row of it is the ground that was drawn at the horizon rather than sky.
+    let (land_sky, land_grass) =
+        (below(w, h, cut, &on_sky), below(w, h, cut, &on_grass));
+    let (cols, rows) = map_cells(w, h - cut, 1, 8, 5);
+    let layers = [
+        LayerMask { brush: Brush::Grass, w, h: h - cut, on: &land_grass },
+        LayerMask { brush: Brush::Sky, w, h: h - cut, on: &land_sky },
+    ];
+    let cells = read_layers(&layers, cols, rows, Cell::Water);
+    assert!(cells.sky.iter().all(|&v| v == 0), "the sky was read onto the map as cells");
+    assert!(
+        cells.ground[..cols as usize]
+            .iter()
+            .all(|&g| Cell::from_u8(g) == Cell::Grass),
+        "the back row of the map is not the ground drawn at the horizon"
+    );
+}
+
+#[test]
+fn a_drawing_with_no_sky_in_it_loses_nothing() {
+    use grow::civ::map_brush::{below, sky_band, sky_rows};
+    let (w, h) = (32, 16);
+    let on = drawn(w, h, |_, _| true);
+    let layers = [LayerMask { brush: Brush::Grass, w, h, on: &on }];
+    let share = sky_band(&layers);
+    assert_eq!(share, 0.0, "a drawing with no sky layer had a sky cut off it");
+    assert_eq!(sky_rows(h, share), 0);
+    assert_eq!(below(w, h, 0, &on).len(), on.len());
+}
+
+#[test]
+fn cutting_the_sky_off_takes_the_rows_and_leaves_the_rest() {
+    use grow::civ::map_brush::below;
+    // Row numbers as pixels, so where each row ended up is readable.
+    let (w, h) = (4, 6);
+    let px: Vec<u32> = (0..w * h).map(|i| (i / w) as u32).collect();
+    let land = below(w, h, 2, &px);
+    assert_eq!(land.len(), (w * (h - 2)) as usize);
+    assert_eq!(land[0], 2, "the first row of the land is the first row under the sky");
+    assert_eq!(land[land.len() - 1], 5, "the bottom of the drawing was cut off too");
+}

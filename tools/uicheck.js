@@ -1580,14 +1580,18 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
       .map((n) => n.textContent)
       .join(' '),
   );
-  if (!/64 by 32 cells/.test(layersSaid)) {
+  // Fifty one rows, not thirty two: a row of cells is drawn five pixels tall
+  // where a column is eight wide, so a drawing laid cell for cell arrives
+  // squashed to five eighths of its height. The extra rows are what put it on
+  // the screen the shape it was drawn.
+  if (!/64 by 51 cells/.test(layersSaid)) {
     problems.push(`the layers section does not say what map the layers make: ${layersSaid}`);
   }
   await page.click('#panel-body .btn:text-is("Use the layers as the map")');
   await page.waitForTimeout(3500);
   const made = await tally();
-  if (!/cells64 by 32/.test(made)) {
-    problems.push(`reading the layers made ${made}, not a 64 by 32 map`);
+  if (!/cells64 by 51/.test(made)) {
+    problems.push(`reading the layers made ${made}, not a 64 by 51 map`);
   }
   if (!((await count('Water')) > 200)) {
     problems.push(`the water layer left ${await count('Water')} cells of water`);
@@ -1670,6 +1674,55 @@ if ((await page.locator('.tab').allTextContents()).join() !== 'Draw,Sheet,Map') 
     await page.click(groundOver);
     await page.waitForTimeout(300);
   }
+  // The sky in a drawing is not land. A layer of sky across the top is cut
+  // off every layer and becomes the settlement's own sky band, rather than a
+  // stripe of ground painted like a sky across the back of the map - which is
+  // what used to crush the land into whatever was left under it.
+  const skyLayer = png(64, 32, (x, y) => (y < 8 ? [80, 140, 220, 255] : [0, 0, 0, 0]));
+  await page.locator('#panel-body .dropzone[data-drop="layers"] input[type=file]').setInputFiles([
+    { name: 'sky.png', mimeType: 'image/png', buffer: skyLayer },
+  ]);
+  await page.waitForTimeout(900);
+  const skySaid = await page.evaluate(() =>
+    [...document.querySelectorAll('#panel-body details.group[data-group="Layers as the map"] .note')]
+      .map((n) => n.textContent)
+      .join(' '),
+  );
+  // A quarter of the drawing is sky, and the land under it is twenty four
+  // rows of pixels, which is thirty eight rows of cells.
+  if (!/25% of the drawing is sky/.test(skySaid) || !/64 by 38 cells/.test(skySaid)) {
+    problems.push(`the layers section does not say the sky is cut off the map: ${skySaid}`);
+  }
+  await page.click('#panel-body .btn:text-is("Use the layers as the map")');
+  await page.waitForTimeout(3500);
+  const withSky = await tally();
+  if (!/cells64 by 38/.test(withSky)) {
+    problems.push(`a drawing with a sky in it made ${withSky}, not a 64 by 38 map`);
+  }
+  if (/marked sky/.test(withSky)) {
+    problems.push(`the sky in the drawing was read onto the map as cells: ${withSky}`);
+  }
+  await page.screenshot({ path: `${outDir}/19f-map-sky-over-it.png` });
+
+  // Starting over: the land grown again from the seed, with everything the
+  // page was holding let go of - the layers, the picture the map was read
+  // from, the marks and the steps back.
+  const startOver = '#panel-body .btn.danger:text-is("Clear the map and start over")';
+  if ((await page.locator(startOver).count()) !== 1) {
+    problems.push('the map page has no way to start the map over');
+  } else {
+    await page.click(startOver);
+    await page.waitForTimeout(3500);
+    const fresh = await tally();
+    if (/drawn as a picture/.test(fresh)) {
+      problems.push(`starting over left the map drawn as its picture: ${fresh}`);
+    }
+    if ((await page.locator('#panel-body .map-layer-row').count()) !== 0) {
+      problems.push('starting over left the layers on the page');
+    }
+    await page.screenshot({ path: `${outDir}/19g-map-started-over.png` });
+  }
+
   // The page's own way back to the map's size and seed.
   await page.click('#panel-body .btn:text-is("Map size and seed")');
   await page.waitForTimeout(600);

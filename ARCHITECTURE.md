@@ -1717,10 +1717,35 @@ lengths to a common divisor - a photograph has runs of every length, so the
 divisor falls to one, and art drawn eight to a pixel comes back as eight. The
 runs at the ends of a line are left out, being as likely to be half a block as
 a whole one, and the answer has to divide the picture or it was measured on a
-pattern rather than on a scale. The layers are worth `width / n` by
-`height / n` cells, every layer is stretched over that map corner to corner,
-and there is no ceiling on it: a drawing of a coastline is worth however many
-cells it was drawn with, and the panel says so rather than refusing.
+pattern rather than on a scale. Every layer is stretched over the map that
+makes corner to corner, and there is no ceiling on it: a drawing of a coastline
+is worth however many cells it was drawn with, and the panel says so rather
+than refusing.
+
+How large that map is, though, is not `width / n` by `height / n`, and
+`map_brush::map_cells` is where the difference lives. The ground is a plane
+seen at an angle: a row of cells is drawn `depth_px` tall where a column is
+`cell_px` wide, five against eight by default, so a drawing laid cell for cell
+is drawn five eighths as tall as it was drawn. The cells are the map rather
+than the drawing, so the answer is to take more rows than there were pixels -
+`height / n * cell_px / depth_px` of them - which puts the drawing on the
+screen the shape somebody drew it and costs only cells, each of which is the
+nearest pixel of a layer as before.
+
+The sky is not land either, and `map_brush::sky_band` cuts it off before
+anything is read. A drawing of a place has a sky in it; laid on the ground
+plane with everything else it becomes a band of ground painted like a sky
+across the back of the map, crushing the land into what is left below - and
+the settlement has a sky of its own to draw directly above where that band
+ends. So the run of rows from the top of a sky layer that are *mostly* sky is
+measured as a share of its height, every layer and the map's picture are cut
+to what is below it by `map_brush::below`, and the world's `sky_px` becomes
+that band at the scale the rest of the drawing is laid at. `sky_colors` reads
+the top of the band and the row above the horizon, each averaged across the
+width, into the two ends of the gradient the settlement draws its sky with.
+Mostly rather than wholly, because a horizon is not a straight line; a run
+from the top rather than every row with sky in it, because a drawing has sky
+between the trees as well as over them.
 
 `map_brush::read_layers` turns the set into a `MapCells`: three grids, one
 byte a cell each, for the ground, the zone and the sky mark, because a layer
