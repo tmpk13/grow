@@ -1022,7 +1022,7 @@ pub fn show_mode(sh: &mut Shell, h: &Handle, mode: Mode) {
 pub fn fill_view(app: &mut App) {
     let want = match app.mode {
         Mode::Sprites => match flat_dims(app) {
-            Some((w, h)) => app.viewport.fit_flat_zoom(w, h),
+            Some((w, h)) => app.viewport.fit_flat_zoom(w, h, flat_tall(app)),
             None => return,
         },
         _ => app.viewport.fit_zoom(&active_world_size(app)),
@@ -1038,7 +1038,7 @@ pub fn fill_view(app: &mut App) {
 pub fn fit_view(app: &mut App) {
     if app.mode == Mode::Sprites {
         if let Some((w, h)) = flat_dims(app) {
-            app.viewport.fit_flat(w, h);
+            app.viewport.fit_flat(w, h, flat_tall(app));
         }
         return;
     }
@@ -2272,6 +2272,28 @@ fn flat_dims(app: &App) -> Option<(i32, i32)> {
     app.sheet_dims()
 }
 
+/// How tall a row of the flat buffer on the stage is drawn, against how wide
+/// a column of it is.
+///
+/// A sheet is drawn in squares, because a pixel of art is a square. A map is
+/// not: a cell of it is a cell of a ground plane seen at an angle, drawn
+/// `depth_px` tall where it is `cell_px` wide, and the map page is showing the
+/// settlement's own map. Drawing those cells square would put every map on
+/// that page in a different shape to the one the settlement draws it in - a
+/// drawing read in would read a third taller here than where it ends up,
+/// which is the same mistake as laying the drawing cell for cell, made on the
+/// other side of the glass.
+pub fn flat_tall(app: &App) -> f64 {
+    if app.mode == Mode::Sprites && app.ui.tab == "map" {
+        if let Some(world) = app.settlement.as_ref().map(|civ| civ.world()) {
+            if world.cell_px > 0 && world.depth_px > 0 {
+                return world.depth_px as f64 / world.cell_px as f64;
+            }
+        }
+    }
+    1.0
+}
+
 /// The two things the stage can be drawn on. Statics rather than constants
 /// because `stage_surface` hands one back by reference and a constant is a
 /// fresh temporary at every use; the stage keeps whichever it picked for as
@@ -3355,9 +3377,10 @@ fn draw_sheet(app: &mut App) {
             }
         }
     }
-    app.viewport.present_flat(w, h, &buf);
+    // A sheet is pixels of art, which are square.
+    app.viewport.present_flat(w, h, 1.0, &buf);
     if app.viewport.show_grid {
-        app.viewport.draw_pixel_grid(w, h);
+        app.viewport.draw_pixel_grid(w, h, 1.0);
     }
     app.viewport.finish();
 }

@@ -98,7 +98,7 @@ impl Surface for SheetSurface {
         client_y: f64,
     ) -> Option<(i32, i32)> {
         let (w, h) = self.dims(app)?;
-        app.viewport.flat_cell_at(client_x, client_y, w, h)
+        app.viewport.flat_cell_at(client_x, client_y, w, h, 1.0)
     }
 }
 

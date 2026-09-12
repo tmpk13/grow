@@ -182,9 +182,12 @@ map's size, the seed and the terrain it is grown from when nobody draws one
 are in the Land panel's Map section, and the two point at each other - **Draw
 the map by hand** there, **Map size and seed** here.
 
-It is the same pixel editor. The stage is one pixel per map cell, the tools are
-the ones already in the toolbar - pencil, fill, eraser, pick, line, mirror -
-and the map changes under the pointer: there is no draft and nothing to apply.
+It is the same pixel editor. The stage is one pixel per map cell, drawn in the
+shape the settlement draws that cell - a row shorter than a column is wide,
+the ground being a plane seen at an angle - so what is on the page is what the
+settlement will look like. The tools are the ones already in the toolbar -
+pencil, fill, eraser, pick, line, mirror - and the map changes under the
+pointer: there is no draft and nothing to apply.
 What the page adds is that the colors mean something. The palette is a legend
 of what land is, and it covers three different questions:
 

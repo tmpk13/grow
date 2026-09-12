@@ -2,10 +2,11 @@
 //! is drawn by hand.
 //!
 //! It borrows the pixel editor whole. The stage is a grid one pixel per map
-//! cell, the drawing tools are the ones already in the toolbar - pencil,
-//! eraser, fill, pick, line, mirror - and the colors are a legend of what land
-//! is rather than a wheel, so picking a color is choosing what a cell should
-//! be. What differs from the sheet editor is where the paint lands: there is
+//! cell - drawn in the shape the settlement draws a cell, a row shorter than a
+//! column is wide - the drawing tools are the ones already in the toolbar -
+//! pencil, eraser, fill, pick, line, mirror - and the colors are a legend of
+//! what land is rather than a wheel, so picking a color is choosing what a
+//! cell should be. What differs from the sheet editor is where the paint lands: there is
 //! no draft to apply, and a stroke changes the running map under the pointer.
 //!
 //! Three things are painted on and they are not the same kind of thing at all.
@@ -513,7 +514,7 @@ impl Surface for MapSurface {
         client_y: f64,
     ) -> Option<(i32, i32)> {
         let (w, h) = self.dims(app)?;
-        app.viewport.flat_cell_at(client_x, client_y, w, h)
+        app.viewport.flat_cell_at(client_x, client_y, w, h, crate::app::flat_tall(app))
     }
 }
 
@@ -762,9 +763,14 @@ pub fn draw(app: &mut App) {
             buf[i] = c;
         }
     }
-    app.viewport.present_flat(w, h, &buf);
+    // Drawn in the shape the settlement draws it: a cell is a cell of a ground
+    // plane seen at an angle, so a row of the stage is shorter than a column
+    // is wide. What is on the page is what the settlement will look like, and
+    // that includes the shape of it.
+    let tall = crate::app::flat_tall(app);
+    app.viewport.present_flat(w, h, tall, &buf);
     if app.viewport.show_grid {
-        app.viewport.draw_pixel_grid(w, h);
+        app.viewport.draw_pixel_grid(w, h, tall);
     }
     app.viewport.finish();
 }
@@ -783,7 +789,7 @@ fn draw_empty(app: &mut App) {
             };
         }
     }
-    app.viewport.present_flat(w, h, &buf);
+    app.viewport.present_flat(w, h, crate::app::flat_tall(app), &buf);
     app.viewport.finish();
 }
 

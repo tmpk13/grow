@@ -1619,6 +1619,16 @@ there. `stage_surface(app)` picks between the two by the tab, and `flat_dims`
 answers for whichever is showing, which is what frames the camera and what
 decides that a press is a stroke rather than a drag.
 
+The one thing the two pages do not share is the shape of a buffer pixel.
+`flat_tall(app)` says how tall a row of the stage is drawn against how wide a
+column is: one for a sheet, whose pixels are square, and `depth_px / cell_px`
+for the map, whose cells are cells of a ground plane seen at an angle. It is
+passed to `present_flat`, `fit_flat`, `draw_pixel_grid` and `flat_cell_at`
+rather than kept on the camera, so nothing can be drawn in one shape and
+pressed on in another. Without it the map page draws every map a third taller
+than the settlement does, and a drawing read in - which is measured to arrive
+the right shape *there* - looks stretched *here*.
+
 What the page adds is meaning. `civ::map_brush::Brush` is one list of answers
 about a cell: `Brush::color` is what it paints with and `Brush::from_color`
 reads a press back. The list covers three different questions, and which one a

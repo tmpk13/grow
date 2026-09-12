@@ -378,25 +378,31 @@ impl Viewport {
     /// A plain buffer of `w` by `h` pixels, through the same camera. The sprite
     /// editor's surface is not a world - no cells, no sky, no ground plane - so
     /// it says its own size rather than borrowing a world to carry it.
-    pub fn present_flat(&mut self, w: i32, h: i32, buf: &[u32]) {
-        self.present_buffer(w, buf, Rect { x0: 0, y0: 0, x1: w, y1: h });
+    ///
+    /// `tall` is how tall one of its pixels is drawn against how wide it is. A
+    /// sheet's pixels are square and it is one; a map's are not, because a map
+    /// cell is a cell of a ground plane seen at an angle, and drawing them
+    /// square would show every map on that page as a different shape to the
+    /// one the settlement draws.
+    pub fn present_flat(&mut self, w: i32, h: i32, tall: f64, buf: &[u32]) {
+        self.present_buffer(w, tall, buf, Rect { x0: 0, y0: 0, x1: w, y1: h });
     }
 
     /// Centers a flat buffer and picks a whole number zoom for it, so a sprite
     /// is drawn at a whole number of screen pixels per art pixel and its edges
     /// stay where they were drawn.
-    pub fn fit_flat(&mut self, w: i32, h: i32) {
+    pub fn fit_flat(&mut self, w: i32, h: i32, tall: f64) {
         let (rw, rh) = self.rect();
         if rw <= 0.0 || rh <= 0.0 || w <= 0 || h <= 0 {
             return;
         }
-        self.zoom = self.fit_flat_zoom(w, h);
+        self.zoom = self.fit_flat_zoom(w, h, tall);
         self.pan_x = (rw - w as f64 * self.zoom) / 2.0;
-        self.pan_y = (rh - h as f64 * self.zoom) / 2.0;
+        self.pan_y = (rh - h as f64 * tall.max(0.01) * self.zoom) / 2.0;
     }
 
     /// The same, without moving the camera.
-    pub fn fit_flat_zoom(&self, w: i32, h: i32) -> f64 {
+    pub fn fit_flat_zoom(&self, w: i32, h: i32, tall: f64) -> f64 {
         let (rw, rh) = self.rect();
         if rw <= 0.0 || rh <= 0.0 || w <= 0 || h <= 0 {
             return self.zoom;
@@ -404,20 +410,27 @@ impl Viewport {
         // A margin, so the sheet is not drawn edge to edge against the stage,
         // and a whole number so a sprite is a whole number of screen pixels an
         // art pixel.
-        let fit = (rw / w as f64).min(rh / h as f64) * 0.85;
+        let fit = (rw / w as f64).min(rh / (h as f64 * tall.max(0.01))) * 0.85;
         clamp(fit.floor().max(1.0), 1.0, 64.0)
     }
 
     /// Where a pointer is, as a pixel of a flat buffer. Off the buffer reads as
     /// nothing rather than as the nearest edge, so a stroke that leaves the art
     /// stops instead of drawing down the side of it.
-    pub fn flat_cell_at(&self, client_x: f64, client_y: f64, w: i32, h: i32) -> Option<(i32, i32)> {
+    pub fn flat_cell_at(
+        &self,
+        client_x: f64,
+        client_y: f64,
+        w: i32,
+        h: i32,
+        tall: f64,
+    ) -> Option<(i32, i32)> {
         let r = self.canvas.get_bounding_client_rect();
         if self.zoom <= 0.0 {
             return None;
         }
         let x = ((client_x - r.left() - self.pan_x) / self.zoom).floor() as i32;
-        let y = ((client_y - r.top() - self.pan_y) / self.zoom).floor() as i32;
+        let y = ((client_y - r.top() - self.pan_y) / (self.zoom * tall.max(0.01))).floor() as i32;
         if x < 0 || y < 0 || x >= w || y >= h {
             return None;
         }
@@ -454,11 +467,13 @@ impl Viewport {
 
     /// One hairline per art pixel, and a border around the sheet. Drawn only
     /// once the pixels are large enough for a grid to read as a grid rather
-    /// than as a screen door.
-    pub fn draw_pixel_grid(&self, w: i32, h: i32) {
+    /// than as a screen door - which a map's rows reach later than its
+    /// columns do, being drawn shorter.
+    pub fn draw_pixel_grid(&self, w: i32, h: i32, tall: f64) {
         let ctx = &self.ctx;
+        let step_y = self.zoom * tall.max(0.01);
         let (x0, y0) = (self.pan_x, self.pan_y);
-        let (x1, y1) = (x0 + w as f64 * self.zoom, y0 + h as f64 * self.zoom);
+        let (x1, y1) = (x0 + w as f64 * self.zoom, y0 + h as f64 * step_y);
         if self.zoom >= 6.0 {
             ctx.set_stroke_style_str("rgba(255,255,255,0.10)");
             ctx.set_line_width(1.0);
@@ -468,10 +483,12 @@ impl Viewport {
                 ctx.move_to(px, y0);
                 ctx.line_to(px, y1);
             }
-            for y in 1..h {
-                let py = (y0 + y as f64 * self.zoom).round() + 0.5;
-                ctx.move_to(x0, py);
-                ctx.line_to(x1, py);
+            if step_y >= 6.0 {
+                for y in 1..h {
+                    let py = (y0 + y as f64 * step_y).round() + 0.5;
+                    ctx.move_to(x0, py);
+                    ctx.line_to(x1, py);
+                }
             }
             ctx.stroke();
         }
@@ -486,11 +503,15 @@ impl Viewport {
     /// sixty times a second, and zoomed out most of what would be pushed is
     /// thrown away on arrival.
     pub fn present_region(&mut self, world: &World, buf: &[u32], rect: Rect) {
-        self.present_buffer(world.px_w, buf, rect);
+        // A world buffer is already drawn the shape it is seen in - the
+        // foreshortening is in the pixels - so its rows are as tall as its
+        // columns are wide.
+        self.present_buffer(world.px_w, 1.0, buf, rect);
     }
 
-    /// The shared part: the row stride is all a buffer has to say about itself.
-    fn present_buffer(&mut self, px_w: i32, buf: &[u32], rect: Rect) {
+    /// The shared part: the row stride and how tall a row is drawn are all a
+    /// buffer has to say about itself.
+    fn present_buffer(&mut self, px_w: i32, tall: f64, buf: &[u32], rect: Rect) {
         self.resize();
         let ctx = &self.ctx;
         ctx.save();
@@ -535,12 +556,13 @@ impl Viewport {
             }
         }
         put_buffer(&self.off_ctx, &self.scratch, w, h);
+        let step_y = self.zoom * tall.max(0.01);
         let _ = self.ctx.draw_image_with_html_canvas_element_and_dw_and_dh(
             &self.off,
             self.pan_x + x0 as f64 * self.zoom,
-            self.pan_y + y0 as f64 * self.zoom,
+            self.pan_y + y0 as f64 * step_y,
             (w * step) as f64 * self.zoom,
-            (h * step) as f64 * self.zoom,
+            (h * step) as f64 * step_y,
         );
     }
 
